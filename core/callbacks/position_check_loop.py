@@ -178,25 +178,28 @@ async def position_check_loop_callback():
         # Vérifier la position (retourne None ou raison de fermeture)
         # Stocker le SL avant pour détecter les changements
         sl_before = position.sl if hasattr(position, 'sl') else None
-        
-        close_reason = await _position_manager.check_position(current_price)
 
-        # Si position toujours active, émettre mise à jour
-        if not close_reason:
-            # 🔥 FIX SL MISMATCH: Mettre à jour SL temps réel si changé (trailing stop)
-            sl_after = position.sl if hasattr(position, 'sl') else None
-            if sl_before != sl_after and sl_after and _price_provider:
-                if hasattr(_price_provider, 'update_sl_level'):
-                    _price_provider.update_sl_level(sl_after)
-            
-            await _emit_position_update(position, current_price)
-            return
-
-        # Position fermée - Acquérir le lock
         if _position_lock:
             async with _position_lock:
+                close_reason = await _position_manager.check_position(current_price)
+
+                # Si position toujours active, émettre mise à jour
+                if not close_reason:
+                    # 🔥 FIX SL MISMATCH: Mettre à jour SL temps réel si changé (trailing stop)
+                    sl_after = position.sl if hasattr(position, 'sl') else None
+                    if sl_before != sl_after and sl_after and _price_provider:
+                        if hasattr(_price_provider, 'update_sl_level'):
+                            _price_provider.update_sl_level(sl_after)
+
+                    await _emit_position_update(position, current_price)
+                    return
+
                 # BUG #2 FIX: Ordre correct des paramètres (exit_price, reason)
-                result = _position_manager.close_position(exit_price=current_price, reason=close_reason)
+                result = await asyncio.to_thread(
+                    _position_manager.close_position,
+                    exit_price=current_price,
+                    reason=close_reason,
+                )
 
                 if _app_state:
                     _app_state['active_position'] = None
@@ -238,6 +241,19 @@ async def position_check_loop_callback():
                     await _ws_manager.emit('position_closed', result)
                     # 🔥 FIX: Émettre stats_update après fermeture de position
                     await _emit_stats_update()
+        else:
+            close_reason = await _position_manager.check_position(current_price)
+
+            # Si position toujours active, émettre mise à jour
+            if not close_reason:
+                # 🔥 FIX SL MISMATCH: Mettre à jour SL temps réel si changé (trailing stop)
+                sl_after = position.sl if hasattr(position, 'sl') else None
+                if sl_before != sl_after and sl_after and _price_provider:
+                    if hasattr(_price_provider, 'update_sl_level'):
+                        _price_provider.update_sl_level(sl_after)
+
+                await _emit_position_update(position, current_price)
+                return
 
     except Exception as e:
         logger.error(f"❌ Erreur position_check_loop_callback: {e}", exc_info=True)

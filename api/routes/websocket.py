@@ -107,13 +107,26 @@ async def websocket_endpoint(websocket: WebSocket):
                     data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
                 except asyncio.TimeoutError:
                     try:
-                        await ws_mgr.send_personal_message({
-                            'type': 'ping',
-                            'timestamp': time.time()
-                        }, websocket)
+                        await websocket.send_text(
+                            json.dumps(
+                                {
+                                    'type': 'ping',
+                                    'timestamp': time.time(),
+                                },
+                                default=str,
+                            )
+                        )
                         continue
-                    except Exception:
-                        break
+                    except Exception as e:
+                        logger.warning(
+                            f"⚠️ [WS-DEBUG] Ping keep-alive échoué (client={websocket.client}), fermeture du WebSocket: {e}",
+                            exc_info=True,
+                        )
+                        try:
+                            await websocket.close(code=1000)
+                        except Exception:
+                            pass
+                        return
                 
                 try:
                     message = json.loads(data)
@@ -246,12 +259,24 @@ async def websocket_endpoint(websocket: WebSocket):
                                 'error': str(state_err)
                             }, websocket)
 
-        except WebSocketDisconnect:
-            logger.info(f"👋 WebSocket déconnecté proprement: {websocket.client}")
-            await ws_mgr.disconnect(websocket)
+        except WebSocketDisconnect as e:
+            logger.info(
+                f"👋 WebSocket déconnecté proprement (code={getattr(e, 'code', None)}) : {websocket.client}"
+            )
         except Exception as e:
-            logger.error(f"❌ Erreur inattendue boucle WebSocket: {e}", exc_info=True)
-            await ws_mgr.disconnect(websocket)
+            logger.error(
+                f"❌ Erreur inattendue boucle WebSocket: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+            try:
+                await websocket.close(code=1011)
+            except Exception:
+                pass
+        finally:
+            try:
+                await ws_mgr.disconnect(websocket)
+            except Exception:
+                pass
     
     except Exception as e:
         logger.critical(f"❌ CRITICAL: Erreur fatale dans websocket_endpoint: {e}", exc_info=True)

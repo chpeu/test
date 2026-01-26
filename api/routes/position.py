@@ -97,7 +97,8 @@ async def api_open_position(request: Request):
                 direction = 'SHORT' if direction == 'LONG' else 'LONG'
                 logger.warning(f"🔄 INVERSION DE SIGNAL (API): {data['symbol']} -> {direction}")
 
-            position = pos_mgr.open_position(
+            position = await asyncio.to_thread(
+                pos_mgr.open_position,
                 symbol=data['symbol'],
                 direction=direction,
                 entry=float(entry),
@@ -286,7 +287,11 @@ async def perform_close_position(reason: str = 'MANUAL', exit_price: Optional[fl
             price_data = await pp.get_price(pos_mgr.active_position.symbol)
             exit_price = get_preferred_price(price_data)
         
-        result = pos_mgr.close_position(exit_price=exit_price, reason=reason)
+        result = await asyncio.to_thread(
+            pos_mgr.close_position,
+            exit_price=exit_price,
+            reason=reason,
+        )
         state.set_active_position(None)
         
         if result:

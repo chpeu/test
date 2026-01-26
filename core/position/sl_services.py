@@ -49,7 +49,11 @@ async def setup_realtime_sl_check(position: Any, price_provider_instance: Any) -
             
             try:
                 # Close the position
-                result = pos_mgr.close_position(exit_price=exit_price, reason=reason)
+                result = await asyncio.to_thread(
+                    pos_mgr.close_position,
+                    exit_price=exit_price,
+                    reason=reason,
+                )
                 
                 # Update state
                 state.set_active_position(None)

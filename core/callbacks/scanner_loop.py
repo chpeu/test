@@ -785,7 +785,8 @@ async def _scan_top_pairs():
 
                 # BUG #6 FIX: Gestion correcte des erreurs avec try/except spécifiques
                 # Ouvrir la position (méthode synchrone)
-                position_result = _position_manager.open_position(
+                position_result = await asyncio.to_thread(
+                    _position_manager.open_position,
                     symbol=symbol,
                     direction=best_setup.get('direction'),
                     entry=entry,
