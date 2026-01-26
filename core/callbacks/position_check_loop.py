@@ -240,7 +240,7 @@ async def position_check_loop_callback():
                     await _emit_stats_update()
 
     except Exception as e:
-        logger.error(f"❌ Erreur position_check_loop_callback: {e}")
+        logger.error(f"❌ Erreur position_check_loop_callback: {e}", exc_info=True)
         await _notify_error('position_check_loop', str(e))
 
 
@@ -311,6 +311,8 @@ async def _emit_position_update(position, current_price: float):
             else:
                 config_module = sys.modules['config']
             TRADING_CONFIG = getattr(config_module, 'TRADING_CONFIG', {})
+            if not isinstance(TRADING_CONFIG, dict):
+                TRADING_CONFIG = {}
         except Exception as e:
             logger.warning(f"⚠️ Erreur import TRADING_CONFIG: {e}")
             TRADING_CONFIG = {}
@@ -354,6 +356,8 @@ async def _emit_position_update(position, current_price: float):
         use_atr_mode = (tp_sl_mode == 'ATR')
         break_even_use_atr = use_atr_mode
         trailing_config = TRADING_CONFIG.get('trailing_stop', {}) if TRADING_CONFIG else {}
+        if not isinstance(trailing_config, dict):
+            trailing_config = {}
         trailing_use_atr_trigger = use_atr_mode
 
         be_atr_mult_effective = effective_config.get('break_even_atr_mult') or (TRADING_CONFIG.get('break_even_atr_mult', 0.5) if TRADING_CONFIG else 0.5)
