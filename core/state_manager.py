@@ -34,7 +34,7 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass, field
-from threading import Lock
+from threading import RLock
 from datetime import datetime
 import uuid
 from collections.abc import MutableMapping, MutableSequence
@@ -148,7 +148,7 @@ class StateManager:
         self._locks: Dict[str, asyncio.Lock] = {}
 
         # Thread lock for sync access
-        self._thread_lock = Lock()
+        self._thread_lock = RLock()
 
         logger.info("✅ StateManager initialisé")
 

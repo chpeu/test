@@ -699,9 +699,9 @@ def _calculate_next_event(position, current_price, pnl_pct, atr_percent,
         # 1. Stop Loss (toujours affiché)
         if sl_price:
             if direction == 'LONG':
-                sl_distance = ((sl_price - current_price) / current_price) * 100
-            else:
                 sl_distance = ((current_price - sl_price) / current_price) * 100
+            else:
+                sl_distance = ((sl_price - current_price) / current_price) * 100
             
             result['next_sl'] = {
                 'type': 'SL',
