@@ -252,6 +252,52 @@ class TestPnLCalculator:
         # Loss = -1% = -10 USDT, fees = 0.8, total = -10.8
         assert result['net_pnl'] < -10.0
 
+    def test_calculate_realized_pnl_ignores_partial_profit_when_not_sold(self):
+        """Test partial_profit_usdt is not included when partial_tp_sold is False"""
+        calc = PnLCalculator()
+        position = {
+            'entry': 100.0,
+            'size': 1000.0,
+            'direction': 'LONG',
+            'partial_tp_sold': False,
+            'partial_profit_usdt': 9999.0,
+        }
+        result = calc.calculate_realized_pnl(position=position, exit_price=101.0, fees_percent=0.0)
+        assert result['pnl_usdt_gross'] == pytest.approx(10.0)
+
+    def test_calculate_realized_pnl_partial_tp_fallback_size_remaining(self):
+        """Test size_remaining fallback to 50% when partial_tp_sold=True and size_remaining is None"""
+        calc = PnLCalculator()
+        position = {
+            'entry': 100.0,
+            'size': 1000.0,
+            'direction': 'LONG',
+            'partial_tp_sold': True,
+            'size_remaining': None,
+            'partial_profit_usdt': 3.0,
+        }
+        result = calc.calculate_realized_pnl(position=position, exit_price=101.0, fees_percent=0.0)
+        # Remaining = 500 => unrealized = 500*(1/100)=5; + partial 3 => 8
+        assert result['pnl_usdt_gross'] == pytest.approx(8.0)
+
+    def test_calculate_costs_negative_slippage_is_zero(self):
+        """Test slippage is zeroed when slippage_percent is negative or None"""
+        calc = PnLCalculator()
+        position = {'size': 1000.0}
+        out = calc.calculate_costs(position=position, fees_percent=0.04, slippage_percent=-1.0)
+        assert out['slippage'] == 0.0
+        assert out['fees'] == pytest.approx(round(1000.0 * 0.04 / 100 * 2, 4))
+
+    def test_format_pnl_display_signs(self):
+        """Test formatting contains expected sign/percent/usdt"""
+        calc = PnLCalculator()
+        s1 = calc.format_pnl_display(pnl_pct=1.234, pnl_usdt=12.3)
+        assert '+1.23%' in s1
+        assert '(+12.30 USDT)' in s1
+        s2 = calc.format_pnl_display(pnl_pct=-1.234, pnl_usdt=-12.3)
+        assert '-1.23%' in s2
+        assert '(-12.30 USDT)' in s2
+
 
 # ============================================================================
 # Early Invalidation Checker Tests
@@ -430,6 +476,30 @@ class TestRecoveryModeManager:
         manager.update_after_trade(is_win=True)
         assert manager.active is False
 
+    def test_get_recovery_level_disabled(self):
+        """Test recovery mode disabled returns None"""
+        manager = RecoveryModeManager(RecoveryModeConfig(enabled=False))
+        assert manager.get_recovery_level(loss_streak=10) is None
+
+    def test_get_state_snapshot(self):
+        """Test get_state returns coherent snapshot"""
+        manager = RecoveryModeManager()
+        manager.active = True
+        manager.remaining_trades = 4
+        state = manager.get_state(loss_streak=3)
+        assert state.active is True
+        assert state.remaining_trades == 4
+        assert state.level is not None
+
+    def test_update_after_trade_expires_without_win(self):
+        """Test recovery mode deactivates when duration is consumed"""
+        manager = RecoveryModeManager()
+        manager.active = True
+        manager.remaining_trades = 1
+        manager.update_after_trade(is_win=False)
+        assert manager.active is False
+        assert manager.remaining_trades == 0
+
 
 # ============================================================================
 # Trailing Stop Manager Tests
@@ -548,6 +618,47 @@ class TestTrailingStopManager:
         assert new_sl is not None
         assert new_sl < 50250.0
 
+    def test_update_trailing_stop_disabled(self):
+        """Test trailing stop disabled returns None"""
+        manager = TrailingStopManager(TrailingStopConfig(enabled=False))
+        position = {'entry': 50000.0, 'sl': 49750.0, 'direction': 'LONG', 'atr': 200.0}
+        assert manager.update_trailing_stop(position, current_price=50200.0, pnl_percent=1.0) is None
+
+    def test_update_trailing_stop_does_not_move_back_long(self):
+        """Test LONG trailing stop never decreases SL"""
+        manager = TrailingStopManager()
+        position = {'entry': 50000.0, 'sl': 49750.0, 'direction': 'LONG', 'atr': 200.0}
+        sl_1 = manager.update_trailing_stop(position, current_price=50200.0, pnl_percent=1.0)
+        assert sl_1 is not None
+        position['sl'] = sl_1
+        sl_2 = manager.update_trailing_stop(position, current_price=50100.0, pnl_percent=0.8)
+        assert sl_2 is None
+
+    def test_update_trailing_stop_uses_atr_pct_used(self):
+        """Test atr_pct_used path is used when provided"""
+        manager = TrailingStopManager(TrailingStopConfig(atr_multiplier=1.0, min_distance=0.08, max_distance=0.25))
+        position = {
+            'entry': 50000.0,
+            'sl': 49750.0,
+            'direction': 'LONG',
+            'atr': 200.0,
+            'atr_pct_used': 2.0,
+        }
+        new_sl = manager.update_trailing_stop(position, current_price=50500.0, pnl_percent=1.0)
+        assert new_sl is not None
+
+    def test_update_trailing_stop_custom_distance_pct(self):
+        """Test custom_distance_pct overrides adaptive distance"""
+        manager = TrailingStopManager(TrailingStopConfig(min_distance=0.08, max_distance=0.25))
+        position = {'entry': 50000.0, 'sl': 49750.0, 'direction': 'LONG', 'atr': 200.0}
+        new_sl = manager.update_trailing_stop(
+            position,
+            current_price=50500.0,
+            pnl_percent=1.0,
+            custom_distance_pct=0.10,
+        )
+        assert new_sl == pytest.approx(round(50500.0 * (1 - 0.10 / 100), 8))
+
 
 # ============================================================================
 # Partial TP Manager Tests
@@ -592,6 +703,17 @@ class TestPartialTPManager:
         )
 
         assert should_trigger is False
+
+    def test_check_trigger_short_profit(self):
+        """Test partial TP trigger for SHORT with profit"""
+        manager = PartialTPManager()
+        position = {
+            'entry': 50000.0,
+            'direction': 'SHORT',
+            'partial_tp_sold': False,
+        }
+        should_trigger = manager.check_trigger(position=position, current_price=49850.0, trigger_pct=0.25)
+        assert should_trigger is True
 
     def test_check_trigger_not_reached(self):
         """Test no trigger when profit threshold not reached"""
@@ -659,6 +781,24 @@ class TestPartialTPManager:
         assert position['sl'] == 50000.0
         assert position['break_even_set'] is True
 
+    def test_update_sl_after_partial_tp_lock_in_and_price_constraint_long(self):
+        """Test lock-in percent and current_price constraint for LONG"""
+        manager = PartialTPManager()
+        position = {'entry': 100.0, 'sl': 95.0, 'direction': 'LONG'}
+        with patch.dict('config.TRADING_CONFIG', {'partial_tp_be_lock_in_pct': 0.50}, clear=False):
+            new_sl = manager.update_sl_after_partial_tp(position, current_price=100.4)
+        assert new_sl < 100.4
+        assert new_sl > 100.0
+
+    def test_update_sl_after_partial_tp_short_lock_in_and_price_constraint(self):
+        """Test lock-in percent and current_price constraint for SHORT"""
+        manager = PartialTPManager()
+        position = {'entry': 100.0, 'sl': 105.0, 'direction': 'SHORT'}
+        with patch.dict('config.TRADING_CONFIG', {'partial_tp_be_lock_in_pct': 0.50}, clear=False):
+            new_sl = manager.update_sl_after_partial_tp(position, current_price=99.6)
+        assert new_sl > 99.6
+        assert new_sl < 100.0
+
 # ============================================================================
 # TP Escalier Manager Tests
 # ============================================================================
@@ -716,6 +856,45 @@ class TestTPEscalierManager:
         assert position['tp_escalier_current_level'] == 1
         assert abs(position['tp_escalier_size_remaining'] - 0.7) < 0.01
         assert position['sl'] == 50000.0  # Moved to entry (breakeven)
+
+    def test_check_and_execute_levels_disabled_returns_none(self):
+        """Test TP escalier disabled returns None"""
+        manager = TPEscalierManager()
+        position = {'tp_escalier_enabled': False}
+        assert manager.check_and_execute_levels(position, current_price=1.0) is None
+
+    def test_check_and_execute_levels_out_of_range_returns_none(self):
+        """Test no execution when current level index is out of range"""
+        manager = TPEscalierManager()
+        position = {
+            'entry': 50000.0,
+            'size': 1000.0,
+            'direction': 'LONG',
+            'tp_escalier_enabled': True,
+            'tp_escalier_levels': [{'pnl': 0.5, 'size_pct': 0.3, 'move_sl': 'entry'}],
+            'tp_escalier_current_level': 1,
+            'tp_escalier_size_remaining': 0.7,
+            'tp_escalier_profits': [],
+        }
+        assert manager.check_and_execute_levels(position, current_price=60000.0) is None
+
+    def test_check_and_execute_levels_short_keep_sl(self):
+        """Test TP escalier execution for SHORT and keep SL when configured"""
+        manager = TPEscalierManager()
+        position = {
+            'entry': 100.0,
+            'size': 1000.0,
+            'direction': 'SHORT',
+            'sl': 105.0,
+            'tp_escalier_enabled': True,
+            'tp_escalier_levels': [{'pnl': 1.0, 'size_pct': 0.5, 'move_sl': 'keep'}],
+            'tp_escalier_current_level': 0,
+            'tp_escalier_size_remaining': 1.0,
+            'tp_escalier_profits': [],
+        }
+        result = manager.check_and_execute_levels(position, current_price=99.0)
+        assert result is not None
+        assert position['sl'] == 105.0
 
     def test_check_and_execute_levels_multiple(self):
         """Test multiple TP escalier levels"""

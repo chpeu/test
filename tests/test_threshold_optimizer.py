@@ -363,3 +363,21 @@ def test_get_status_includes_exploration_stats(tmp_path):
     assert status["exploration_trades"] == 4
     assert status["exploration_wins"] == 3
     assert status["exploration_winrate"] == pytest.approx(3 / 4)
+
+
+def test_load_state_corrupted_json_does_not_raise(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{invalid json", encoding="utf-8")
+
+    optimizer = ContextualThresholdOptimizer(persistence_path=str(state_path))
+    assert optimizer.total_updates >= 0
+
+
+def test_save_state_failure_does_not_raise(monkeypatch, tmp_path):
+    optimizer = ContextualThresholdOptimizer(persistence_path=str(tmp_path / "state.json"))
+
+    def _boom(*_args, **_kwargs):
+        raise OSError("nope")
+
+    monkeypatch.setattr("builtins.open", _boom)
+    optimizer._save_state()

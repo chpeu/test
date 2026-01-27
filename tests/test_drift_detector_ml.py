@@ -25,6 +25,27 @@ def test_adwin_detector_detects_large_shift():
     assert drift is True
 
 
+def test_adwin_detector_get_stats_empty_and_single_value():
+    detector = ADWINDetector(delta=0.9, min_window=2)
+    assert detector.get_stats() == {'mean': 0, 'std': 0, 'count': 0}
+
+    detector.update(1.23)
+    stats = detector.get_stats()
+    assert stats['count'] == 1
+    assert stats['mean'] == pytest.approx(1.23)
+    assert stats['std'] == 0
+
+
+def test_adwin_detector_reset_clears_window():
+    detector = ADWINDetector(delta=0.9, min_window=2)
+    detector.update(0.1)
+    detector.update(0.2)
+    assert detector.width > 0
+    detector.reset()
+    assert detector.width == 0
+    assert detector.get_stats() == {'mean': 0, 'std': 0, 'count': 0}
+
+
 def test_market_drift_detector_disabled_returns_fast():
     detector = MarketDriftDetector(min_window=2, alert_cooldown=1)
     detector.enabled = False
@@ -140,3 +161,89 @@ def test_market_drift_detector_reset_clears_windows_and_counters():
     assert detector.pnl_detector.width == 0
     assert detector.winrate_detector.width == 0
     assert detector.trades_since_alert == 0
+
+
+def test_market_drift_detector_history_is_capped(tmp_path):
+    detector = MarketDriftDetector(
+        pnl_delta=0.9,
+        winrate_delta=0.9,
+        min_window=2,
+        alert_cooldown=1,
+        persistence_path=str(tmp_path / 'drift_state.json'),
+    )
+    detector.max_history = 2
+
+    for _ in range(3):
+        detector.update(pnl=0.0, win=True)
+        out = detector.update(pnl=10.0, win=False)
+        assert 'drift_detected' in out
+
+    assert len(detector.drift_history) <= 2
+
+
+def test_market_drift_detector_get_history_limit(tmp_path):
+    detector = MarketDriftDetector(
+        pnl_delta=0.9,
+        winrate_delta=0.9,
+        min_window=2,
+        alert_cooldown=1,
+        persistence_path=str(tmp_path / 'drift_state.json'),
+    )
+
+    for _ in range(4):
+        detector.update(pnl=0.0, win=True)
+        detector.update(pnl=10.0, win=False)
+
+    hist = detector.get_history(limit=2)
+    assert isinstance(hist, list)
+    assert len(hist) <= 2
+    if hist:
+        assert 'timestamp' in hist[-1]
+        assert 'severity' in hist[-1]
+
+
+def test_market_drift_detector_get_status_shape(tmp_path):
+    detector = MarketDriftDetector(
+        pnl_delta=0.9,
+        winrate_delta=0.9,
+        min_window=2,
+        alert_cooldown=1,
+        persistence_path=str(tmp_path / 'drift_state.json'),
+    )
+    detector.update(pnl=0.01, win=True)
+    status = detector.get_status()
+    assert 'enabled' in status
+    assert 'total_trades' in status
+    assert 'pnl_stats' in status
+    assert 'winrate_stats' in status
+    assert 'recent_drifts' in status
+    assert 'last_check' in status
+
+
+def test_market_drift_detector_load_state_invalid_json_does_not_raise(tmp_path):
+    path = tmp_path / 'drift_state.json'
+    path.write_text('{invalid json', encoding='utf-8')
+    detector = MarketDriftDetector(
+        pnl_delta=0.9,
+        winrate_delta=0.9,
+        min_window=2,
+        alert_cooldown=1,
+        persistence_path=str(path),
+    )
+    assert detector.total_trades >= 0
+
+
+def test_market_drift_detector_save_state_failure_does_not_raise(monkeypatch, tmp_path):
+    detector = MarketDriftDetector(
+        pnl_delta=0.9,
+        winrate_delta=0.9,
+        min_window=2,
+        alert_cooldown=1,
+        persistence_path=str(tmp_path / 'drift_state.json'),
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise OSError('nope')
+
+    monkeypatch.setattr('builtins.open', _boom)
+    detector._save_state()

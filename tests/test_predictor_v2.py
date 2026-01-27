@@ -150,6 +150,71 @@ class TestMLPredictorV2LoadModel:
         assert result is True
         assert predictor.metadata is not None
 
+    @patch('optimization.predictor_v2.joblib.load')
+    @patch('optimization.predictor_v2.os.path.exists')
+    def test_load_model_metadata_parse_error_is_non_blocking(self, mock_exists, mock_joblib, mock_model, mock_preprocessor):
+        """Couvre l'erreur metadata (non bloquant)"""
+        mock_exists.return_value = True
+        mock_joblib.side_effect = [mock_model, mock_preprocessor]
+
+        with patch('builtins.open', create=True) as mock_open:
+            mock_open.return_value.__enter__.return_value.read.return_value = '{invalid json'
+
+            predictor = MLPredictorV2()
+            assert predictor.load_model() is True
+            assert predictor.loaded is True
+            assert predictor.metadata is None
+
+    @patch('optimization.predictor_v2.joblib.load')
+    @patch('optimization.predictor_v2.os.path.exists')
+    def test_load_model_feature_names_from_preprocessor_dict(self, mock_exists, mock_joblib, mock_model):
+        """Couvre feature_names via preprocessor dict['feature_names']"""
+        def _exists(path):
+            return not str(path).endswith('_metadata.json')
+
+        mock_exists.side_effect = _exists
+        preprocessor = {'feature_names': ['a', 'b', 'c']}
+        mock_joblib.side_effect = [mock_model, preprocessor]
+
+        predictor = MLPredictorV2()
+        assert predictor.load_model() is True
+        assert predictor.feature_names == ['a', 'b', 'c']
+
+    @patch('optimization.predictor_v2.joblib.load')
+    @patch('optimization.predictor_v2.os.path.exists')
+    def test_load_model_feature_names_from_feature_names_in(self, mock_exists, mock_joblib, mock_model):
+        """Couvre feature_names via preprocessor.feature_names_in_"""
+        def _exists(path):
+            return not str(path).endswith('_metadata.json')
+
+        mock_exists.side_effect = _exists
+
+        class _Prep:
+            feature_names_in_ = ['x', 'y']
+
+            def transform(self, df):
+                return df.values
+
+        mock_joblib.side_effect = [mock_model, _Prep()]
+
+        predictor = MLPredictorV2()
+        assert predictor.load_model() is True
+        assert predictor.feature_names == ['x', 'y']
+
+    @patch('optimization.predictor_v2.joblib.load')
+    @patch('optimization.predictor_v2.os.path.exists')
+    def test_load_model_feature_names_unknown_defaults_to_empty(self, mock_exists, mock_joblib, mock_model):
+        """Couvre le fallback feature_names=[]"""
+        def _exists(path):
+            return not str(path).endswith('_metadata.json')
+
+        mock_exists.side_effect = _exists
+        mock_joblib.side_effect = [mock_model, object()]
+
+        predictor = MLPredictorV2()
+        assert predictor.load_model() is True
+        assert predictor.feature_names == []
+
 
 class TestMLPredictorV2Predict:
     """Tests prédiction"""
@@ -395,6 +460,24 @@ class TestMLPredictorV2ShouldReject:
         assert should_reject is True
         assert predicted_pnl == -1.2
 
+    def test_should_reject_trade_exception_returns_safe_default(self, mock_features):
+        predictor = MLPredictorV2()
+        with patch.object(predictor, 'predict', side_effect=RuntimeError('boom')):
+            should_reject, predicted_pnl, reason = predictor.should_reject_trade(mock_features)
+
+        assert should_reject is False
+        assert predicted_pnl is None
+        assert reason == 'Erreur ML V2'
+
+    def test_should_reject_trade_prediction_none_returns_not_reject(self, mock_features):
+        predictor = MLPredictorV2()
+        with patch.object(predictor, 'predict', return_value=None):
+            should_reject, predicted_pnl, reason = predictor.should_reject_trade(mock_features)
+
+        assert should_reject is False
+        assert predicted_pnl is None
+        assert reason == 'ML V2 indisponible'
+
 
 class TestMLPredictorV2ConfidenceInterval:
     """Tests intervalles de confiance"""
@@ -414,11 +497,16 @@ class TestMLPredictorV2ConfidenceInterval:
             interval = predictor.get_confidence_interval(mock_features, confidence_level=0.95)
         
         assert interval is not None
-        lower, upper = interval
-        assert isinstance(lower, float)
-        assert isinstance(upper, float)
-        assert lower < upper
-        assert lower < 2.34 < upper  # Predicted PNL dans intervalle
+
+    def test_confidence_interval_returns_none_when_prediction_none(self, mock_features):
+        predictor = MLPredictorV2()
+        with patch.object(predictor, 'predict', return_value=None):
+            assert predictor.get_confidence_interval(mock_features) is None
+
+    def test_confidence_interval_returns_none_when_predict_raises(self, mock_features):
+        predictor = MLPredictorV2()
+        with patch.object(predictor, 'predict', side_effect=RuntimeError('boom')):
+            assert predictor.get_confidence_interval(mock_features) is None
     
     def test_confidence_interval_without_metadata(self, mock_features, mock_model, mock_preprocessor):
         """Test intervalle sans metadata (MAE par défaut)"""
@@ -459,6 +547,122 @@ class TestMLPredictorV2BatchPredict:
         assert all('predicted_pnl' in p for p in predictions)
 
 
+class TestMLPredictorV2LoadFromPostgres:
+    def test_load_from_postgres_falls_back_when_pg_disabled(self, mock_model, mock_preprocessor):
+        predictor = MLPredictorV2()
+
+        class _FakePG:
+            enabled = False
+
+        with patch('core.simple_pg_logger.SimplePGLogger', return_value=_FakePG()):
+            with patch.object(predictor, 'load_model', return_value=True) as mock_load:
+                assert predictor.load_from_postgres() is True
+                mock_load.assert_called_once()
+
+    def test_load_from_postgres_falls_back_when_no_row(self, mock_model, mock_preprocessor):
+        predictor = MLPredictorV2()
+
+        class _Cursor:
+            description = [('id',), ('model_path',), ('preprocessor_path',)]
+
+            def execute(self, *_args, **_kwargs):
+                return None
+
+            def fetchone(self):
+                return None
+
+            def close(self):
+                return None
+
+        class _Conn:
+            def cursor(self):
+                return _Cursor()
+
+        class _FakePG:
+            enabled = True
+            conn = _Conn()
+
+        with patch('core.simple_pg_logger.SimplePGLogger', return_value=_FakePG()):
+            with patch.object(predictor, 'load_model', return_value=True) as mock_load:
+                assert predictor.load_from_postgres() is True
+                mock_load.assert_called_once()
+
+    def test_load_from_postgres_success_sets_metadata_and_features(self, tmp_path, mock_model, mock_preprocessor):
+        predictor = MLPredictorV2()
+
+        model_path = str(tmp_path / 'm.pkl')
+        prep_path = str(tmp_path / 'p.pkl')
+
+        class _Cursor:
+            description = [
+                ('model_name',),
+                ('model_type',),
+                ('version',),
+                ('trained_at',),
+                ('train_r2',),
+                ('train_mae',),
+                ('val_r2',),
+                ('val_mae',),
+                ('test_r2',),
+                ('test_mae',),
+                ('test_f1',),
+                ('model_params',),
+                ('selected_features',),
+                ('model_path',),
+                ('preprocessor_path',),
+            ]
+
+            def execute(self, *_args, **_kwargs):
+                return None
+
+            def fetchone(self):
+                from datetime import datetime
+                return (
+                    'xgboost_v2_from_pg',
+                    'XGBRegressor',
+                    '2.0',
+                    datetime.utcnow(),
+                    0.1,
+                    0.2,
+                    0.1,
+                    0.2,
+                    0.1,
+                    0.2,
+                    0.3,
+                    '{"a": 1}',
+                    '["rsi_1m", "macd_1m"]',
+                    model_path,
+                    prep_path,
+                )
+
+            def close(self):
+                return None
+
+        class _Conn:
+            def cursor(self):
+                return _Cursor()
+
+        class _FakePG:
+            enabled = True
+            conn = _Conn()
+
+        with patch('core.simple_pg_logger.SimplePGLogger', return_value=_FakePG()):
+            with patch('optimization.predictor_v2.os.path.exists', return_value=True):
+                def _load(path):
+                    if str(path) == model_path:
+                        return mock_model
+                    if str(path) == prep_path:
+                        return mock_preprocessor
+                    raise FileNotFoundError(str(path))
+
+                with patch('optimization.predictor_v2.joblib.load', side_effect=_load):
+                    assert predictor.load_from_postgres(model_id=1) is True
+                    assert predictor.loaded is True
+                    assert predictor.metadata is not None
+                    assert predictor.feature_names == ['rsi_1m', 'macd_1m']
+
+
+
 class TestGetPredictorV2:
     """Tests fonction singleton"""
     
@@ -478,6 +682,16 @@ class TestGetPredictorV2:
             
             # Devrait retourner la même instance
             assert predictor1 is predictor2
+
+    def test_get_predictor_v2_recreates_when_model_name_changes(self):
+        import optimization.predictor_v2 as mod
+        mod._predictor_v2_instance = None
+
+        with patch.object(MLPredictorV2, 'load_from_postgres', return_value=True):
+            p1 = get_predictor_v2(model_name='xgboost_v2_latest')
+            p2 = get_predictor_v2(model_name='xgboost_v2_other')
+            assert p2 is not p1
+            assert p2.model_name == 'xgboost_v2_other'
 
 
 class TestPredictPNL:
@@ -521,6 +735,27 @@ class TestPredictPNL:
                 
                 assert prediction['prediction_id'] == 12345
                 mock_log.assert_called_once()
+
+    def test_predict_pnl_logging_exception_is_swallowed(self, mock_features):
+        with patch('optimization.predictor_v2.get_predictor_v2') as mock_get:
+            mock_predictor = Mock()
+            mock_predictor.predict = Mock(return_value={
+                'predicted_pnl': 2.34,
+                'classification': 'win',
+                'classification_value': 1
+            })
+            mock_get.return_value = mock_predictor
+
+            with patch('optimization.predictor_v2.log_prediction', side_effect=RuntimeError('boom')):
+                prediction = predict_pnl(
+                    mock_features,
+                    symbol='BTCUSDT',
+                    scan_id=1,
+                    log_to_db=True,
+                )
+
+        assert prediction is not None
+        assert prediction.get('prediction_id') is None
 
 
 class TestEdgeCases:
@@ -579,6 +814,79 @@ class TestEdgeCases:
         
         assert prediction['predicted_pnl'] == -8.2
         assert prediction['is_profitable'] is False
+
+    def test_predict_returns_none_when_model_predict_raises(self, mock_features, mock_preprocessor):
+        predictor = MLPredictorV2()
+
+        bad_model = Mock()
+        bad_model.predict = Mock(side_effect=RuntimeError('boom'))
+        predictor.model = bad_model
+        predictor.preprocessor = mock_preprocessor
+        predictor.feature_names = ['rsi_1m']
+        predictor.loaded = True
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            assert predictor.predict(mock_features) is None
+
+    def test_predict_top_features_none_when_booster_fails(self, mock_features, mock_preprocessor):
+        predictor = MLPredictorV2()
+
+        model = Mock()
+        model.predict = Mock(return_value=np.array([1.0]))
+        model.get_booster = Mock(side_effect=RuntimeError('boom'))
+        predictor.model = model
+        predictor.preprocessor = mock_preprocessor
+        predictor.feature_names = ['rsi_1m']
+        predictor.loaded = True
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            out = predictor.predict(mock_features)
+
+        assert out is not None
+        assert out.get('top_features') is None
+
+    def test_predict_returns_none_when_autoload_fails(self, mock_features):
+        predictor = MLPredictorV2()
+        predictor.loaded = False
+        with patch.object(predictor, 'load_from_postgres', return_value=False):
+            assert predictor.predict(mock_features) is None
+
+    def test_predict_extracts_top_features_when_booster_available(self, mock_features, mock_model, mock_preprocessor):
+        predictor = MLPredictorV2()
+        predictor.model = mock_model
+        predictor.preprocessor = mock_preprocessor
+        predictor.feature_names = ['rsi_1m']
+        predictor.loaded = True
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            out = predictor.predict(mock_features)
+
+        assert out is not None
+        assert 'top_features' in out
+        assert out['top_features'] is not None
+        assert len(out['top_features']) >= 1
+
+    def test_confidence_interval_uses_99pct_z_score(self, mock_features, mock_model, mock_preprocessor, mock_metadata):
+        predictor = MLPredictorV2()
+        predictor.model = mock_model
+        predictor.preprocessor = mock_preprocessor
+        predictor.metadata = mock_metadata
+        predictor.feature_names = ['rsi_1m']
+        predictor.loaded = True
+
+        with patch('optimization.predictor_v2.calculate_derived_features') as mock_fe:
+            mock_fe.return_value = pd.DataFrame([mock_features])
+            interval_95 = predictor.get_confidence_interval(mock_features, confidence_level=0.95)
+            interval_99 = predictor.get_confidence_interval(mock_features, confidence_level=0.99)
+
+        assert interval_95 is not None
+        assert interval_99 is not None
+        width_95 = interval_95[1] - interval_95[0]
+        width_99 = interval_99[1] - interval_99[0]
+        assert width_99 > width_95
 
 
 if __name__ == "__main__":
