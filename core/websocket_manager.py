@@ -151,18 +151,39 @@ class WebSocketManager:
         rtt_ms = conn_data.get('last_server_rtt_ms')
         user_agent = conn_data.get('user_agent')
         origin = conn_data.get('origin')
+        
+        # 🔥 WEBSOCKET-FIX: Logs détaillés pour diagnostiquer les déconnexions
+        disconnect_reason = "unknown"
+        websocket_state = getattr(websocket, 'client_state', 'unknown')
+        try:
+            if hasattr(websocket, 'close_code'):
+                disconnect_reason = f"close_code_{websocket.close_code}"
+            elif hasattr(websocket, 'client_state') and websocket.client_state == 'disconnected':
+                disconnect_reason = "client_disconnected"
+        except Exception:
+            pass
+            
         async with self.lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
             # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
             for room_connections in self.rooms.values():
                 room_connections.discard(websocket)
-        logger.info(
-            f"❌ WebSocket déconnecté (id={connection_id}, client={client}, duration_s={duration_s}, "
+                
+        # 🔥 WEBSOCKET-FIX: Log détaillé pour diagnostiquer les déconnexions
+        logger.warning(
+            f"🔌 [WEBSOCKET-FIX] WebSocket déconnecté: id={connection_id}, client={client}, "
+            f"reason={disconnect_reason}, state={websocket_state}, duration_s={duration_s}, "
             f"in={msg_in}, out={msg_out}, bytes_in={bytes_in}, bytes_out={bytes_out}, "
             f"last_msg={last_message_type}, last_msg_age_s={last_message_age_s}, rtt_ms={rtt_ms}, "
-            f"ua={user_agent}, origin={origin}, total: {len(self.active_connections)})"
+            f"ua={user_agent}, origin={origin}, remaining_connections={len(self.active_connections)}"
         )
+        
+        # 🔥 WEBSOCKET-FIX: Si c'est une déconnexion rapide (< 30s), c'est suspect
+        if duration_s and duration_s < 30:
+            logger.error(
+                f"🚨 [WEBSOCKET-FIX] DÉCONNEXION RAPIDE DÉTECTÉE: {duration_s}s - possible crash backend!"
+            )
     
     async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 5.0):
         """Envoyer un message à un WebSocket spécifique"""

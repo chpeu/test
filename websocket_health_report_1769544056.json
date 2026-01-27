@@ -1,0 +1,84 @@
+{
+  "timestamp": 1769544056.585134,
+  "datetime": "2026-01-27T21:00:56.585134",
+  "uptime_s": 6.198182821273804,
+  "uptime_str": "0:00:06",
+  "backend_health": {
+    "status": "healthy",
+    "data": {
+      "status": "healthy",
+      "timestamp": 1769544054.5284784,
+      "components": {
+        "websocket_manager": true,
+        "state_manager": true,
+        "position_manager": true,
+        "scanner": true
+      },
+      "websocket_connections": 0,
+      "uptime_info": {
+        "session_id": "3b2daf65-d591-44eb-afaa-ba455cca3c1d",
+        "is_scanning": true
+      }
+    }
+  },
+  "websocket_stats": {
+    "status": "ok",
+    "connections": 0,
+    "data": {
+      "active_connections": 0,
+      "rooms": {},
+      "registered_commands": [
+        "get_live_config",
+        "update_live_config",
+        "test_mexc_connection",
+        "emergency_stop",
+        "get_positions",
+        "get_balance",
+        "set_trailing_stop",
+        "set_tp_sl"
+      ],
+      "detailed_stats": {},
+      "status": "no_connections"
+    }
+  },
+  "backend_websocket_test": {
+    "status": "unexpected_response",
+    "data": {
+      "type": "event",
+      "event": "status",
+      "data": {
+        "is_scanning": true,
+        "active_position": null,
+        "stats": {
+          "total_trades": 0,
+          "wins": 0,
+          "losses": 0,
+          "winrate": 0.0
+        },
+        "top_pairs": [],
+        "logs": [],
+        "trade_history": [],
+        "close_failure_count": 0,
+        "close_failure_symbol": null,
+        "backend_reboot_in_progress": false,
+        "session_id": "3b2daf65-d591-44eb-afaa-ba455cca3c1d"
+      }
+    }
+  },
+  "disconnection_analysis": {
+    "total_disconnections": 1,
+    "recent_5min": 1,
+    "rapid_disconnections": 0,
+    "by_source": {
+      "websocket_test": 1
+    },
+    "last_disconnection": {
+      "timestamp": 1769544054.5198708,
+      "datetime": "2026-01-27T21:00:54.519870",
+      "source": "websocket_test",
+      "reason": "Unknown",
+      "duration_s": null
+    }
+  },
+  "backend_crashes": 0
+}

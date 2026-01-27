@@ -58,6 +58,7 @@ try:
     from utils.error_history import ErrorHistoryManager
     from api.live_trading_endpoints import router as live_router, register_websocket_commands
     from api.regime_endpoints import router as regime_router
+    from api.routes.websocket_stats import router as websocket_stats_router, set_websocket_manager as set_websocket_manager_stats
 except ImportError as e:
     logging.warning(f"⚠️ Architecture V2 imports (optionnels): {e}")
     AnalyticsDatabase = None
@@ -72,6 +73,8 @@ except ImportError as e:
     set_live_order_manager = None
     live_router = None
     regime_router = None
+    websocket_stats_router = None
+    set_websocket_manager_stats = None
     register_websocket_commands = lambda x: None
     
     class ErrorHistoryManager:
@@ -274,15 +277,22 @@ try:
     register_websocket_commands(ws_mgr)
     logger.info("✅ Commandes WebSocket live trading enregistrées")
 except (ImportError, AttributeError, TypeError) as e:
-    # Dépendances manquantes ou configuration incorrecte (non-critique)
-    logger.warning(f"⚠️ Impossible d'enregistrer commandes WebSocket live trading: {e}")
+    logger.debug(f"Commandes WebSocket live trading non disponibles: {e}")
 except Exception as e:
-    # Erreur système inattendue
     logger.critical(
         f"❌ ERREUR CRITIQUE lors de l'enregistrement WebSocket: {type(e).__name__}: {e}",
         exc_info=True
     )
     raise
+
+# 🔥 WEBSOCKET-FIX: Injecter le WebSocket manager dans les routes stats
+try:
+    if set_websocket_manager_stats:
+        ws_mgr = state.get_ws_manager()
+        set_websocket_manager_stats(ws_mgr)
+        logger.info("✅ WebSocket manager injecté dans websocket_stats")
+except Exception as e:
+    logger.debug(f"Injection WebSocket manager stats non disponible: {e}")
 
 from contextlib import asynccontextmanager
 
@@ -623,17 +633,15 @@ try:
 except (ImportError, ConfigurationError) as e:
     logger.debug(f"Module regime trading non disponible ou erreur config: {e}")
 
-@app.get("/api/health")
-async def health_check():
-    """Endpoint de santé pour vérifier si le backend est prêt"""
-    state = get_state_manager()
-    pg_logger = state.get_pg_datalogger()
-    return {
-        "status": "healthy",
-        "initialized": state.is_scanning,
-        "pg_logger": pg_logger.enabled if pg_logger else False,
-        "timestamp": time.time()
-    }
+# 🔥 WEBSOCKET-FIX: Inclure les routes WebSocket stats pour surveillance
+try:
+    if websocket_stats_router:
+        app.include_router(websocket_stats_router)
+        logger.info("✅ WebSocket stats routes incluses: /api/websocket/*, /api/health")
+except Exception as e:
+    logger.debug(f"Module websocket stats non disponible: {e}")
+
+# L'endpoint /api/health est maintenant fourni par websocket_stats_router
 
 @app.get("/favicon.ico")
 async def favicon():

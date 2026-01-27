@@ -68,6 +68,43 @@ def test_check_contextual_exit_no_market_data_returns_false_none():
     assert reason is None
 
 
+def test_check_contextual_exit_contextual_disabled_returns_false_none():
+    checker = EarlyInvalidationChecker(EarlyInvalidationConfig(contextual_enabled=False))
+    should_exit, reason = checker.check_contextual_exit(position={'direction': 'LONG'}, market_data={'rsi': 99.0})
+    assert should_exit is False
+    assert reason is None
+
+
+def test_check_contextual_exit_volume_avg_zero_does_not_crash_or_trigger():
+    checker = EarlyInvalidationChecker()
+    position = {'direction': 'LONG'}
+    market_data = {
+        'volume_1m': 1000.0,
+        'volume_avg_1m': 0.0,
+        'price_change_pct': -0.2,
+        'spread_pct': 0.01,
+        'rsi_1m': 50.0,
+    }
+    should_exit, reason = checker.check_contextual_exit(position=position, market_data=market_data)
+    assert should_exit is False
+    assert reason is None
+
+
+def test_check_contextual_exit_missing_rsi_and_spread_only_volume_not_enough():
+    checker = EarlyInvalidationChecker()
+    position = {'direction': 'LONG'}
+    market_data = {
+        'volume': 200.0,
+        'volume_avg': 50.0,
+        'price_change_pct': 0.0,
+        # rsi missing
+        # spread missing
+    }
+    should_exit, reason = checker.check_contextual_exit(position=position, market_data=market_data)
+    assert should_exit is False
+    assert reason is None
+
+
 def test_check_contextual_exit_long_combines_reasons():
     checker = EarlyInvalidationChecker()
     position = {'direction': 'LONG'}
@@ -171,6 +208,28 @@ def test_check_invalidation_returns_contextual_exit_reason():
         'spread': 0.1,
     }
     reason = checker.check_invalidation(position, current_price=99.0, pnl_percent=-0.01, market_data=market_data)
+    assert isinstance(reason, str)
+    assert reason.startswith('CONTEXTUAL_EXIT:')
+
+
+def test_check_invalidation_outside_pnl_window_but_in_contextual_window_still_checks_contextual():
+    checker = EarlyInvalidationChecker()
+    position = {
+        'start_time': time.time() - 40.0,  # hors fenêtre 10-30, mais <= 60
+        'entry': 100.0,
+        'atr': 1.0,
+        'direction': 'LONG',
+        'symbol': 'BTC/USDT',
+    }
+    market_data = {
+        'rsi': 80.0,
+        'volume': 200.0,
+        'volume_avg': 50.0,
+        'price_change_pct': -0.1,
+        'spread': 0.1,
+    }
+
+    reason = checker.check_invalidation(position, current_price=99.0, pnl_percent=0.0, market_data=market_data)
     assert isinstance(reason, str)
     assert reason.startswith('CONTEXTUAL_EXIT:')
 

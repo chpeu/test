@@ -335,6 +335,57 @@ class TestCalculateATRLevels:
         assert atr_blended == pytest.approx(130)
         assert atr_percent_used == pytest.approx((130 / entry) * 100)
 
+    def test_return_atr_used_returns_clamped_min(self):
+        config = TPSLConfig(atr_min=0.15, atr_max=2.0)
+        entry = 50000
+        atr1m = 1  # 0.002% => clamp to 0.15%
+
+        sl, tp, atr_percent_used, atr_blended = calculate_atr_levels(
+            entry,
+            atr1m,
+            None,
+            'LONG',
+            config,
+            return_atr_used=True,
+        )
+
+        assert atr_blended == pytest.approx(atr1m)
+        assert atr_percent_used == pytest.approx(0.15)
+        assert sl < entry
+        assert tp > entry
+
+    def test_return_atr_used_returns_clamped_max(self):
+        config = TPSLConfig(atr_min=0.1, atr_max=0.5)
+        entry = 50000
+        atr1m = 1000  # 2% => clamp to 0.5%
+
+        sl, tp, atr_percent_used, atr_blended = calculate_atr_levels(
+            entry,
+            atr1m,
+            None,
+            'LONG',
+            config,
+            return_atr_used=True,
+        )
+
+        assert atr_blended == pytest.approx(atr1m)
+        assert atr_percent_used == pytest.approx(0.5)
+        assert sl < entry
+        assert tp > entry
+
+    def test_sl_is_capped_by_trading_config_sl_max_pct(self, monkeypatch):
+        monkeypatch.setitem(__import__('config').TRADING_CONFIG, 'sl_max_pct', 0.1)
+
+        config = TPSLConfig(atr_min=0.1, atr_max=2.0, atr_mult_sl=10.0, atr_mult_tp=1.0)
+        entry = 50000
+        atr = 250  # 0.5% atr_percent; sl_pct would be 5% => capped to 0.1%
+
+        sl, tp = calculate_atr_levels(entry, atr, None, 'LONG', config)
+        expected_sl = round(entry * (1 - 0.1 / 100), 8)
+
+        assert sl == pytest.approx(expected_sl, rel=0, abs=1e-8)
+        assert tp > entry
+
     def test_inverted_tp_sl_detection_long_branch(self):
         config = TPSLConfig(atr_mult_tp=-1.0, atr_mult_sl=-1.0)
         entry = 50000

@@ -315,7 +315,16 @@ async def _scan_top_pairs():
         if not scan_tasks:
             return
 
-        results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+        # 🔥 FIX: Gestion robuste des exceptions dans asyncio.gather
+        try:
+            logger.info(f"🔍 [WEBSOCKET-FIX] Lancement de {len(scan_tasks)} tâches de scan en parallèle...")
+            results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+            logger.info(f"✅ [WEBSOCKET-FIX] Toutes les tâches terminées, traitement de {len(results)} résultats...")
+        except Exception as gather_error:
+            logger.error(f"❌ [WEBSOCKET-FIX] Erreur CRITIQUE dans asyncio.gather: {type(gather_error).__name__}: {gather_error}", exc_info=True)
+            # Fallback: pas de scan mais ne pas crasher
+            await _notify_error('asyncio_gather_critical', f"Gather failed: {gather_error}")
+            return
 
         # Compter les résultats CORRECTEMENT
         # Un setup VALIDE a les clés: 'symbol', 'direction', 'price', 'entry', etc.
@@ -324,28 +333,37 @@ async def _scan_top_pairs():
         rejections = []
         errors = []
 
-        for r in results:
-            if isinstance(r, Exception):
-                errors.append(r)
-            elif r and isinstance(r, dict):
-                # Setup valide = a 'direction' ET 'entry' (ou 'price')
-                symbol_check = r.get('symbol', 'UNKNOWN')
-                has_direction = 'direction' in r
-                has_entry = 'entry' in r
-                has_price = 'price' in r
-                
-                # 🔥 DEBUG: Log détaillé pour CHAQUE résultat
-                logger.info(f"🔍 DEBUG result pour {symbol_check}: direction={has_direction}, entry={has_entry}, price={has_price}, keys={list(r.keys())[:10]}")
-                
-                if has_direction and (has_entry or has_price):
-                    logger.info(f"✅ {symbol_check} → VALID SETUP (direction={r.get('direction')}, entry={r.get('entry') or r.get('price')})")
-                    valid_setups.append(r)
+        # 🔥 FIX: Traitement robuste des résultats avec gestion d'erreurs détaillée
+        for i, r in enumerate(results):
+            try:
+                if isinstance(r, Exception):
+                    logger.warning(f"⚠️ [WEBSOCKET-FIX] Exception dans scan #{i}: {type(r).__name__}: {r}")
+                    errors.append(r)
+                elif r and isinstance(r, dict):
+                    # Setup valide = a 'direction' ET 'entry' (ou 'price')
+                    symbol_check = r.get('symbol', 'UNKNOWN')
+                    has_direction = 'direction' in r
+                    has_entry = 'entry' in r
+                    has_price = 'price' in r
+                    
+                    # 🔥 DEBUG: Log détaillé pour CHAQUE résultat
+                    logger.info(f"🔍 DEBUG result pour {symbol_check}: direction={has_direction}, entry={has_entry}, price={has_price}, keys={list(r.keys())[:10]}")
+                    
+                    if has_direction and (has_entry or has_price):
+                        logger.info(f"✅ {symbol_check} → VALID SETUP (direction={r.get('direction')}, entry={r.get('entry') or r.get('price')})")
+                        valid_setups.append(r)
+                    else:
+                        # Rejet
+                        reason = r.get('reason', 'No reason')
+                        logger.info(f"❌ {symbol_check} → REJECTED (reason={reason}, has_direction={has_direction}, has_entry={has_entry})")
+                        rejections.append(r)
+                elif r is None:
+                    logger.debug(f"⚠️ [WEBSOCKET-FIX] Résultat None dans scan #{i} (ignoré)")
                 else:
-                    # Rejet
-                    reason = r.get('reason', 'No reason')
-                    logger.info(f"❌ {symbol_check} → REJECTED (reason={reason}, has_direction={has_direction}, has_entry={has_entry})")
-                    rejections.append(r)
-            # else: None = aussi une erreur/skip
+                    logger.warning(f"⚠️ [WEBSOCKET-FIX] Résultat inattendu dans scan #{i}: {type(r)} = {r}")
+            except Exception as result_error:
+                logger.error(f"❌ [WEBSOCKET-FIX] Erreur traitement résultat #{i}: {type(result_error).__name__}: {result_error}", exc_info=True)
+                errors.append(result_error)
 
         logger.info(f"📊 Résumé: {len(valid_setups)} setups valides, {len(rejections)} rejets, {len(errors)} erreurs")
 

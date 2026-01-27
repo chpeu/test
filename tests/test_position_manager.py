@@ -244,6 +244,69 @@ class TestPositionManager:
         out = manager.close_position(exit_price=101.0, reason='TP')
         assert out['exit'] == pytest.approx(101.0)
 
+    def test_calculate_position_size_uses_adaptive_sizing_multiplier(self, monkeypatch):
+        manager = PositionManager(config=PositionConfig())
+
+        def fake_get_effective_value(key):
+            return {
+                'risk_per_trade': 2.0,
+                'adaptive_sizing_enabled': True,
+                'recovery_shadow_compare': False,
+                'recovery_refactor_enabled': False,
+            }.get(key)
+
+        monkeypatch.setattr('utils.effective_config.get_effective_value', fake_get_effective_value)
+
+        adaptive_manager = Mock()
+        adaptive_manager.get_size_multiplier = Mock(return_value=1.5)
+        monkeypatch.setattr('core.position.adaptive_sizing.get_adaptive_sizing_manager', lambda: adaptive_manager)
+
+        size = manager.calculate_position_size(setup={'symbol': 'BTC/USDT', 'score': 10.0}, capital=1000.0)
+        assert size == pytest.approx(30.0)  # 2% * 1000 * 1.5
+
+    def test_calculate_position_size_adaptive_sizing_exception_is_swallowed(self, monkeypatch):
+        manager = PositionManager(config=PositionConfig())
+
+        def fake_get_effective_value(key):
+            return {
+                'risk_per_trade': 2.0,
+                'adaptive_sizing_enabled': True,
+                'recovery_shadow_compare': False,
+                'recovery_refactor_enabled': False,
+            }.get(key)
+
+        monkeypatch.setattr('utils.effective_config.get_effective_value', fake_get_effective_value)
+
+        def _boom():
+            raise RuntimeError('boom')
+
+        monkeypatch.setattr('core.position.adaptive_sizing.get_adaptive_sizing_manager', _boom)
+
+        size = manager.calculate_position_size(setup={'symbol': 'BTC/USDT', 'score': 10.0}, capital=1000.0)
+        assert size == pytest.approx(20.0)  # fallback sans adaptive
+
+    def test_record_trade_for_adaptive_sizing_disabled_is_noop(self, monkeypatch):
+        manager = PositionManager(config=PositionConfig())
+        monkeypatch.setattr('utils.effective_config.get_effective_value', lambda k: False if k == 'adaptive_sizing_enabled' else None)
+
+        adaptive_manager = Mock()
+        adaptive_manager.record_trade = Mock()
+        monkeypatch.setattr('core.position.adaptive_sizing.get_adaptive_sizing_manager', lambda: adaptive_manager)
+
+        manager.record_trade_for_adaptive_sizing('BTC/USDT', pnl_pct=0.1, is_win=True)
+        adaptive_manager.record_trade.assert_not_called()
+
+    def test_record_trade_for_adaptive_sizing_exception_is_swallowed(self, monkeypatch):
+        manager = PositionManager(config=PositionConfig())
+        monkeypatch.setattr('utils.effective_config.get_effective_value', lambda k: True if k == 'adaptive_sizing_enabled' else None)
+
+        adaptive_manager = Mock()
+        adaptive_manager.record_trade = Mock(side_effect=RuntimeError('boom'))
+        monkeypatch.setattr('core.position.adaptive_sizing.get_adaptive_sizing_manager', lambda: adaptive_manager)
+
+        manager.record_trade_for_adaptive_sizing('BTC/USDT', pnl_pct=0.1, is_win=True)
+        adaptive_manager.record_trade.assert_called_once()
+
     def test_close_position_caps_slippage_on_sl_long(self, monkeypatch):
         manager = PositionManager(config=PositionConfig(use_slippage_calculation=False))
         manager.active_position = Position(

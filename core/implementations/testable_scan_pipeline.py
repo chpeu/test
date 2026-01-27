@@ -137,6 +137,8 @@ class TestableScanPipeline(IScanPipeline):
                         if retry_result:
                             result.step_results[step_config.name] = retry_result
                             context['results'][step_config.name] = retry_result
+                            if step_config.name in result.errors_by_step:
+                                del result.errors_by_step[step_config.name]
                             continue
                     
                     # Décider si continuer ou arrêter
