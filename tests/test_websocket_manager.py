@@ -477,3 +477,204 @@ class TestWebSocketManagerIntegration:
         assert ws_room1 not in manager.rooms["room2"]
         assert ws_room2 in manager.rooms["room2"]
         assert ws_room2 not in manager.rooms["room1"]
+
+
+# Tests pour les nouvelles fonctionnalités ajoutées
+class TestWebSocketManagerCommands:
+    """Tests pour les commandes WebSocket"""
+
+    def test_command_decorator(self):
+        """Test décorateur d'enregistrement de commandes"""
+        manager = WebSocketManager()
+        
+        @manager.command("test_command")
+        def test_handler(data, websocket):
+            return {"result": "success"}
+        
+        # Vérifier que la commande est enregistrée
+        assert "test_command" in manager._command_handlers
+        commands = manager.get_registered_commands()
+        assert "test_command" in commands
+
+    def test_register_command_programmatic(self):
+        """Test enregistrement programmatique de commandes"""
+        manager = WebSocketManager()
+        
+        def test_handler(data, websocket):
+            return {"result": "success"}
+        
+        manager.register_command("prog_command", test_handler)
+        
+        # Vérifier que la commande est enregistrée
+        assert "prog_command" in manager._command_handlers
+        commands = manager.get_registered_commands()
+        assert "prog_command" in commands
+
+    @pytest.mark.asyncio
+    async def test_handle_command_sync_handler(self):
+        """Test exécution commande avec handler synchrone"""
+        manager = WebSocketManager()
+        
+        def test_handler(data, websocket):
+            return {"value": data.get("input", "default")}
+        
+        manager.register_command("sync_cmd", test_handler)
+        
+        result = await manager.handle_command("sync_cmd", {"input": "test"}, None)
+        assert result["value"] == "test"
+
+    @pytest.mark.asyncio
+    async def test_handle_command_async_handler(self):
+        """Test exécution commande avec handler asynchrone"""
+        manager = WebSocketManager()
+        
+        async def async_handler(data, websocket):
+            return {"async_result": data.get("key", "default")}
+        
+        manager.register_command("async_cmd", async_handler)
+        
+        result = await manager.handle_command("async_cmd", {"key": "async_test"}, None)
+        assert result["async_result"] == "async_test"
+
+    @pytest.mark.asyncio
+    async def test_handle_command_unknown(self):
+        """Test commande inconnue"""
+        manager = WebSocketManager()
+        
+        result = await manager.handle_command("unknown_cmd", {}, None)
+        assert result["success"] is False
+        assert "Unknown command" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_handle_command_handler_exception(self):
+        """Test gestion d'exception dans handler"""
+        manager = WebSocketManager()
+        
+        def failing_handler(data, websocket):
+            raise ValueError("Handler failed")
+        
+        manager.register_command("fail_cmd", failing_handler)
+        
+        result = await manager.handle_command("fail_cmd", {}, None)
+        assert result["success"] is False
+        assert "Handler failed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_handle_command_handler_returns_none(self):
+        """Test handler qui retourne None"""
+        manager = WebSocketManager()
+        
+        def none_handler(data, websocket):
+            return None
+        
+        manager.register_command("none_cmd", none_handler)
+        
+        result = await manager.handle_command("none_cmd", {}, None)
+        assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_handle_command_fastapi_jsonresponse(self):
+        """Test handler qui retourne JSONResponse FastAPI"""
+        manager = WebSocketManager()
+        
+        # Mock JSONResponse object
+        class MockJSONResponse:
+            def __init__(self, data):
+                self.body = json.dumps(data).encode()
+        
+        def fastapi_handler(data, websocket):
+            return MockJSONResponse({"fastapi": True, "data": data})
+        
+        manager.register_command("fastapi_cmd", fastapi_handler)
+        
+        result = await manager.handle_command("fastapi_cmd", {"test": "value"}, None)
+        assert result["fastapi"] is True
+        assert result["data"]["test"] == "value"
+
+    def test_get_registered_commands_empty(self):
+        """Test récupération commandes vides"""
+        manager = WebSocketManager()
+        commands = manager.get_registered_commands()
+        assert commands == []
+
+    def test_get_registered_commands_multiple(self):
+        """Test récupération plusieurs commandes"""
+        manager = WebSocketManager()
+        
+        def handler1(data, ws): pass
+        def handler2(data, ws): pass
+        
+        manager.register_command("cmd1", handler1)
+        manager.register_command("cmd2", handler2)
+        
+        commands = manager.get_registered_commands()
+        assert "cmd1" in commands
+        assert "cmd2" in commands
+        assert len(commands) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_connection_id_existing(self):
+        """Test récupération ID connexion existante"""
+        manager = WebSocketManager()
+        mock_websocket = AsyncMock(spec=WebSocket)
+        
+        await manager.connect(mock_websocket)
+        
+        conn_id = manager.get_connection_id(mock_websocket)
+        assert conn_id is not None
+        assert isinstance(conn_id, int)
+
+    def test_get_connection_id_non_existing(self):
+        """Test récupération ID connexion inexistante"""
+        manager = WebSocketManager()
+        mock_websocket = Mock(spec=WebSocket)
+        
+        conn_id = manager.get_connection_id(mock_websocket)
+        assert conn_id is None
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_existing_room(self):
+        """Test désabonnement d'une room existante"""
+        manager = WebSocketManager()
+        mock_websocket = AsyncMock(spec=WebSocket)
+        
+        await manager.connect(mock_websocket)
+        manager.subscribe(mock_websocket, "test_room")
+        
+        # Vérifier présence
+        assert mock_websocket in manager.rooms["test_room"]
+        
+        # Désabonner
+        manager.unsubscribe(mock_websocket, "test_room")
+        
+        # Vérifier absence
+        assert mock_websocket not in manager.rooms["test_room"]
+
+    def test_unsubscribe_non_existing_room(self):
+        """Test désabonnement d'une room inexistante"""
+        manager = WebSocketManager()
+        mock_websocket = Mock(spec=WebSocket)
+        
+        # Ne devrait pas lever d'exception
+        manager.unsubscribe(mock_websocket, "non_existing_room")
+        
+        # Room ne devrait pas être créée
+        assert "non_existing_room" not in manager.rooms
+
+    @pytest.mark.asyncio
+    async def test_ping_all_with_timestamp(self):
+        """Test ping avec timestamp correct"""
+        manager = WebSocketManager()
+        mock_websocket = AsyncMock(spec=WebSocket)
+        
+        await manager.connect(mock_websocket)
+        
+        with patch('core.websocket_manager.datetime') as mock_datetime:
+            mock_datetime.now.return_value.isoformat.return_value = "2023-01-01T12:00:00"
+            
+            await manager.ping_all()
+            
+            mock_websocket.send_text.assert_called_once()
+            sent_message = json.loads(mock_websocket.send_text.call_args[0][0])
+            assert sent_message['type'] == 'ping'
+            assert sent_message['timestamp'] == "2023-01-01T12:00:00"
