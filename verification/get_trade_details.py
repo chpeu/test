@@ -56,10 +56,13 @@ if trade:
     print(f"   Direction: {trade.get('direction')}")
     print(f"   Entry: {trade.get('entry_price')}")
     print(f"   Exit: {trade.get('exit_price')}")
+    print(f"   Size USDT: {trade.get('size_usdt')}")
     print(f"   SL: {trade.get('sl_price')}")
     print(f"   TP: {trade.get('tp_price')}")
     print(f"   PnL: {trade.get('pnl_pct'):+.3f}%")
     print(f"   PnL USDT: {trade.get('pnl_usdt'):+.4f}")
+    print(f"   Net PnL: {trade.get('net_pnl_pct')}")
+    print(f"   Net PnL USDT: {trade.get('net_pnl_usdt')}")
     print(f"   Exit Reason: {trade.get('exit_reason')}")
     
     ts_entry = trade.get('timestamp_entry')
@@ -142,7 +145,7 @@ if trade:
         print("\n❌ Pas de métriques ATR trouvées")
     
     # Events
-    cur.execute("SELECT * FROM trade_events WHERE trade_id = %s ORDER BY timestamp", (str(trade_id),))
+    cur.execute("SELECT * FROM trade_events WHERE trade_id = %s ORDER BY event_timestamp", (str(trade_id),))
     events = cur.fetchall()
     
     if events:
@@ -150,7 +153,7 @@ if trade:
         print("-"*40)
         for e in events:
             e = dict(e)
-            print(f"   [{e.get('event_type')}] {e.get('timestamp')}")
+            print(f"   [{e.get('event_type')}] {e.get('event_timestamp')}")
             if e.get('details'):
                 print(f"      {e.get('details')}")
     

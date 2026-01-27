@@ -5,6 +5,7 @@ Remplace Socket.IO pour des performances optimales
 import asyncio
 import json
 import logging
+import time
 from typing import Dict, Set, Optional
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
@@ -29,6 +30,7 @@ class WebSocketManager:
         self.connection_data: Dict[WebSocket, dict] = {}
         self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
         self._lock: Optional[asyncio.Lock] = None  # 🔥 Lazy initialization
+        self._connection_counter: int = 0
         # 🔥 LIVE TRADING: Système de commandes WebSocket
         self._command_handlers: Dict[str, callable] = {}
     
@@ -100,27 +102,78 @@ class WebSocketManager:
         """Accepter une nouvelle connexion WebSocket"""
         await websocket.accept()
         async with self.lock:
+            self._connection_counter += 1
+            connection_id = self._connection_counter
             self.active_connections.add(websocket)
             self.connection_data[websocket] = {
+                'connection_id': connection_id,
+                'client': getattr(websocket, 'client', None),
                 'connected_at': datetime.now().isoformat(),
-                'last_ping': datetime.now().isoformat()
+                'connected_at_ts': time.time(),
+                'last_ping': datetime.now().isoformat(),
+                'last_message_ts': time.time(),
+                'last_message_type': 'connect',
+                'message_in_count': 0,
+                'message_out_count': 0,
+                'bytes_in': 0,
+                'bytes_out': 0,
+                'server_ping_counter': 0,
+                'last_server_ping_id': None,
+                'last_server_ping_ts': None,
+                'last_server_pong_ts': None,
+                'last_server_rtt_ms': None,
+                'client_info': None,
+                'user_agent': None,
+                'origin': None,
             }
-        logger.info(f"✅ WebSocket connecté (total: {len(self.active_connections)})")
+        logger.info(
+            f"✅ WebSocket connecté (id={connection_id}, client={getattr(websocket, 'client', None)}, total: {len(self.active_connections)})"
+        )
     
     async def disconnect(self, websocket: WebSocket):
         """Déconnecter un WebSocket (optimisé)"""
+        conn_data = self.connection_data.get(websocket) or {}
+        connection_id = conn_data.get('connection_id')
+        client = conn_data.get('client') or getattr(websocket, 'client', None)
+        connected_at_ts = conn_data.get('connected_at_ts')
+        duration_s = None
+        if isinstance(connected_at_ts, (int, float)):
+            duration_s = round(time.time() - connected_at_ts, 3)
+        msg_in = conn_data.get('message_in_count')
+        msg_out = conn_data.get('message_out_count')
+        bytes_in = conn_data.get('bytes_in')
+        bytes_out = conn_data.get('bytes_out')
+        last_message_type = conn_data.get('last_message_type')
+        last_message_ts = conn_data.get('last_message_ts')
+        last_message_age_s = None
+        if isinstance(last_message_ts, (int, float)):
+            last_message_age_s = round(time.time() - last_message_ts, 3)
+        rtt_ms = conn_data.get('last_server_rtt_ms')
+        user_agent = conn_data.get('user_agent')
+        origin = conn_data.get('origin')
         async with self.lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
             # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
             for room_connections in self.rooms.values():
                 room_connections.discard(websocket)
-        logger.info(f"❌ WebSocket déconnecté (total: {len(self.active_connections)})")
+        logger.info(
+            f"❌ WebSocket déconnecté (id={connection_id}, client={client}, duration_s={duration_s}, "
+            f"in={msg_in}, out={msg_out}, bytes_in={bytes_in}, bytes_out={bytes_out}, "
+            f"last_msg={last_message_type}, last_msg_age_s={last_message_age_s}, rtt_ms={rtt_ms}, "
+            f"ua={user_agent}, origin={origin}, total: {len(self.active_connections)})"
+        )
     
     async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 5.0):
         """Envoyer un message à un WebSocket spécifique"""
         try:
             message_json = json.dumps(message, default=str)
+            conn_data = self.connection_data.get(websocket)
+            if conn_data is not None:
+                conn_data['last_message_ts'] = time.time()
+                conn_data['last_message_type'] = f"out:{message.get('type') or 'unknown'}"
+                conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
+                conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(message_json)
             await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
         except asyncio.TimeoutError:
             await self.disconnect(websocket)
@@ -146,6 +199,9 @@ class WebSocketManager:
         connections_to_send = list(self.active_connections)
         if not connections_to_send:
             return
+
+        out_type = f"out:{message.get('type') or 'unknown'}"
+        out_ts = time.time()
         
         # 🔥 OPTIMISATION: Envoyer à tous les clients en parallèle avec asyncio.gather
         async def send_to_connection(connection):
@@ -153,6 +209,12 @@ class WebSocketManager:
                 # 🔥 FIX: Vérifier que la connexion est toujours active
                 if connection not in self.active_connections:
                     return None
+                conn_data = self.connection_data.get(connection)
+                if conn_data is not None:
+                    conn_data['last_message_ts'] = out_ts
+                    conn_data['last_message_type'] = out_type
+                    conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
+                    conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(message_json)
                 await asyncio.wait_for(connection.send_text(message_json), timeout=5.0)
                 return None  # Succès
             except asyncio.TimeoutError:
@@ -264,6 +326,13 @@ class WebSocketManager:
     def get_connection_count(self) -> int:
         """Retourner le nombre de connexions actives"""
         return len(self.active_connections)
+
+    def get_connection_id(self, websocket: WebSocket) -> Optional[int]:
+        """Retourner l'identifiant interne de la connexion"""
+        conn_data = self.connection_data.get(websocket)
+        if not conn_data:
+            return None
+        return conn_data.get('connection_id')
     
     async def ping_all(self):
         """Envoyer un ping à tous les clients (keep-alive)"""

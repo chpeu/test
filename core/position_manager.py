@@ -3654,7 +3654,10 @@ class PositionManager:
 
         # Taille fermée
         if self.active_position.partial_tp_sold:
-            size_closed = self.active_position.size_remaining or (self.active_position.size * 0.5)
+            if self.active_position.size_remaining is not None:
+                size_closed = self.active_position.size_remaining
+            else:
+                size_closed = self.active_position.size * 0.5
         else:
             size_closed = self.active_position.size
 

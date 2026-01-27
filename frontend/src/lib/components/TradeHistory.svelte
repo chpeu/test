@@ -313,18 +313,74 @@
 		return groups;
 	}
 
+	function reconcileOrderEvents(orderEvents) {
+		if (!orderEvents?.length) return orderEvents || [];
+
+		const fullPartialTpEvent = (orderEvents || []).find(event => {
+			if (event?.event_type !== 'PARTIAL_TP') return false;
+			const soldPct = Number(event?.details?.sold_pct);
+			return !isNaN(soldPct) && soldPct >= 99.9;
+		});
+
+		if (!fullPartialTpEvent) return orderEvents;
+
+		const exitEvent = (orderEvents || []).find(event => event?.event_type === 'EXIT');
+		if (!exitEvent) return orderEvents;
+
+		const mergedExitDetails = { ...(exitEvent?.details || {}) };
+		const exitSoldPct = Number(mergedExitDetails?.sold_pct);
+		const fullSoldPct = Number(fullPartialTpEvent?.details?.sold_pct);
+		if (!isNaN(fullSoldPct) && fullSoldPct >= 99.9 && (isNaN(exitSoldPct) || exitSoldPct < fullSoldPct - 0.1)) {
+			mergedExitDetails.sold_pct = fullSoldPct;
+		}
+
+		const exitSoldUsdt = Number(mergedExitDetails?.sold_usdt);
+		const fullSoldUsdt = Number(fullPartialTpEvent?.details?.sold_usdt);
+		if (!isNaN(fullSoldUsdt) && (isNaN(exitSoldUsdt) || exitSoldUsdt < fullSoldUsdt * 0.99)) {
+			mergedExitDetails.sold_usdt = fullSoldUsdt;
+		}
+
+		if (
+			mergedExitDetails.remaining_usdt === undefined ||
+			mergedExitDetails.remaining_usdt === null
+		) {
+			mergedExitDetails.remaining_usdt = fullPartialTpEvent?.details?.remaining_usdt;
+		}
+
+		const exitSoldQty = Number(mergedExitDetails?.sold_qty);
+		const fullFilledQty = Number(fullPartialTpEvent?.details?.filled_qty);
+		if (!isNaN(fullFilledQty) && (isNaN(exitSoldQty) || exitSoldQty < fullFilledQty * 0.99)) {
+			mergedExitDetails.sold_qty = fullFilledQty;
+		}
+
+		const exitSoldContracts = Number(mergedExitDetails?.sold_contracts);
+		if (!isNaN(fullFilledQty) && (isNaN(exitSoldContracts) || exitSoldContracts < fullFilledQty * 0.99)) {
+			mergedExitDetails.sold_contracts = fullFilledQty;
+		}
+
+		const mergedExitEvent = { ...exitEvent, details: mergedExitDetails };
+
+		const cleaned = (orderEvents || []).filter(event => {
+			if (event?.event_type !== 'PARTIAL_TP') return true;
+			const soldPct = Number(event?.details?.sold_pct);
+			return isNaN(soldPct) || soldPct < 99.9;
+		});
+
+		return cleaned.map(event => (event?.event_type === 'EXIT' ? mergedExitEvent : event));
+	}
+
 	function getOrderEvents(trade) {
 		const tradeEventId = getTradeEventId(trade);
 		const events = (tradeEventId && tradeEventsById[tradeEventId]) || [];
-		const orderEvents = (events || []).filter(event => ORDER_EVENT_TYPES.has(event?.event_type));
+		let orderEvents = (events || []).filter(event => ORDER_EVENT_TYPES.has(event?.event_type));
 		const hasExit = orderEvents.some(event => event?.event_type === 'EXIT');
 		if (!hasExit) {
 			const fallbackExit = buildFallbackExit(trade);
 			if (fallbackExit) {
-				return [...orderEvents, fallbackExit];
+				orderEvents = [...orderEvents, fallbackExit];
 			}
 		}
-		return orderEvents;
+		return reconcileOrderEvents(orderEvents);
 	}
 
 	// 🔥 RECONCILIATION: États pour la réconciliation MEXC
@@ -423,7 +479,7 @@
 						<th data-debug-name="tradeHistory.column.entryPrice">Prix Entrée</th>
 						<th data-debug-name="tradeHistory.column.exitPrice">Prix Sortie</th>
 						<th data-debug-name="tradeHistory.column.sizeUsdt" title="Montant USDT à l'ouverture">Size USDT</th>
-						<th data-debug-name="tradeHistory.column.pnlNet">PnL Net %</th>
+						<th data-debug-name="tradeHistory.column.pnlNet">PnL %</th>
 						<th data-debug-name="tradeHistory.column.pnlUsdt" title="PnL réalisé depuis API MEXC (frais inclus)">PnL Réalisé USDT</th>
 						<th data-debug-name="tradeHistory.column.duration">Duration</th>
 					</tr>
@@ -478,8 +534,10 @@
 								// Si pas de prix de sortie ou prix suspect (0 ou 1 pour un actif > 10)
 								if (!exitPrice || (exitPrice <= 1 && entryPrice > 10)) {
 									// Essayer de reconstruire depuis PnL si possible
-									if (entryPrice && trade.pnl_pct) {
-										const pnlMult = 1 + (trade.pnl_pct / 100 * (trade.direction === 'SHORT' ? -1 : 1));
+									const pnlPctForEstimateRaw = trade.gross_pnl_pct ?? trade.pnl_pct ?? trade.net_pnl_pct;
+									const pnlPctForEstimate = Number(pnlPctForEstimateRaw);
+									if (entryPrice && pnlPctForEstimateRaw !== undefined && pnlPctForEstimateRaw !== null && !isNaN(pnlPctForEstimate)) {
+										const pnlMult = 1 + (pnlPctForEstimate / 100 * (trade.direction === 'SHORT' ? -1 : 1));
 										const estPrice = entryPrice * pnlMult;
 										const decimals = getSignificantDecimals(entryPrice);
 										return `≈${formatPrice(estPrice, decimals)}`;
@@ -522,13 +580,29 @@
 							})()}
 						</td>
 						<!-- 🔥 PnL Net % calculé depuis size et pnl_usdt réel -->
-						<td class="pnl-net" class:positive={isWin} class:negative={!isWin} data-debug-name="trade.net_pnl_pct">
+						<td class="pnl-net" class:positive={isWin} class:negative={!isWin} data-debug-name="trade.gross_pnl_pct">
 							{(() => {
-								// Priorité 1: net_pnl_pct du backend
-								if (trade.net_pnl_pct !== undefined && trade.net_pnl_pct !== null) {
-									return `${trade.net_pnl_pct >= 0 ? '+' : ''}${formatPercent(trade.net_pnl_pct)}%`;
+								const grossRaw = trade.gross_pnl_pct ?? trade.pnl_pct;
+								const netRaw = trade.net_pnl_pct;
+								const grossValue = Number(grossRaw);
+								const netValue = Number(netRaw);
+								const hasGross = grossRaw !== undefined && grossRaw !== null && !isNaN(grossValue);
+								const hasNet = netRaw !== undefined && netRaw !== null && !isNaN(netValue);
+
+								if (hasGross) {
+									const grossStr = `${grossValue >= 0 ? '+' : ''}${formatPercent(grossValue)}%`;
+									if (hasNet && Math.abs(netValue - grossValue) > 0.001) {
+										const netStr = `${netValue >= 0 ? '+' : ''}${formatPercent(netValue)}%`;
+										return `${grossStr} (net ${netStr})`;
+									}
+									return grossStr;
 								}
-								// Priorité 2: Calculer depuis size_executed (réelle) et pnl_usdt
+
+								if (hasNet) {
+									return `${netValue >= 0 ? '+' : ''}${formatPercent(netValue)}%`;
+								}
+
+								// Fallback: Calculer depuis size_executed (réelle) et pnl_usdt
 								const size = trade.size_executed_usdt || trade.size || trade.filled_size_usdt || trade.position_size_usdt || 0;
 								const pnlUsdt = trade.net_pnl_usdt || 0;
 								if (size > 0) {

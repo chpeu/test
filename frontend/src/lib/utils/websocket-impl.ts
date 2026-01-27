@@ -17,6 +17,12 @@ export interface WebSocketMessage {
     result?: any;
     error?: string;
     timestamp?: number;
+    ping_id?: number;
+    client_ts?: number;
+    connection_id?: number;
+    client_id?: string;
+    session_id?: string;
+    context?: any;
 }
 
 export interface CommandCallback {
@@ -40,9 +46,32 @@ export class BidirectionalWebSocket {
     private pingInterval: number | null = null;
     private reconnectTimeout: number | null = null;
     private rooms: Set<string> = new Set();
+    private clientId: string | null = null;
+    private serverConnectionId: number | null = null;
+    private lastPongAt: number | null = null;
+    private lastRttMs: number | null = null;
+    private clientPingIdCounter: number = 0;
     public connected: boolean = false;
 
     constructor(url: string = '') {
+        if (typeof window !== 'undefined') {
+            try {
+                const stored = window.localStorage.getItem('ws_client_id');
+                if (stored) {
+                    this.clientId = stored;
+                } else {
+                    const randomUUID = (window.crypto as any)?.randomUUID;
+                    const generated = (window.crypto && typeof randomUUID === 'function')
+                        ? randomUUID.call(window.crypto)
+                        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                    this.clientId = generated;
+                    window.localStorage.setItem('ws_client_id', generated);
+                }
+            } catch {
+                this.clientId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            }
+        }
+
         if (!url) {
             if (typeof window !== 'undefined' && window.location) {
                 // Par défaut, utiliser la même origine (permet le proxy Vite /ws en dev)
@@ -66,6 +95,9 @@ export class BidirectionalWebSocket {
     connect(): void {
         try {
             console.log('🔄 Connexion WebSocket:', this.url);
+            this.serverConnectionId = null;
+            this.lastPongAt = null;
+            this.lastRttMs = null;
             this.ws = new WebSocket(this.url);
             this.setupEventHandlers();
             this.startHeartbeat();
@@ -82,18 +114,23 @@ export class BidirectionalWebSocket {
             console.log('✅ WebSocket natif connecté');
             this.connected = true;
             this.reconnectAttempts = 0;
+            this.lastPing = Date.now();
+            this.lastPongAt = null;
+            this.lastRttMs = null;
             this.flushQueue();
             // 🔥 FIX: Mettre à jour le store de connexion
             import('$lib/stores/connection').then(({ setConnected }) => {
                 setConnected();
             });
+            this.sendClientHello();
             this.emit('connect', {}); // Émettre un événement de connexion
         };
 
         this.ws.onmessage = (event) => {
             try {
                 const message: WebSocketMessage = JSON.parse(event.data);
-                this.lastPing = Date.now();
+                const now = Date.now();
+                this.lastPing = now;
                 // console.log('⬇️ Message WebSocket reçu:', message);
 
                 if (message.type === 'event' && message.event) {
@@ -105,11 +142,18 @@ export class BidirectionalWebSocket {
                 } else if (message.type === 'request_response' && message.id !== undefined) {
                     this.handleResponse(message.id, message.data, message.error);
                 } else if (message.type === 'ping') {
-                    // 🔥 FIX: Répondre au ping du serveur
-                    this.sendRaw(JSON.stringify({ type: 'pong' }));
+                    const pingId = message.ping_id;
+                    this.sendRaw(JSON.stringify({ type: 'pong', ping_id: pingId, timestamp: Date.now() }));
                 } else if (message.type === 'pong') {
-                    // 🔥 FIX: Mettre à jour lastPing quand on reçoit le pong (réponse à notre ping)
-                    this.lastPing = Date.now();
+                    this.lastPing = now;
+                    this.lastPongAt = now;
+                    if (typeof message.client_ts === 'number') {
+                        this.lastRttMs = now - message.client_ts;
+                    }
+                } else if (message.type === 'server_hello') {
+                    if (typeof message.connection_id === 'number') {
+                        this.serverConnectionId = message.connection_id;
+                    }
                 }
             } catch (error) {
                 console.error('❌ Erreur traitement message WebSocket:', error, event.data);
@@ -118,7 +162,26 @@ export class BidirectionalWebSocket {
 
         this.ws.onclose = (event) => {
             this.connected = false;
-            console.warn('⚠️ WebSocket déconnecté:', event.code, event.reason);
+            const now = Date.now();
+            const timeSinceLastActivityMs = now - this.lastPing;
+            const timeSinceLastPongMs = this.lastPongAt ? (now - this.lastPongAt) : null;
+            const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
+            const visibility = typeof document !== 'undefined' ? document.visibilityState : null;
+            console.warn('⚠️ WebSocket déconnecté:', {
+                url: this.url,
+                code: event.code,
+                reason: event.reason,
+                wasClean: event.wasClean,
+                readyState: this.ws?.readyState,
+                reconnectAttempts: this.reconnectAttempts,
+                serverConnectionId: this.serverConnectionId,
+                clientId: this.clientId,
+                lastRttMs: this.lastRttMs,
+                timeSinceLastActivityMs,
+                timeSinceLastPongMs,
+                online,
+                visibility,
+            });
             this.stopHeartbeat();
             // 🔥 FIX: Mettre à jour le store de connexion
             import('$lib/stores/connection').then(({ setDisconnected, setReconnecting }) => {
@@ -128,7 +191,19 @@ export class BidirectionalWebSocket {
                     setDisconnected();
                 }
             });
-            this.emit('disconnect', { code: event.code, reason: event.reason }); // Émettre un événement de déconnexion
+            this.emit('disconnect', {
+                code: event.code,
+                reason: event.reason,
+                wasClean: event.wasClean,
+                reconnectAttempts: this.reconnectAttempts,
+                serverConnectionId: this.serverConnectionId,
+                clientId: this.clientId,
+                lastRttMs: this.lastRttMs,
+                timeSinceLastActivityMs,
+                timeSinceLastPongMs,
+                online,
+                visibility,
+            }); // Émettre un événement de déconnexion
             this.scheduleReconnect();
         };
 
@@ -281,9 +356,59 @@ export class BidirectionalWebSocket {
                     return;
                 }
                 // Envoyer ping seulement si connexion OK
-                this.sendRaw(JSON.stringify({ type: 'ping' }));
+                this.clientPingIdCounter += 1;
+                const pingId = this.clientPingIdCounter;
+                const clientTs = Date.now();
+                this.sendRaw(JSON.stringify({ type: 'ping', ping_id: pingId, timestamp: clientTs }));
             }
         }, PING_INTERVAL);
+    }
+
+    private sendClientHello(): void {
+        if (typeof window === 'undefined') return;
+        const nav: any = window.navigator as any;
+        const ctx: any = {
+            userAgent: nav?.userAgent,
+            language: nav?.language,
+            languages: nav?.languages,
+            platform: nav?.platform,
+            timezone: (() => {
+                try {
+                    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+                } catch {
+                    return null;
+                }
+            })(),
+            href: window.location?.href,
+            origin: window.location?.origin,
+            pathname: window.location?.pathname,
+            visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+            online: nav?.onLine,
+            deviceMemory: nav?.deviceMemory,
+            hardwareConcurrency: nav?.hardwareConcurrency,
+            screen: {
+                width: window.screen?.width,
+                height: window.screen?.height,
+                devicePixelRatio: window.devicePixelRatio,
+            },
+            viewport: {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+            },
+            connection: nav?.connection ? {
+                effectiveType: nav.connection.effectiveType,
+                rtt: nav.connection.rtt,
+                downlink: nav.connection.downlink,
+                saveData: nav.connection.saveData,
+            } : null,
+        };
+
+        this.sendRaw(JSON.stringify({
+            type: 'client_hello',
+            client_id: this.clientId,
+            context: ctx,
+            timestamp: Date.now(),
+        }));
     }
 
     private stopHeartbeat(): void {

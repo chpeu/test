@@ -46,9 +46,21 @@ async def websocket_endpoint(websocket: WebSocket):
     from core.state_manager import get_state_manager
     state = get_state_manager()
     ws_mgr = _ws_manager or state.get_ws_manager()
+    headers = getattr(websocket, 'headers', None)
+    user_agent = None
+    origin = None
+    if headers is not None:
+        try:
+            user_agent = headers.get('user-agent')
+            origin = headers.get('origin')
+        except Exception:
+            user_agent = None
+            origin = None
     
     try:
-        logger.info(f"🔌 [WS-DEBUG] Nouvelle connexion WebSocket entrante: {websocket.client}")
+        logger.info(
+            f"🔌 [WS-DEBUG] Nouvelle connexion WebSocket entrante: client={getattr(websocket, 'client', None)}, ua={user_agent}, origin={origin}"
+        )
         
         if not ws_mgr:
             logger.error("❌ WebSocketManager non trouvé, fermeture 1011")
@@ -56,6 +68,33 @@ async def websocket_endpoint(websocket: WebSocket):
             return
             
         await ws_mgr.connect(websocket)
+
+        connection_id = None
+        try:
+            get_conn_id = getattr(ws_mgr, 'get_connection_id', None)
+            if callable(get_conn_id):
+                connection_id = get_conn_id(websocket)
+            else:
+                conn_data_map = getattr(ws_mgr, 'connection_data', None)
+                if isinstance(conn_data_map, dict) and websocket in conn_data_map:
+                    connection_id = (conn_data_map.get(websocket) or {}).get('connection_id')
+        except Exception:
+            connection_id = None
+
+        try:
+            conn_data_map = getattr(ws_mgr, 'connection_data', None)
+            if isinstance(conn_data_map, dict) and websocket in conn_data_map:
+                conn_data = conn_data_map[websocket]
+                if conn_data.get('user_agent') is None and user_agent:
+                    conn_data['user_agent'] = user_agent
+                if conn_data.get('origin') is None and origin:
+                    conn_data['origin'] = origin
+        except Exception:
+            pass
+
+        logger.info(
+            f"🔌 [WS-DEBUG] WebSocket accepté: id={connection_id}, client={getattr(websocket, 'client', None)}"
+        )
         
         # Envoyer état initial
         try:
@@ -107,15 +146,27 @@ async def websocket_endpoint(websocket: WebSocket):
                     data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
                 except asyncio.TimeoutError:
                     try:
-                        await websocket.send_text(
-                            json.dumps(
-                                {
-                                    'type': 'ping',
-                                    'timestamp': time.time(),
-                                },
-                                default=str,
-                            )
-                        )
+                        now = time.time()
+                        ping_payload = {
+                            'type': 'ping',
+                            'timestamp': now,
+                        }
+                        conn_data_map = getattr(ws_mgr, 'connection_data', None)
+                        conn_data = None
+                        if isinstance(conn_data_map, dict) and websocket in conn_data_map:
+                            conn_data = conn_data_map[websocket]
+                            conn_data['server_ping_counter'] = int(conn_data.get('server_ping_counter') or 0) + 1
+                            ping_id = conn_data['server_ping_counter']
+                            ping_payload['ping_id'] = ping_id
+                            conn_data['last_server_ping_id'] = ping_id
+                            conn_data['last_server_ping_ts'] = now
+                            conn_data['last_message_ts'] = now
+                            conn_data['last_message_type'] = 'out:ping_keepalive'
+                        ping_json = json.dumps(ping_payload, default=str)
+                        if conn_data is not None:
+                            conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
+                            conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(ping_json)
+                        await websocket.send_text(ping_json)
                         continue
                     except Exception as e:
                         logger.warning(
@@ -128,12 +179,25 @@ async def websocket_endpoint(websocket: WebSocket):
                             pass
                         return
                 
+                conn_data_map = getattr(ws_mgr, 'connection_data', None)
+                conn_data = None
+                if isinstance(conn_data_map, dict):
+                    conn_data = conn_data_map.get(websocket)
+                if conn_data is not None:
+                    conn_data['message_in_count'] = int(conn_data.get('message_in_count') or 0) + 1
+                    conn_data['bytes_in'] = int(conn_data.get('bytes_in') or 0) + len(data)
+                    conn_data['last_message_ts'] = time.time()
+
                 try:
                     message = json.loads(data)
                 except json.JSONDecodeError:
+                    if conn_data is not None:
+                        conn_data['last_message_type'] = 'in:invalid_json'
                     continue
                 
                 msg_type = message.get('type')
+                if conn_data is not None:
+                    conn_data['last_message_type'] = f"in:{msg_type or 'unknown'}"
                 
                 if msg_type == 'command':
                     command = message.get('command')
@@ -161,9 +225,42 @@ async def websocket_endpoint(websocket: WebSocket):
                         }, websocket)
                 
                 elif msg_type == 'ping':
+                    ping_id = message.get('ping_id')
+                    client_ts = message.get('timestamp')
                     await ws_mgr.send_personal_message({
                         'type': 'pong',
-                        'timestamp': time.time()
+                        'timestamp': time.time(),
+                        'ping_id': ping_id,
+                        'client_ts': client_ts,
+                    }, websocket)
+
+                elif msg_type == 'pong':
+                    pong_ping_id = message.get('ping_id')
+                    if conn_data is not None:
+                        now = time.time()
+                        conn_data['last_server_pong_ts'] = now
+                        if pong_ping_id is not None and conn_data.get('last_server_ping_id') == pong_ping_id:
+                            last_ping_ts = conn_data.get('last_server_ping_ts')
+                            if isinstance(last_ping_ts, (int, float)):
+                                conn_data['last_server_rtt_ms'] = round((now - last_ping_ts) * 1000.0, 2)
+
+                elif msg_type == 'client_hello':
+                    payload = message.get('context') or {}
+                    client_id = message.get('client_id')
+                    if conn_data is not None:
+                        conn_data['client_info'] = payload
+                        if client_id is not None:
+                            conn_data['client_id'] = client_id
+                        if conn_data.get('user_agent') is None:
+                            conn_data['user_agent'] = payload.get('userAgent') or payload.get('user_agent')
+                        if conn_data.get('origin') is None:
+                            conn_data['origin'] = payload.get('origin')
+                    await ws_mgr.send_personal_message({
+                        'type': 'server_hello',
+                        'timestamp': time.time(),
+                        'connection_id': connection_id,
+                        'client_id': client_id,
+                        'session_id': getattr(state, 'session_id', None),
                     }, websocket)
                 
                 elif msg_type == 'subscribe':
@@ -260,12 +357,23 @@ async def websocket_endpoint(websocket: WebSocket):
                             }, websocket)
 
         except WebSocketDisconnect as e:
+            close_code = getattr(e, 'code', None)
+            close_reason = getattr(e, 'reason', None)
+            last_msg_age_s = None
+            try:
+                conn_data_map = getattr(ws_mgr, 'connection_data', None)
+                if isinstance(conn_data_map, dict) and websocket in conn_data_map:
+                    last_ts = conn_data_map[websocket].get('last_message_ts')
+                    if isinstance(last_ts, (int, float)):
+                        last_msg_age_s = round(time.time() - last_ts, 3)
+            except Exception:
+                pass
             logger.info(
-                f"👋 WebSocket déconnecté proprement (code={getattr(e, 'code', None)}) : {websocket.client}"
+                f"👋 WebSocket déconnecté (id={connection_id}, code={close_code}, reason={close_reason}, client={getattr(websocket, 'client', None)}, last_msg_age_s={last_msg_age_s})"
             )
         except Exception as e:
             logger.error(
-                f"❌ Erreur inattendue boucle WebSocket: {type(e).__name__}: {e}",
+                f"❌ Erreur inattendue boucle WebSocket (id={connection_id}): {type(e).__name__}: {e}",
                 exc_info=True,
             )
             try:
