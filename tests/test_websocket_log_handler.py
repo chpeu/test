@@ -85,3 +85,31 @@ async def test_drain_websocket_log_handlers_drains_all_instances():
 
     await drain_websocket_log_handlers(timeout=0)
     assert len(handler._tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_websocket_log_handler_flood_protection_drops_when_backlog_full():
+    set_shutdown_manager(None)
+
+    ws_mgr = DummyWsManager()
+    handler = WebSocketLogHandler()
+    handler.set_ws_manager(ws_mgr)
+    handler.setLevel(logging.INFO)
+
+    handler._max_in_flight_tasks = 1
+
+    logger = logging.getLogger("test_ws_log_handler_flood")
+    logger.handlers.clear()
+    logger.propagate = False
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+
+    logger.info("first")
+    assert len(handler._tasks) == 1
+
+    logger.info("second")
+    await asyncio.sleep(0)
+    assert len(handler._tasks) == 1
+
+    await handler.drain(timeout=0)
+    assert len(handler._tasks) == 0

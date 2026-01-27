@@ -8,6 +8,15 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from api.price_provider import HybridPriceProvider, get_price_provider
 
 
+@pytest.fixture
+def provider(monkeypatch: pytest.MonkeyPatch):
+    """Provider avec rest_client mocké (évite réseau)."""
+    provider = HybridPriceProvider()
+    provider.rest_client = AsyncMock()
+    provider.rest_client.fetch_ticker = AsyncMock(return_value=None)
+    return provider
+
+
 class TestHybridPriceProvider:
     """Tests pour HybridPriceProvider"""
 
@@ -50,6 +59,19 @@ class TestHybridPriceProvider:
         assert cached["lastPrice"] == 1.234
         assert cached["volume24"] == 1000000.0
 
+    @pytest.mark.asyncio
+    async def test_handle_mexc_message_ticker_update_async_path_updates_cache(self, provider):
+        """Couvre le chemin get_running_loop + create_task(_update_cache)."""
+        msg = {
+            "channel": "push.ticker",
+            "symbol": "BTC_USDT",
+            "data": {"lastPrice": "123.4", "volume24": "1", "high24": "2", "low24": "0.5"},
+        }
+
+        provider._handle_mexc_message(msg)
+        await asyncio.sleep(0)
+        assert "BTC/USDT:USDT" in provider.price_cache
+
     def test_handle_mexc_message_invalid_format(self):
         """Test gestion message format invalide"""
         provider = HybridPriceProvider()
@@ -74,6 +96,32 @@ class TestHybridPriceProvider:
         assert symbol in provider.price_cache
         assert provider.price_cache[symbol] == data
         assert len(provider.message_buffer) == 1
+
+    def test_ensure_reference_price_adds_fields_when_missing(self, provider, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr(
+            'api.price_provider.get_price_with_source',
+            lambda d: (111.0, 'markPrice'),
+        )
+        data = {"symbol": "BTC/USDT:USDT", "markPrice": 111.0}
+        out = provider._ensure_reference_price(data)
+        assert out["referencePrice"] == 111.0
+        assert out["referenceSource"] == 'markPrice'
+
+    def test_ensure_reference_price_keeps_existing_reference(self, provider, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setattr('api.price_provider.get_price_with_source', lambda d: (999.0, 'lastPrice'))
+        data = {"symbol": "BTC/USDT:USDT", "referencePrice": 1.0, "referenceSource": "manual"}
+        out = provider._ensure_reference_price(data)
+        assert out["referencePrice"] == 1.0
+        assert out["referenceSource"] == "manual"
+
+    @pytest.mark.asyncio
+    async def test_get_cached_price_returns_copy(self, provider):
+        symbol = "BTC/USDT:USDT"
+        provider.price_cache[symbol] = {"symbol": symbol, "lastPrice": 1.0, "timestamp": time.time()}
+        cached = await provider._get_cached_price(symbol)
+        assert cached is not provider.price_cache[symbol]
+        cached["lastPrice"] = 2.0
+        assert provider.price_cache[symbol]["lastPrice"] == 1.0
 
     @pytest.mark.asyncio
     async def test_start_websocket_success(self):
@@ -223,6 +271,17 @@ class TestHybridPriceProvider:
         assert result is None
 
     @pytest.mark.asyncio
+    async def test_get_price_rest_invalid_format_falls_back_to_cache(self, provider):
+        provider.use_websocket = False
+        symbol = "WLD/USDT:USDT"
+        provider.price_cache[symbol] = {"symbol": symbol, "lastPrice": 7.0, "timestamp": time.time()}
+        provider.rest_client.fetch_ticker = AsyncMock(return_value=["invalid"])
+
+        result = await provider.get_price(symbol)
+        assert result is not None
+        assert result["lastPrice"] == 7.0
+
+    @pytest.mark.asyncio
     async def test_get_price_rest_exception(self):
         """Test fallback REST avec exception"""
         provider = HybridPriceProvider()
@@ -237,6 +296,17 @@ class TestHybridPriceProvider:
 
         # Devrait retourner None
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_price_rest_exception_falls_back_to_cache(self, provider):
+        provider.use_websocket = False
+        symbol = "WLD/USDT:USDT"
+        provider.price_cache[symbol] = {"symbol": symbol, "lastPrice": 8.0, "timestamp": time.time()}
+        provider.rest_client.fetch_ticker = AsyncMock(side_effect=Exception("API error"))
+
+        result = await provider.get_price(symbol)
+        assert result is not None
+        assert result["lastPrice"] == 8.0
 
     @pytest.mark.asyncio
     async def test_get_price_wait_for_cache(self):
@@ -528,6 +598,96 @@ class TestWebSocketLifecycleFixes:
         mock_ws_manager.disconnect.assert_called_once()
         assert provider.ws_manager is None
         assert provider.use_websocket is True  # use_websocket reste True après stop
+
+    @pytest.mark.asyncio
+    async def test_resubscribe_after_reconnect_uses_monitored_symbols(self, provider, monkeypatch: pytest.MonkeyPatch):
+        ws_manager = AsyncMock()
+        ws_manager.connected = True
+        ws_manager._ws = Mock()
+        ws_manager.subscribe_ticker = AsyncMock()
+        provider.ws_manager = ws_manager
+        provider.monitored_symbols = ["BTC/USDT:USDT", "ETH/USDT:USDT"]
+
+        # Eviter imports circulaires dans la méthode
+        monkeypatch.setattr('api.price_provider.HybridPriceProvider._wait_for_ws_ready', AsyncMock(return_value=True))
+
+        # main.app_state absent -> doit tomber sur monitored_symbols
+        import main
+        monkeypatch.setattr(main, 'app_state', None, raising=False)
+        monkeypatch.setattr(main, 'position_manager', None, raising=False)
+
+        await provider._resubscribe_after_reconnect()
+        assert ws_manager.subscribe_ticker.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_resubscribe_after_reconnect_returns_if_ws_not_ready(self, provider, monkeypatch: pytest.MonkeyPatch):
+        ws_manager = AsyncMock()
+        ws_manager.connected = True
+        ws_manager._ws = Mock()
+        ws_manager.subscribe_ticker = AsyncMock()
+        provider.ws_manager = ws_manager
+        provider.monitored_symbols = ["BTC/USDT:USDT"]
+        monkeypatch.setattr('api.price_provider.HybridPriceProvider._wait_for_ws_ready', AsyncMock(return_value=False))
+
+        await provider._resubscribe_after_reconnect()
+        ws_manager.subscribe_ticker.assert_not_called()
+
+
+class TestSlRealtime:
+    @pytest.mark.asyncio
+    async def test_check_sl_realtime_long_triggers_and_disables_callback(self, provider):
+        called = []
+
+        async def cb(price, reason):
+            called.append((price, reason))
+
+        provider.set_sl_check_callback(
+            cb,
+            symbol="BTC/USDT:USDT",
+            direction="LONG",
+            sl_level=100.0,
+            entry_price=200.0,
+        )
+
+        # prix <= sl_level => trigger
+        await provider._check_sl_realtime(99.0, provider._sl_check_params)
+        assert called and called[0][1] == 'SL'
+        assert provider._sl_check_callback is None
+        assert provider._sl_check_params is None
+
+    @pytest.mark.asyncio
+    async def test_check_sl_realtime_short_triggers_ts_when_pnl_positive(self, provider):
+        called = []
+
+        async def cb(price, reason):
+            called.append((price, reason))
+
+        provider.set_sl_check_callback(
+            cb,
+            symbol="BTC/USDT:USDT",
+            direction="SHORT",
+            sl_level=100.0,
+            entry_price=200.0,
+        )
+
+        # SHORT: trigger if current >= sl_level, here current=150 triggers; pnl positive because price dropped from 200 to 150
+        await provider._check_sl_realtime(150.0, provider._sl_check_params)
+        assert called and called[0][1] == 'TS'
+
+    def test_update_sl_level_updates_params(self, provider):
+        async def cb(price, reason):
+            return None
+
+        provider.set_sl_check_callback(
+            cb,
+            symbol="BTC/USDT:USDT",
+            direction="LONG",
+            sl_level=100.0,
+            entry_price=200.0,
+        )
+
+        provider.update_sl_level(120.0)
+        assert provider._sl_check_params["sl_level"] == 120.0
 
 
 # Tests d'intégration

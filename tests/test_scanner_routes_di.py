@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
 from api.routes.scanner import get_scanner, get_analyzer, get_app_state, get_ws_manager
+import api.routes.scanner as scanner_routes
 
 
 @pytest.fixture
@@ -194,3 +195,164 @@ class TestAnalyzeSymbolRoute:
 
         # Devrait retourner 503 si analyzer non disponible
         assert response.status_code == 503
+
+
+class TestStopScannerRoute:
+    """Tests pour POST /api/scanner/stop et helper perform_stop_scanner"""
+
+    def test_stop_scanner_success_stops_scheduler_price_ws_and_emits(self, client, mock_scanner):
+        from main import app
+
+        scheduler = Mock()
+        scheduler.stop_async = AsyncMock()
+
+        price_provider = Mock()
+        price_provider.stop_websocket = AsyncMock()
+
+        ws_manager = Mock()
+        ws_manager.emit = AsyncMock()
+
+        class _State:
+            def __init__(self):
+                self._is_scanning = True
+
+            def get_scheduler(self):
+                return scheduler
+
+            async def stop_async(self):
+                return None
+
+            def set_is_scanning(self, v: bool):
+                self._is_scanning = v
+
+            def get_price_provider(self):
+                return price_provider
+
+            def get_ws_manager(self):
+                return ws_manager
+
+        state = _State()
+
+        scanner_routes._app_state = {'is_scanning': True, 'scanner_running': True}
+        scanner_routes._price_provider = price_provider
+
+        import core.state_manager as state_manager
+
+        app.dependency_overrides[get_scanner] = lambda: mock_scanner
+        app.dependency_overrides[get_ws_manager] = lambda: ws_manager
+        try:
+            # Patch get_state_manager used internally
+            original_get_state_manager = state_manager.get_state_manager
+            state_manager.get_state_manager = lambda: state
+
+            response = client.post("/api/scanner/stop")
+            assert response.status_code == 200
+            data = response.json()
+            assert data['status'] == 'stopped'
+            assert data['is_scanning'] is False
+
+            scheduler.stop_async.assert_awaited_once()
+            price_provider.stop_websocket.assert_awaited_once()
+            assert scanner_routes._app_state['is_scanning'] is False
+            assert scanner_routes._app_state['scanner_running'] is False
+
+            assert ws_manager.emit.await_count >= 2
+        finally:
+            app.dependency_overrides.clear()
+            state_manager.get_state_manager = original_get_state_manager
+            scanner_routes._app_state = None
+            scanner_routes._price_provider = None
+
+    def test_stop_scanner_price_ws_stop_error_is_ignored(self, client, mock_scanner):
+        from main import app
+
+        scheduler = Mock()
+        scheduler.stop_async = AsyncMock()
+
+        price_provider = Mock()
+        price_provider.stop_websocket = AsyncMock(side_effect=Exception("stop failed"))
+
+        ws_manager = Mock()
+        ws_manager.emit = AsyncMock()
+
+        class _State:
+            def get_scheduler(self):
+                return scheduler
+
+            def set_is_scanning(self, v: bool):
+                return None
+
+            def get_price_provider(self):
+                return price_provider
+
+            def get_ws_manager(self):
+                return ws_manager
+
+        state = _State()
+
+        scanner_routes._app_state = {'is_scanning': True, 'scanner_running': True}
+        scanner_routes._price_provider = price_provider
+
+        import core.state_manager as state_manager
+
+        app.dependency_overrides[get_scanner] = lambda: mock_scanner
+        app.dependency_overrides[get_ws_manager] = lambda: ws_manager
+        try:
+            original_get_state_manager = state_manager.get_state_manager
+            state_manager.get_state_manager = lambda: state
+
+            response = client.post("/api/scanner/stop")
+            assert response.status_code == 200
+            data = response.json()
+            assert data['status'] == 'stopped'
+
+            scheduler.stop_async.assert_awaited_once()
+            price_provider.stop_websocket.assert_awaited_once()
+        finally:
+            app.dependency_overrides.clear()
+            state_manager.get_state_manager = original_get_state_manager
+            scanner_routes._app_state = None
+            scanner_routes._price_provider = None
+
+    @pytest.mark.asyncio
+    async def test_perform_stop_scanner_stops_scheduler_price_ws_emits_and_logs(self, monkeypatch: pytest.MonkeyPatch):
+        scheduler = Mock()
+        scheduler.stop_async = AsyncMock()
+
+        price_provider = Mock()
+        price_provider.stop_websocket = AsyncMock()
+
+        ws_manager = Mock()
+        ws_manager.emit = AsyncMock()
+
+        class _State:
+            def get_scheduler(self):
+                return scheduler
+
+            def set_is_scanning(self, v: bool):
+                return None
+
+            def get_price_provider(self):
+                return price_provider
+
+            def get_ws_manager(self):
+                return ws_manager
+
+        import core.state_manager as state_manager
+        original_get_state_manager = state_manager.get_state_manager
+        state_manager.get_state_manager = lambda: _State()
+
+        import utils.logging_utils as logging_utils
+        add_log = AsyncMock()
+        monkeypatch.setattr(logging_utils, "add_log", add_log)
+
+        try:
+            result = await scanner_routes.perform_stop_scanner()
+            assert result['status'] == 'stopped'
+            assert result['is_scanning'] is False
+            scheduler.stop_async.assert_awaited_once()
+            price_provider.stop_websocket.assert_awaited_once()
+            assert ws_manager.emit.await_count >= 2
+            add_log.assert_awaited_once()
+        finally:
+            state_manager.get_state_manager = original_get_state_manager

@@ -530,6 +530,8 @@ async def reset_circuit_breaker():
             'status_after': status_after
         })
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Erreur réinitialisation Circuit Breaker: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -207,7 +207,7 @@ class HybridPriceProvider:
                             pass
                 
                 if DEBUG_ENABLED:
-                    logger.debug(f"📊 Prix MEXC WS: {mexc_symbol} -> {ccxt_symbol} = {price}")
+                    logger.debug(f"📊 Prix MEXC WS: {mexc_symbol} -> {ccxt_symbol} = {last_price}")
     
     async def _update_cache(self, symbol: str, data: dict):
         """Mise à jour thread-safe du cache"""

@@ -82,6 +82,7 @@ class WebSocketLogHandler(logging.Handler):
         self.ws_manager = None
         self._tasks = set()
         self._closing = False
+        self._max_in_flight_tasks = 200
         _ws_log_handlers.add(self)
     
     def set_ws_manager(self, ws_manager):
@@ -123,6 +124,9 @@ class WebSocketLogHandler(logging.Handler):
                 return
 
             if self._closing:
+                return
+
+            if len(self._tasks) >= self._max_in_flight_tasks:
                 return
             
             # Convertir le niveau de logging en string

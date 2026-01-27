@@ -6,6 +6,8 @@ from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 import time
+import sys
+from datetime import datetime
 
 from api.routes import dashboard
 
@@ -318,3 +320,72 @@ class TestDashboardRoutes:
         assert response.status_code == 200
         data = response.json()
         assert data['success'] is False
+
+    def test_get_sessions_returns_current_session(self, client, mock_app_state, monkeypatch: pytest.MonkeyPatch):
+        mock_app_state['session_id'] = 'sess_1'
+        mock_app_state['is_scanning'] = True
+        dashboard._app_state = mock_app_state
+
+        monkeypatch.setattr(sys, 'argv', ['main.py', '5000'])
+
+        response = client.get('/api/sessions')
+        assert response.status_code == 200
+        data = response.json()
+        assert 'sessions' in data
+        assert data['sessions'][0]['id'] == 'sess_1'
+        assert data['sessions'][0]['status'] == 'running'
+        assert data['sessions'][0]['port'] == 5000
+
+    def test_get_dashboard_summary_computes_stats(self, client, monkeypatch: pytest.MonkeyPatch):
+        today = datetime.now().date().isoformat()
+        dashboard._app_state = {
+            'trade_history': [
+                {'net_pnl_usdt': 10.0, 'gross_pnl_pct': 1.0, 'timestamp': f'{today}T10:00:00'},
+                {'net_pnl_usdt': -5.0, 'gross_pnl_pct': -2.0, 'timestamp': f'{today}T11:00:00'},
+                {'net_pnl_usdt': 2.5, 'gross_pnl_pct': 0.5, 'timestamp': f'{today}T12:00:00'},
+            ]
+        }
+
+        pos_mgr = Mock()
+        pos_mgr.config = Mock()
+        setattr(pos_mgr.config, 'recovery_mode_active', True)
+        dashboard._position_manager = pos_mgr
+
+        class _State:
+            session_id = 'sess_1'
+
+            def get_position_manager(self):
+                return pos_mgr
+
+        import core.state_manager as state_manager
+        monkeypatch.setattr(state_manager, 'get_state_manager', lambda: _State())
+
+        import core.bootstrap as bootstrap
+        monkeypatch.setattr(bootstrap, 'init_instances', lambda: None)
+
+        response = client.get('/api/dashboard/summary')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['total_trades'] == 3
+        assert data['wins'] == 2
+        assert data['losses'] == 1
+        assert data['recovery_mode_active'] is True
+        assert isinstance(data['equity_curve'], list)
+        assert len(data['equity_curve']) == 3
+
+    def test_calculate_max_drawdown_empty(self):
+        info = dashboard.calculate_max_drawdown([])
+        assert info['max_dd'] == 0
+        assert info['current_dd'] == 0
+
+    def test_calculate_max_drawdown_computes_negative_dd(self):
+        trades = [
+            {'gross_pnl_pct': 10, 'timestamp': '2026-01-01T00:00:00'},
+            {'gross_pnl_pct': -5, 'timestamp': '2026-01-02T00:00:00'},
+            {'gross_pnl_pct': -10, 'timestamp': '2026-01-03T00:00:00'},
+            {'gross_pnl_pct': 20, 'timestamp': '2026-01-04T00:00:00'},
+        ]
+        info = dashboard.calculate_max_drawdown(trades)
+        assert info['max_dd'] <= 0
+        assert 'max_dd_date' in info
+        assert 'current_dd' in info

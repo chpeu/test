@@ -117,13 +117,14 @@ class WebSocketManager:
                 room_connections.discard(websocket)
         logger.info(f"❌ WebSocket déconnecté (total: {len(self.active_connections)})")
     
-    async def send_personal_message(self, message: dict, websocket: WebSocket):
+    async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 5.0):
         """Envoyer un message à un WebSocket spécifique"""
         try:
-            # 🔥 FIX: Utiliser un encodeur JSON personnalisé pour gérer datetime et autres types
-            await websocket.send_text(json.dumps(message, default=str))
-        except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
-            # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
+            message_json = json.dumps(message, default=str)
+            await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
+        except asyncio.TimeoutError:
+            await self.disconnect(websocket)
+        except (WebSocketDisconnect, ConnectionError, RuntimeError):
             await self.disconnect(websocket)
         except Exception as e:
             logger.error(f"❌ Erreur envoi message WebSocket: {e}")

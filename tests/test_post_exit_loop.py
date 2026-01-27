@@ -14,6 +14,7 @@ class _DummyPostExitManager:
         self._symbols = list(symbols)
         self.calls = []
         self._event = None
+        self._stopper = None
 
     def get_active_symbols(self):
         return list(self._symbols)
@@ -22,6 +23,8 @@ class _DummyPostExitManager:
         self.calls.append((symbol, price))
         if self._event is not None:
             self._event.set()
+        if self._stopper is not None:
+            self._stopper()
 
 
 @pytest.fixture(autouse=True)
@@ -43,6 +46,7 @@ def _reset_post_exit_loop_globals():
 async def test_post_exit_loop_extracts_price_from_dict(monkeypatch: pytest.MonkeyPatch):
     mgr = _DummyPostExitManager(["BTC/USDT"])
     mgr._event = pel.asyncio.Event()
+    mgr._stopper = lambda: setattr(pel, "_is_running", False)
 
     import core.post_exit as post_exit
 
@@ -57,7 +61,6 @@ async def test_post_exit_loop_extracts_price_from_dict(monkeypatch: pytest.Monke
 
     await pel.asyncio.wait_for(mgr._event.wait(), timeout=1.0)
 
-    pel._is_running = False
     await pel.asyncio.sleep(0)
 
     if not task.done():
@@ -74,6 +77,7 @@ async def test_post_exit_loop_extracts_price_from_dict(monkeypatch: pytest.Monke
 async def test_post_exit_loop_extracts_price_from_float(monkeypatch: pytest.MonkeyPatch):
     mgr = _DummyPostExitManager(["BTC/USDT"])
     mgr._event = pel.asyncio.Event()
+    mgr._stopper = lambda: setattr(pel, "_is_running", False)
 
     import core.post_exit as post_exit
 
@@ -87,7 +91,6 @@ async def test_post_exit_loop_extracts_price_from_float(monkeypatch: pytest.Monk
     task = pel.asyncio.create_task(pel.post_exit_loop())
     await pel.asyncio.wait_for(mgr._event.wait(), timeout=1.0)
 
-    pel._is_running = False
     await pel.asyncio.sleep(0)
 
     if not task.done():

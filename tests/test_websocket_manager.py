@@ -106,6 +106,23 @@ class TestWebSocketManager:
         assert mock_websocket not in manager.active_connections
 
     @pytest.mark.asyncio
+    async def test_send_personal_message_timeout_disconnects(self, monkeypatch: pytest.MonkeyPatch):
+        """Test envoi message avec timeout"""
+        manager = WebSocketManager()
+        mock_websocket = AsyncMock(spec=WebSocket)
+
+        await manager.connect(mock_websocket)
+
+        async def _fake_wait_for(awaitable, timeout=None):
+            raise asyncio.TimeoutError
+
+        monkeypatch.setattr(asyncio, "wait_for", _fake_wait_for)
+
+        await manager.send_personal_message({"test": "data"}, mock_websocket)
+
+        assert mock_websocket not in manager.active_connections
+
+    @pytest.mark.asyncio
     async def test_send_personal_message_error(self):
         """Test envoi message avec erreur"""
         manager = WebSocketManager()
