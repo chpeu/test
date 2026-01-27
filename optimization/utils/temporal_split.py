@@ -31,14 +31,41 @@ def temporal_train_test_split(
     Returns:
         train_df, val_df, test_df (chronologiquement ordonnés)
     """
+    # 🔥 FIX: Vérifier si DataFrame vide ou colonnes manquantes
+    if df is None or len(df) == 0:
+        logger.warning("⚠️ DataFrame vide fourni à temporal_train_test_split - retour DataFrames vides")
+        empty_df = pd.DataFrame()
+        return empty_df, empty_df, empty_df
+    
+    if timestamp_col not in df.columns:
+        logger.warning(f"⚠️ Colonne timestamp '{timestamp_col}' manquante - utilisation de l'index")
+        # Créer une colonne timestamp artificielle basée sur l'index
+        df = df.copy()
+        df[timestamp_col] = range(len(df))
+    
     # Trier par timestamp
-    df_sorted = df.sort_values(timestamp_col).reset_index(drop=True)
+    try:
+        df_sorted = df.sort_values(timestamp_col).reset_index(drop=True)
+    except Exception as e:
+        logger.warning(f"⚠️ Erreur lors du tri par timestamp: {e} - utilisation des données sans tri")
+        df_sorted = df.copy().reset_index(drop=True)
 
     n = len(df_sorted)
+    
+    # 🔥 FIX: Vérifier minimum d'échantillons pour split
+    if n < 3:
+        logger.warning(f"⚠️ Pas assez d'échantillons ({n}) pour split temporel - retour données dans train uniquement")
+        return df_sorted.copy(), pd.DataFrame(columns=df.columns), pd.DataFrame(columns=df.columns)
 
     # Calculer indices de split
-    test_start_idx = int(n * (1 - test_size))
-    val_start_idx = int(n * (1 - test_size - validation_size))
+    test_start_idx = max(1, int(n * (1 - test_size)))
+    val_start_idx = max(1, int(n * (1 - test_size - validation_size)))
+    
+    # S'assurer qu'on a au moins 1 échantillon dans chaque split
+    if val_start_idx >= test_start_idx:
+        val_start_idx = max(1, test_start_idx - 1)
+    if val_start_idx <= 0:
+        val_start_idx = 1
 
     # Split
     train_df = df_sorted.iloc[:val_start_idx].copy()

@@ -69,19 +69,49 @@ class CatBoostTrainer:
         Entraîner modèle CatBoost
         """
         if not CATBOOST_AVAILABLE:
+            logger.warning("⚠️ CatBoost non disponible pour l'entraînement")
             return {'error': 'CatBoost library missing'}
             
         logger.info("🚀 Démarrage entraînement CatBoost")
         
         # 1. Préparation Data
-        dataset = prepare_training_dataset(
-            timeframe_days=timeframe_days,
-            min_trades=min_trades,
-            scaler_type=None # CatBoost n'a pas besoin de scaling!
-        )
-        
-        X = dataset.X
-        y = dataset.y
+        try:
+            dataset = prepare_training_dataset(
+                timeframe_days=timeframe_days,
+                min_trades=min_trades,
+                scaler_type=None # CatBoost n'a pas besoin de scaling!
+            )
+            
+            # 🔥 FIX: Gestion des cas d'erreur de données
+            if dataset is None:
+                logger.error("❌ Aucun dataset retourné par prepare_training_dataset")
+                return {
+                    "success": False,
+                    "error": "Aucune donnée disponible pour l'entraînement",
+                    "train_samples": 0,
+                    "test_samples": 0
+                }
+            
+            X = dataset.X
+            y = dataset.y
+            
+            if X is None or y is None or len(X) == 0 or len(y) == 0:
+                logger.error("❌ Données X/y vides ou invalides")
+                return {
+                    "success": False,
+                    "error": "Données d'entraînement invalides",
+                    "train_samples": 0,
+                    "test_samples": 0
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la préparation des données: {e}")
+            return {
+                "success": False,
+                "error": f"Erreur préparation données: {str(e)}",
+                "train_samples": 0,
+                "test_samples": 0
+            }
         
         # Identifier colonnes catégorielles
         # CatBoost adore les strings/catégories

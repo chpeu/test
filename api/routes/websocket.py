@@ -139,7 +139,7 @@ async def websocket_endpoint(websocket: WebSocket):
         # except Exception:
         #     pass
         
-        # Boucle de réception
+        # Boucle de réception avec gestion robuste des ping/pong
         try:
             while True:
                 try:
@@ -147,14 +147,32 @@ async def websocket_endpoint(websocket: WebSocket):
                 except asyncio.TimeoutError:
                     try:
                         now = time.time()
-                        ping_payload = {
-                            'type': 'ping',
-                            'timestamp': now,
-                        }
                         conn_data_map = getattr(ws_mgr, 'connection_data', None)
                         conn_data = None
                         if isinstance(conn_data_map, dict) and websocket in conn_data_map:
                             conn_data = conn_data_map[websocket]
+                            
+                            # 🔥 FIX: Vérifier si le client répond aux pings
+                            last_ping_ts = conn_data.get('last_server_ping_ts')
+                            last_pong_ts = conn_data.get('last_server_pong_ts', 0)
+                            
+                            # Si un ping a été envoyé mais pas de pong reçu dans les 60s, déconnecter
+                            if last_ping_ts and (now - last_ping_ts) > 60.0 and last_pong_ts < last_ping_ts:
+                                logger.error(
+                                    f"🚨 [WEBSOCKET-FIX] Client ne répond pas aux pings depuis {now - last_ping_ts:.1f}s "
+                                    f"(client={websocket.client}, id={conn_data.get('connection_id')}) - DÉCONNEXION FORCÉE"
+                                )
+                                try:
+                                    await websocket.close(code=1000, reason="Ping timeout")
+                                except Exception:
+                                    pass
+                                return
+                            
+                            # Envoyer un nouveau ping
+                            ping_payload = {
+                                'type': 'ping',
+                                'timestamp': now,
+                            }
                             conn_data['server_ping_counter'] = int(conn_data.get('server_ping_counter') or 0) + 1
                             ping_id = conn_data['server_ping_counter']
                             ping_payload['ping_id'] = ping_id
@@ -162,6 +180,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             conn_data['last_server_ping_ts'] = now
                             conn_data['last_message_ts'] = now
                             conn_data['last_message_type'] = 'out:ping_keepalive'
+                            
+                            # 🔥 FIX: Log détaillé des pings pour debugging
+                            time_since_last_pong = now - last_pong_ts if last_pong_ts else None
+                            logger.debug(
+                                f"📡 [WEBSOCKET-DEBUG] Envoi ping #{ping_id} à client {conn_data.get('connection_id')} "
+                                f"(last_pong: {time_since_last_pong:.1f}s ago)" if time_since_last_pong else
+                                f"📡 [WEBSOCKET-DEBUG] Envoi ping #{ping_id} à client {conn_data.get('connection_id')} (premier ping)"
+                            )
+                            
                         ping_json = json.dumps(ping_payload, default=str)
                         if conn_data is not None:
                             conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
@@ -169,8 +196,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         await websocket.send_text(ping_json)
                         continue
                     except Exception as e:
-                        logger.warning(
-                            f"⚠️ [WS-DEBUG] Ping keep-alive échoué (client={websocket.client}), fermeture du WebSocket: {e}",
+                        logger.error(
+                            f"❌ [WEBSOCKET-FIX] Ping keep-alive échoué (client={websocket.client}), fermeture du WebSocket: {e}",
                             exc_info=True,
                         )
                         try:
@@ -242,7 +269,21 @@ async def websocket_endpoint(websocket: WebSocket):
                         if pong_ping_id is not None and conn_data.get('last_server_ping_id') == pong_ping_id:
                             last_ping_ts = conn_data.get('last_server_ping_ts')
                             if isinstance(last_ping_ts, (int, float)):
-                                conn_data['last_server_rtt_ms'] = round((now - last_ping_ts) * 1000.0, 2)
+                                rtt_ms = round((now - last_ping_ts) * 1000.0, 2)
+                                conn_data['last_server_rtt_ms'] = rtt_ms
+                                
+                                # 🔥 FIX: Log détaillé des pongs reçus pour debugging
+                                logger.debug(
+                                    f"🏓 [WEBSOCKET-DEBUG] Pong reçu de client {conn_data.get('connection_id')} "
+                                    f"(ping #{pong_ping_id}, RTT: {rtt_ms}ms)"
+                                )
+                        else:
+                            # 🔥 FIX: Log des pongs avec ping_id incorrect
+                            expected_ping_id = conn_data.get('last_server_ping_id')
+                            logger.warning(
+                                f"⚠️ [WEBSOCKET-DEBUG] Pong reçu avec ping_id incorrect de client {conn_data.get('connection_id')} "
+                                f"(reçu: {pong_ping_id}, attendu: {expected_ping_id})"
+                            )
 
                 elif msg_type == 'client_hello':
                     payload = message.get('context') or {}

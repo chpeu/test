@@ -130,6 +130,7 @@ export class BidirectionalWebSocket {
             try {
                 const message: WebSocketMessage = JSON.parse(event.data);
                 const now = Date.now();
+                // 🔥 FIX: Mettre à jour lastPing pour toute activité (pas seulement ping/pong)
                 this.lastPing = now;
                 // console.log('⬇️ Message WebSocket reçu:', message);
 
@@ -142,17 +143,30 @@ export class BidirectionalWebSocket {
                 } else if (message.type === 'request_response' && message.id !== undefined) {
                     this.handleResponse(message.id, message.data, message.error);
                 } else if (message.type === 'ping') {
+                    // 🔥 FIX: Répondre immédiatement aux pings du serveur
                     const pingId = message.ping_id;
-                    this.sendRaw(JSON.stringify({ type: 'pong', ping_id: pingId, timestamp: Date.now() }));
+                    const serverTs = message.timestamp;
+                    console.debug(`📡 [WEBSOCKET-CLIENT] Ping reçu du serveur (ping_id: ${pingId}), envoi pong`);
+                    this.sendRaw(JSON.stringify({ 
+                        type: 'pong', 
+                        ping_id: pingId, 
+                        timestamp: now,
+                        server_ts: serverTs
+                    }));
                 } else if (message.type === 'pong') {
-                    this.lastPing = now;
+                    // 🔥 FIX: Traitement des pongs du serveur en réponse à nos pings
                     this.lastPongAt = now;
+                    const pingId = message.ping_id;
                     if (typeof message.client_ts === 'number') {
                         this.lastRttMs = now - message.client_ts;
+                        console.debug(`🏓 [WEBSOCKET-CLIENT] Pong reçu du serveur (ping_id: ${pingId}, RTT: ${this.lastRttMs}ms)`);
+                    } else {
+                        console.debug(`🏓 [WEBSOCKET-CLIENT] Pong reçu du serveur (ping_id: ${pingId})`);
                     }
                 } else if (message.type === 'server_hello') {
                     if (typeof message.connection_id === 'number') {
                         this.serverConnectionId = message.connection_id;
+                        console.log(`🤝 [WEBSOCKET-CLIENT] Server hello reçu (connection_id: ${message.connection_id})`);
                     }
                 }
             } catch (error) {
@@ -340,28 +354,47 @@ export class BidirectionalWebSocket {
 
     private startHeartbeat(): void {
         this.stopHeartbeat(); // S'assurer qu'il n'y a qu'un seul intervalle
-        const PING_INTERVAL = 30000; // 30 secondes (augmenté pour éviter reconnexions fréquentes)
-        const PONG_TIMEOUT = 60000; // 60 secondes (2x ping interval)
+        const PING_INTERVAL = 25000; // 25 secondes pour être compatible avec server 30s timeout
+        const PONG_TIMEOUT = 75000; // 75 secondes (3x ping interval pour être tolérant)
         
-        // 🔥 FIX: Initialiser lastPing à la connexion
-        this.lastPing = Date.now();
+        // 🔥 FIX: Initialiser correctement les timestamps
+        const now = Date.now();
+        this.lastPing = now;
+        this.lastPongAt = now; // Considérer la connexion comme "vivante" au début
         
         this.pingInterval = window.setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                // 🔥 FIX: Vérifier d'abord si pas de pong reçu depuis PONG_TIMEOUT ms
-                const timeSinceLastPong = Date.now() - this.lastPing;
+                const now = Date.now();
+                
+                // 🔥 FIX: Vérifier si pas de pong reçu depuis PONG_TIMEOUT (utiliser lastPongAt, pas lastPing)
+                const timeSinceLastPong = this.lastPongAt ? (now - this.lastPongAt) : (now - this.lastPing);
                 if (timeSinceLastPong > PONG_TIMEOUT) {
-                    console.warn('⚠️ Pas de pong reçu depuis', Math.round(timeSinceLastPong / 1000), 'secondes, reconnexion forcée.');
-                    this.ws.close(); // Force la reconnexion via onclose
+                    console.warn(`⚠️ [WEBSOCKET-CLIENT] Pas d'activité depuis ${Math.round(timeSinceLastPong / 1000)}s (seuil: ${PONG_TIMEOUT/1000}s), reconnexion forcée.`);
+                    this.ws.close(1000, "Client heartbeat timeout"); // Force la reconnexion via onclose
                     return;
                 }
-                // Envoyer ping seulement si connexion OK
+                
+                // Envoyer ping client pour mesurer RTT
                 this.clientPingIdCounter += 1;
                 const pingId = this.clientPingIdCounter;
-                const clientTs = Date.now();
-                this.sendRaw(JSON.stringify({ type: 'ping', ping_id: pingId, timestamp: clientTs }));
+                const clientTs = now;
+                console.debug(`📡 [WEBSOCKET-CLIENT] Envoi ping #${pingId} au serveur`);
+                this.sendRaw(JSON.stringify({ 
+                    type: 'ping', 
+                    ping_id: pingId, 
+                    timestamp: clientTs,
+                    client_ts: clientTs
+                }));
+                
+                // Mettre à jour lastPing pour indiquer qu'on a envoyé un ping
+                this.lastPing = now;
+            } else {
+                console.debug(`⚠️ [WEBSOCKET-CLIENT] WebSocket pas ouvert (state: ${this.ws?.readyState}), arrêt heartbeat`);
+                this.stopHeartbeat();
             }
         }, PING_INTERVAL);
+        
+        console.debug(`💓 [WEBSOCKET-CLIENT] Heartbeat démarré (ping: ${PING_INTERVAL/1000}s, timeout: ${PONG_TIMEOUT/1000}s)`);
     }
 
     private sendClientHello(): void {

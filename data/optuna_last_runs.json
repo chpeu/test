@@ -4,23 +4,23 @@
       "metric": "trading_composite",
       "last_run": {
         "metric": "trading_composite",
-        "score": 0.7426232428093898,
+        "score": 0.1,
         "params": {
           "max_depth": 3,
-          "min_child_weight": 14,
-          "reg_alpha": 11.399944776692324,
-          "reg_lambda": 13.815624459157826,
-          "subsample": 0.6180533424587682,
-          "colsample_bytree": 0.6193386623948778,
-          "colsample_bylevel": 0.829740488361175,
-          "learning_rate": 0.01160332573748143,
+          "min_child_weight": 13,
+          "reg_alpha": 10.909967362024421,
+          "reg_lambda": 14.447546989902737,
+          "subsample": 0.632113549727779,
+          "colsample_bytree": 0.6844754114807521,
+          "colsample_bylevel": 0.811650177915158,
+          "learning_rate": 0.013597698495643882,
           "n_estimators": 200,
-          "gamma": 1.5167952676895207,
-          "scale_pos_weight": 1.360568693030813
+          "gamma": 1.9589324019521162,
+          "scale_pos_weight": 1.3641014214070155
         },
-        "trial_number": 12502,
-        "total_trials": 12516,
-        "datetime": "2026-01-27T10:31:15.684446",
+        "trial_number": 13115,
+        "total_trials": 13116,
+        "datetime": "2026-01-27T22:07:22.717454",
         "source": "latest"
       }
     },
@@ -28,7 +28,7 @@
       "metric": "f1_score",
       "last_run": {
         "score": 0.85,
-        "timestamp": "2026-01-27T21:59:30.275888",
+        "timestamp": "2026-01-27T22:56:56.429690",
         "metric": "f1_score",
         "source": "latest"
       }

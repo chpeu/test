@@ -356,15 +356,47 @@ class WebSocketManager:
         return conn_data.get('connection_id')
     
     async def ping_all(self):
-        """Envoyer un ping à tous les clients (keep-alive)"""
+        """Envoyer un ping à tous les clients (keep-alive) avec monitoring amélioré"""
         if not self.active_connections:
             return
         
-        message = {
-            'type': 'ping',
-            'timestamp': datetime.now().isoformat()
-        }
-        await self.broadcast(message)
+        now = time.time()
+        timestamp_iso = datetime.now().isoformat()
+        
+        # 🔥 FIX: Vérifier les connexions inactives avant d'envoyer des pings
+        inactive_connections = []
+        
+        for websocket in list(self.active_connections):
+            conn_data = self.connection_data.get(websocket)
+            if conn_data:
+                last_pong_ts = conn_data.get('last_server_pong_ts', 0) or 0
+                last_ping_ts = conn_data.get('last_server_ping_ts', 0) or 0
+                
+                # Identifier les connexions qui ne répondent plus depuis >90s
+                if last_ping_ts > 0 and (now - last_ping_ts) > 90.0 and last_pong_ts < last_ping_ts:
+                    logger.error(
+                        f"🚨 [WEBSOCKET-MONITOR] Connexion inactive détectée: client {conn_data.get('connection_id')} "
+                        f"(pas de pong depuis {now - last_pong_ts:.1f}s, dernier ping il y a {now - last_ping_ts:.1f}s)"
+                    )
+                    inactive_connections.append(websocket)
+        
+        # Nettoyer les connexions inactives
+        if inactive_connections:
+            for websocket in inactive_connections:
+                try:
+                    await websocket.close(code=1000, reason="Ping timeout - connection inactive")
+                except Exception:
+                    pass
+                await self.disconnect(websocket)
+        
+        # Envoyer ping aux connexions actives restantes
+        if self.active_connections:
+            message = {
+                'type': 'ping',
+                'timestamp': timestamp_iso
+            }
+            logger.debug(f"📡 [WEBSOCKET-MONITOR] Envoi ping keep-alive à {len(self.active_connections)} clients")
+            await self.broadcast(message)
     
     def subscribe(self, websocket: WebSocket, room: str):
         """S'abonner à une room"""
