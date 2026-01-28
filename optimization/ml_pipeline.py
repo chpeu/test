@@ -116,19 +116,33 @@ def split_training_dataset(
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Perform a reproducible train/test split."""
 
-    stratify_target = y if stratify else None
+    # NOTE: some pandas/numpy combinations can crash inside sklearn's
+    # train_test_split when it tries to index a RangeIndex with an empty
+    # indexer (observed in CI). To make the split robust, we split on
+    # numpy arrays then re-wrap the outputs into pandas objects.
+    X_values = X.to_numpy(copy=False)
+    y_values = y.to_numpy(copy=False)
+
+    stratify_target = y_values if stratify else None
 
     logger.info(
         "✂️ Splitting dataset (test_size=%s, stratify=%s)", test_size, stratify
     )
 
-    return train_test_split(
-        X,
-        y,
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_values,
+        y_values,
         test_size=test_size,
         random_state=random_state,
         stratify=stratify_target,
     )
+
+    X_train_df = pd.DataFrame(X_train, columns=X.columns)
+    X_test_df = pd.DataFrame(X_test, columns=X.columns)
+    y_train_s = pd.Series(y_train, name=y.name)
+    y_test_s = pd.Series(y_test, name=y.name)
+
+    return X_train_df, X_test_df, y_train_s, y_test_s
 
 
 def compute_class_weights(
