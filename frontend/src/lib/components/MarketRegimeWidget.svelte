@@ -56,8 +56,8 @@
 	onMount(async () => {
 		await loadRegimeStatus();
 		
-		// Refresh toutes les 60 secondes
-		refreshInterval = setInterval(loadRegimeStatus, 60000);
+		// 🔥 FIX: Désactiver le polling HTTP - WebSocket gère les mises à jour temps réel
+		// refreshInterval = setInterval(loadRegimeStatus, 60000);
 		
 		// WebSocket listener pour changements temps réel
 		const ws = getWebSocket();

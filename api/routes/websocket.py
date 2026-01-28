@@ -225,27 +225,33 @@ async def websocket_endpoint(websocket: WebSocket):
                 if msg_type == 'command':
                     command = message.get('command')
                     params = message.get('params', {})
-                    command_id = message.get('id')
+                    
+                    # 🔍 DIAGNOSTIC: Tracer toutes les commandes reçues
+                    logger.info(f"🔍 [WS-COMMAND] Commande reçue: '{command}' avec params: {params}")
+                    
+                    if conn_data is not None:
+                        conn_data['last_message_type'] = f"in:command:{command}"
                     
                     try:
                         result = await handle_client_command(command, params)
-                        await ws_mgr.send_personal_message({
-                            'type': 'command_response',
-                            'id': command_id,
-                            'command': command,
-                            'result': result,
-                            'status': 'success',
-                            'timestamp': time.time()
-                        }, websocket)
+                        logger.info(f"🔍 [WS-COMMAND] Commande '{command}' exécutée, résultat: {result}")
                     except Exception as e:
-                        logger.error(f"Erreur commande {command}: {e}")
-                        await ws_mgr.send_personal_message({
-                            'type': 'command_error',
-                            'id': command_id,
+                        logger.error(f"❌ [WS-COMMAND] Erreur exécution commande '{command}': {e}")
+                        result = {'error': str(e), 'status': 'error'}
+                    
+                    cmd_id = message.get('id')
+                    if cmd_id is not None:
+                        response_data = {
+                            'type': 'command_response',
+                            'id': cmd_id,
                             'command': command,
-                            'error': str(e),
-                            'timestamp': time.time()
-                        }, websocket)
+                            'result': result.get('status', 'unknown') if isinstance(result, dict) else result
+                        }
+                        # Ajouter les clés du result si c'est un dict
+                        if isinstance(result, dict):
+                            response_data.update(result)
+                        
+                        await ws_mgr.send_personal_message(response_data, websocket)
                 
                 elif msg_type == 'ping':
                     ping_id = message.get('ping_id')
@@ -443,19 +449,28 @@ async def handle_client_command(command: str, params: dict):
     if command == 'start_scanner':
         await init_instances()
         ws_mgr = _ws_manager or state.get_ws_manager()
-        if ws_mgr:
-            await ws_mgr.emit('scan_started', {'timestamp': time.time()})
-            await ws_mgr.emit('status', {'is_scanning': True})
         
+        # Démarrer le scheduler si disponible
+        sched = state.get_scheduler()
+        if sched:
+            try:
+                sched.start()
+                await add_log('INFO', 'Scanner démarré', 'Scheduler et boucles automatiques activées via WebSocket')
+            except Exception as e:
+                await add_log('ERROR', 'Erreur démarrage scanner', f'Impossible de démarrer le scheduler: {e}')
+                return {'status': 'error', 'error': str(e), 'is_scanning': False}
+        
+        # Mettre à jour l'état
         state.set_is_scanning(True)
         
+        # Lancer un scan initial si pas de top pairs
         if not state.top_pairs:
             asyncio.create_task(run_initial_top_pairs_scan())
         
-        # sched = _scheduler or state.get_scheduler()
-        # if sched:
-        #     sched.start()
-        #     await add_log('INFO', 'Scanner démarré', 'Boucles automatiques activées')
+        # Émettre les événements WebSocket
+        if ws_mgr:
+            await ws_mgr.emit('scan_started', {'timestamp': time.time()})
+            await ws_mgr.emit('status', {'is_scanning': True})
         
         return {'status': 'started', 'is_scanning': True}
     

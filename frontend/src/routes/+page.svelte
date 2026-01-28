@@ -340,9 +340,15 @@
 			}
 			// 🔥 FIX: Synchroniser l'état scanner depuis is_scanning
 			if (data?.is_scanning !== undefined) {
+				console.log('🔍 [FRONTEND-DEBUG] Mise à jour isScanning:', data.is_scanning);
 				const { startScanning, stopScanning } = await import('$lib/stores/scanner');
-				if (data.is_scanning) startScanning();
-				else stopScanning();
+				if (data.is_scanning) {
+					console.log('🔍 [FRONTEND-DEBUG] Appel startScanning()');
+					startScanning();
+				} else {
+					console.log('🔍 [FRONTEND-DEBUG] Appel stopScanning()');
+					stopScanning();
+				}
 			}
 			try {
 				const { setBotPhase } = await import('$lib/stores/botPhase');

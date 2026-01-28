@@ -112,29 +112,31 @@ export class BidirectionalWebSocket {
         if (!this.ws) return;
 
         this.ws.onopen = () => {
-            console.log('✅ WebSocket natif connecté');
-            this.connected = true;
-            this.reconnectAttempts = 0;
-            this.lastPing = Date.now();
-            this.lastPongAt = null;
-            this.lastRttMs = null;
-            this.flushQueue();
-            // 🔥 FIX: Mettre à jour le store de connexion
-            import('$lib/stores/connection')
-                .then(({ setConnected }) => {
-                    setConnected();
-                })
-                .catch((err) => {
-                    console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on open:', err);
-                });
-            this.sendClientHello();
-            this.emit('connect', {}); // Émettre un événement de connexion
-        };
+             console.log('✅ WebSocket natif connecté');
+             this.connected = true;
+             this.reconnectAttempts = 0;
+             this.lastPing = Date.now();
+             this.lastPongAt = null;
+             this.lastRttMs = null;
+             this.flushQueue();
+             // 🔥 FIX: Mettre à jour le store de connexion
+             import('$lib/stores/connection')
+                 .then(({ setConnected }) => {
+                     setConnected();
+                 })
+                 .catch((err) => {
+                     console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on open:', err);
+                 });
+             this.sendClientHello();
+             this.emit('connect', {}); // Émettre un événement de connexion
+             console.log('🔍 [WS-DIAGNOSTIC] onopen terminé, connect=', this.connected, 'listeners connect=', this.eventHandlers.get('connect')?.length || 0);
+         };
 
         this.ws.onmessage = (event) => {
             try {
                 console.log('� WEBSOCKET MESSAGE RECEIVED:', event.data);
                 const message: WebSocketMessage = JSON.parse(event.data);
+                console.log('🔍 [WS-DIAGNOSTIC] onmessage: type=', message.type, 'event=', message.event || 'unknown');
                 console.log('� Received:', message.type, message.event || 'unknown');
                 
                 if (message.type === 'ping') {
@@ -160,17 +162,23 @@ export class BidirectionalWebSocket {
                 }
 
                 if ((message.type === 'request_response' || message.type === 'command_response') && typeof message.id === 'number') {
+                    console.log('🔍 [WS-DIAGNOSTIC] Response reçu: type=', message.type, 'id=', message.id, 'has error=', !!message.error);
                     const payload = message.type === 'command_response' ? message.result : message.data;
                     this.handleResponse(message.id, payload, message.error);
+                    return;
                 } else if (message.type === 'event' && message.event) {
-                    console.log('� PROCESSING EVENT:', message.event);
+                    console.log('🔍 [WS-DIAGNOSTIC] Event reçu: event=', message.event, 'has data=', !!message.data);
+                    console.log('🔍 [WS-DIAGNOSTIC] Event data keys:', message.data ? Object.keys(message.data) : 'null');
                     const eventData = {
                         ...message.data,
                         session_id: message.session_id,
                         timestamp: message.timestamp
                     };
                     this.handleEvent(message.event, eventData);
+                    return;
                 }
+                
+                console.warn('⚠️ Message type non géré:', message.type);
             } catch (error) {
                 console.error('WebSocket message parsing error:', error, 'Raw data:', event.data);
             }
@@ -252,8 +260,13 @@ export class BidirectionalWebSocket {
     }
 
     sendCommand(command: string, params: any = {}): Promise<any> {
+        console.log(`🔍 [WS-SEND-COMMAND] Début envoi commande "${command}" avec params:`, params);
+        console.log(`🔍 [WS-SEND-COMMAND] WebSocket connecté:`, this.connected, 'state:', this.ws?.readyState);
+        
         return new Promise((resolve, reject) => {
             const id = this.commandIdCounter++;
+            console.log(`🔍 [WS-SEND-COMMAND] ID généré: ${id}`);
+            
             this.commandCallbacks.set(id, { resolve, reject });
             const message: WebSocketMessage = {
                 type: 'command',
@@ -262,7 +275,18 @@ export class BidirectionalWebSocket {
                 params,
                 timestamp: Date.now()
             };
-            this.sendRaw(JSON.stringify(message));
+            
+            const messageJson = JSON.stringify(message);
+            console.log(`🔍 [WS-SEND-COMMAND] JSON à envoyer:`, messageJson);
+            
+            try {
+                this.sendRaw(messageJson);
+                console.log(`✅ [WS-SEND-COMMAND] Message envoyé avec succès pour commande "${command}"`);
+            } catch (error) {
+                console.error(`❌ [WS-SEND-COMMAND] Erreur envoi commande "${command}":`, error);
+                this.commandCallbacks.delete(id);
+                reject(error);
+            }
         });
     }
 

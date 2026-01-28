@@ -73,8 +73,8 @@
 	onMount(async () => {
 		await loadCBStatus();
 		
-		// Refresh toutes les 10 secondes
-		refreshInterval = setInterval(loadCBStatus, 10000);
+		// 🔥 FIX: Désactiver le polling HTTP - WebSocket gère les mises à jour temps réel
+		// refreshInterval = setInterval(loadCBStatus, 10000);
 		
 		// Countdown pour la pause
 		countdownInterval = setInterval(() => {
@@ -83,7 +83,7 @@
 			}
 		}, 1000);
 		
-		// WebSocket listeners
+		// WebSocket listeners pour mises à jour temps réel
 		const ws = getWebSocket();
 		if (ws) {
 			ws.on('circuit_breaker_trading_update', handleCBUpdate);

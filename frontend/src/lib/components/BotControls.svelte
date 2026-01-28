@@ -33,6 +33,7 @@
 
 	async function startBot() {
 		try {
+			console.log('🔍 [BOTCONTROLS] startBot called');
 			loading = true;
 			// 🔧 PROTECTION: Timeout automatique pour éviter loading bloqué
 			const timeoutId = setTimeout(() => {
@@ -47,6 +48,7 @@
 				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
 
+			console.log('🔍 [BOTCONTROLS] Sending start_scanner command');
 			await sendCommandViaWS('start_scanner', {});
 			console.log('✅ Bot started via WebSocket');
 			clearTimeout(timeoutId);
@@ -60,6 +62,7 @@
 
 	async function stopBot() {
 		try {
+			console.log('🔍 [BOTCONTROLS] stopBot called');
 			loading = true;
 			// 🔧 PROTECTION: Timeout automatique pour éviter loading bloqué
 			const timeoutId = setTimeout(() => {
@@ -74,6 +77,7 @@
 				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
 
+			console.log('🔍 [BOTCONTROLS] Sending stop_scanner command');
 			await sendCommandViaWS('stop_scanner', {});
 			console.log('✅ Bot stopped via WebSocket');
 			clearTimeout(timeoutId);

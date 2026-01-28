@@ -218,28 +218,45 @@ async def perform_stop_scanner():
     state = get_state_manager()
     from utils.logging_utils import add_log
     
+    await add_log('INFO', 'Stop scanner demandé', 'Début de la procédure d\'arrêt')
+    
     # Arrêter le scheduler
     sched = state.get_scheduler()
     if sched:
-        await sched.stop_async()
+        try:
+            await sched.stop_async()
+            await add_log('INFO', 'Scheduler arrêté', 'Scheduler.stop_async() exécuté avec succès')
+        except Exception as e:
+            await add_log('ERROR', 'Erreur arrêt scheduler', f'Impossible d\'arrêter le scheduler: {e}')
+    else:
+        await add_log('WARNING', 'Scheduler introuvable', 'Aucun scheduler à arrêter')
     
     # Mettre à jour l'état
+    old_scanning = state.is_scanning
     state.set_is_scanning(False)
+    await add_log('INFO', 'État mis à jour', f'is_scanning: {old_scanning} -> False')
     
     # Arrêter WebSocket prix
     price_prov = state.get_price_provider()
     if price_prov:
         try:
             await price_prov.stop_websocket()
-        except Exception: pass
+            await add_log('INFO', 'Prix WebSocket arrêté', 'Price provider WebSocket fermé')
+        except Exception as e:
+            await add_log('WARNING', 'Erreur arrêt prix WebSocket', f'Erreur: {e}')
+    else:
+        await add_log('INFO', 'Prix WebSocket', 'Aucun price provider à arrêter')
         
     # Notification via manager global
     ws_mgr = state.get_ws_manager()
     if ws_mgr:
         await ws_mgr.emit('scan_complete', {'timestamp': time.time()})
         await ws_mgr.emit('status', {'is_scanning': False})
+        await add_log('INFO', 'Événements WebSocket émis', 'scan_complete et status envoyés')
+    else:
+        await add_log('WARNING', 'WebSocket manager introuvable', 'Impossible d\'émettre les événements')
         
-    await add_log('INFO', 'Scanner arrêté', 'Boucles automatiques désactivées')
+    await add_log('INFO', 'Scanner arrêté', 'Procédure d\'arrêt terminée - Boucles automatiques désactivées')
     return {'status': 'stopped', 'is_scanning': False}
 
 
