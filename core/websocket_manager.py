@@ -185,9 +185,23 @@ class WebSocketManager:
                 f"🚨 [WEBSOCKET-FIX] DÉCONNEXION RAPIDE DÉTECTÉE: {duration_s}s - possible crash backend!"
             )
     
-    async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 5.0):
+    async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 3.0):
         """Envoyer un message à un WebSocket spécifique"""
         try:
+            # 🔥 PROTECTION: Vérifier que la connexion est active avant envoi
+            if websocket not in self.active_connections:
+                return  # Connexion déjà nettoyée
+                
+            # 🔥 PROTECTION: Vérifier l'état WebSocket avant send_text
+            if hasattr(websocket, 'websocket') and hasattr(websocket.websocket, 'state'):
+                if websocket.websocket.state != 1:  # WebSocketState.CONNECTED = 1
+                    await self.disconnect(websocket)
+                    return
+            elif hasattr(websocket, 'state'):
+                if websocket.state != 1:  # WebSocketState.CONNECTED = 1
+                    await self.disconnect(websocket)
+                    return
+                    
             message_json = json.dumps(message, default=str)
             conn_data = self.connection_data.get(websocket)
             if conn_data is not None:
@@ -227,16 +241,28 @@ class WebSocketManager:
         # 🔥 OPTIMISATION: Envoyer à tous les clients en parallèle avec asyncio.gather
         async def send_to_connection(connection):
             try:
-                # 🔥 FIX: Vérifier que la connexion est toujours active
-                if connection not in self.active_connections:
-                    return None
+                # 🔥 FIX: Vérifier que la connexion est toujours active et pas fermée
+                if (connection not in self.active_connections or 
+                    getattr(connection, 'client_state', None) == 3 or  # WebSocketState.DISCONNECTED
+                    getattr(connection, 'application_state', None) == 3):  # DISCONNECTED
+                    return connection  # Connexion fermée - à nettoyer
                 conn_data = self.connection_data.get(connection)
                 if conn_data is not None:
                     conn_data['last_message_ts'] = out_ts
                     conn_data['last_message_type'] = out_type
                     conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
                     conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(message_json)
-                await asyncio.wait_for(connection.send_text(message_json), timeout=5.0)
+                # 🔥 PROTECTION: Vérifier readyState avant send_text
+                if hasattr(connection, 'websocket') and hasattr(connection.websocket, 'state'):
+                    # FastAPI WebSocket
+                    if connection.websocket.state != 1:  # WebSocketState.CONNECTED = 1
+                        return connection  # État non-connecté
+                elif hasattr(connection, 'state'):
+                    # Autre implémentation WebSocket  
+                    if connection.state != 1:  # WebSocketState.CONNECTED = 1
+                        return connection  # État non-connecté
+                        
+                await asyncio.wait_for(connection.send_text(message_json), timeout=3.0)  # Timeout réduit 5s->3s
                 return None  # Succès
             except asyncio.TimeoutError:
                 return connection  # Timeout - nettoyer connexion
