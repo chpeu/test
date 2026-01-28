@@ -28,6 +28,10 @@ class TestWebSocketManager:
         """Test connexion WebSocket"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -43,6 +47,10 @@ class TestWebSocketManager:
         """Test déconnexion WebSocket"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         # Connecter d'abord
         await manager.connect(mock_websocket)
@@ -60,6 +68,10 @@ class TestWebSocketManager:
         """Test déconnexion retire aussi des rooms"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         # Connecter et ajouter à une room
         await manager.connect(mock_websocket)
@@ -79,6 +91,10 @@ class TestWebSocketManager:
         """Test envoi message personnel réussi"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Ajouter propriétés d'état pour les nouvelles protections WebSocket
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -95,6 +111,10 @@ class TestWebSocketManager:
         """Test envoi message à un WebSocket déconnecté"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
         mock_websocket.send_text.side_effect = WebSocketDisconnect()
 
         await manager.connect(mock_websocket)
@@ -110,6 +130,10 @@ class TestWebSocketManager:
         """Test envoi message avec timeout"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -127,6 +151,10 @@ class TestWebSocketManager:
         """Test envoi message avec erreur"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
         mock_websocket.send_text.side_effect = Exception("Send error")
 
         await manager.connect(mock_websocket)
@@ -152,6 +180,13 @@ class TestWebSocketManager:
         manager = WebSocketManager()
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_ws1.state = 1  # WebSocketState.CONNECTED
+        mock_ws1.websocket = Mock()
+        mock_ws1.websocket.state = 1
+        mock_ws2.state = 1  # WebSocketState.CONNECTED
+        mock_ws2.websocket = Mock()
+        mock_ws2.websocket.state = 1
 
         await manager.connect(mock_ws1)
         await manager.connect(mock_ws2)
@@ -169,6 +204,13 @@ class TestWebSocketManager:
         manager = WebSocketManager()
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_ws1.state = 1  # WebSocketState.CONNECTED
+        mock_ws1.websocket = Mock()
+        mock_ws1.websocket.state = 1
+        mock_ws2.state = 1  # WebSocketState.CONNECTED
+        mock_ws2.websocket = Mock()
+        mock_ws2.websocket.state = 1
         mock_ws2.send_text.side_effect = WebSocketDisconnect()
 
         await manager.connect(mock_ws1)
@@ -187,6 +229,10 @@ class TestWebSocketManager:
         """Test émission événement"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -204,6 +250,10 @@ class TestWebSocketManager:
         """Test envoi status"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -221,6 +271,10 @@ class TestWebSocketManager:
         """Test envoi log"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -234,6 +288,10 @@ class TestWebSocketManager:
         """Test envoi position update"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -247,6 +305,10 @@ class TestWebSocketManager:
         """Test envoi position opened"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -260,6 +322,10 @@ class TestWebSocketManager:
         """Test envoi position closed"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -273,6 +339,10 @@ class TestWebSocketManager:
         """Test envoi stats update"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -286,6 +356,10 @@ class TestWebSocketManager:
         """Test envoi top pairs update"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -301,6 +375,10 @@ class TestWebSocketManager:
         """Test envoi config change"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -314,6 +392,10 @@ class TestWebSocketManager:
         """Test envoi scan started"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -326,6 +408,10 @@ class TestWebSocketManager:
         """Test envoi scan complete"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -338,6 +424,10 @@ class TestWebSocketManager:
         """Test envoi scan progress"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -358,6 +448,13 @@ class TestWebSocketManager:
         manager = WebSocketManager()
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_ws1.state = 1  # WebSocketState.CONNECTED
+        mock_ws1.websocket = Mock()
+        mock_ws1.websocket.state = 1
+        mock_ws2.state = 1  # WebSocketState.CONNECTED
+        mock_ws2.websocket = Mock()
+        mock_ws2.websocket.state = 1
 
         await manager.connect(mock_ws1)
         await manager.connect(mock_ws2)
@@ -377,6 +474,10 @@ class TestWebSocketManager:
         """Test ping avec connexions"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
 
         await manager.connect(mock_websocket)
 
@@ -442,6 +543,16 @@ class TestWebSocketManagerIntegration:
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
         mock_ws3 = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_ws1.state = 1  # WebSocketState.CONNECTED
+        mock_ws1.websocket = Mock()
+        mock_ws1.websocket.state = 1
+        mock_ws2.state = 1  # WebSocketState.CONNECTED
+        mock_ws2.websocket = Mock()
+        mock_ws2.websocket.state = 1
+        mock_ws3.state = 1  # WebSocketState.CONNECTED
+        mock_ws3.websocket = Mock()
+        mock_ws3.websocket.state = 1
 
         # ws2 va échouer lors du broadcast
         mock_ws2.send_text.side_effect = ConnectionError("Connection lost")
@@ -617,6 +728,10 @@ class TestWebSocketManagerCommands:
         """Test récupération ID connexion existante"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
         
         await manager.connect(mock_websocket)
         
@@ -637,6 +752,10 @@ class TestWebSocketManagerCommands:
         """Test désabonnement d'une room existante"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
         
         await manager.connect(mock_websocket)
         manager.subscribe(mock_websocket, "test_room")
@@ -666,6 +785,10 @@ class TestWebSocketManagerCommands:
         """Test ping avec timestamp correct"""
         manager = WebSocketManager()
         mock_websocket = AsyncMock(spec=WebSocket)
+        # 🔥 FIX: Propriétés d'état WebSocket pour nouvelles protections
+        mock_websocket.state = 1  # WebSocketState.CONNECTED
+        mock_websocket.websocket = Mock()
+        mock_websocket.websocket.state = 1
         
         await manager.connect(mock_websocket)
         
