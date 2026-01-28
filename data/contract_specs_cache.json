@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769589092.7755063,
+  "timestamp": 1769602820.425482,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -48,6 +48,26 @@
       "vol_unit": 1.0,
       "price_unit": 0.01,
       "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "SHIB_USDT": {
+      "symbol": "SHIB_USDT",
+      "min_vol": 1.0,
+      "max_vol": 150000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-09,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1000.0
+    },
+    "UNI_USDT": {
+      "symbol": "UNI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2100000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 0.1
     }
