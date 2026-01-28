@@ -59,6 +59,7 @@ try:
     from api.live_trading_endpoints import router as live_router, register_websocket_commands
     from api.regime_endpoints import router as regime_router
     from api.routes.websocket_stats import router as websocket_stats_router, set_websocket_manager as set_websocket_manager_stats
+    from api.routes.websocket import router as websocket_router
 except ImportError as e:
     logging.warning(f"⚠️ Architecture V2 imports (optionnels): {e}")
     AnalyticsDatabase = None
@@ -75,6 +76,7 @@ except ImportError as e:
     regime_router = None
     websocket_stats_router = None
     set_websocket_manager_stats = None
+    websocket_router = None
     register_websocket_commands = lambda x: None
     
     class ErrorHistoryManager:
@@ -632,6 +634,14 @@ try:
     logger.info("✅ Regime & CB Trading routes incluses: /api/regime/*, /api/circuit-breaker/trading/*")
 except (ImportError, ConfigurationError) as e:
     logger.debug(f"Module regime trading non disponible ou erreur config: {e}")
+
+# 🔥 WEBSOCKET-FIX: Inclure le router WebSocket principal (/ws endpoint)
+try:
+    if websocket_router:
+        app.include_router(websocket_router)
+        logger.info("✅ Router WebSocket principal inclus: /ws")
+except Exception as e:
+    logger.debug(f"Module websocket principal non disponible: {e}")
 
 # 🔥 WEBSOCKET-FIX: Inclure les routes WebSocket stats pour surveillance
 try:
