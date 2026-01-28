@@ -321,10 +321,40 @@
 	
 	function setupWebSocketListeners(ws: BidirectionalWebSocket) {
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
-		ws.on('status', (data: any) => {
+		ws.on('status', async (data: any) => {
+			console.log('🚨 [FRONTEND-DEBUG] MESSAGE STATUS REÇU:', data);
+			console.log('🚨 [FRONTEND-DEBUG] data.is_scanning =', data?.is_scanning);
+			console.log('🚨 [FRONTEND-DEBUG] data.active_position =', data?.active_position);
+			
+			backendConnected = true;
+			backendError = '';
 			// Mettre à jour l'état quand le backend envoie un update
-			if (data.config && data.config.tp_sl_mode) {
+			if (data?.config && data.config.tp_sl_mode) {
 				tpSlMode = data.config.tp_sl_mode;
+			}
+			// 🔥 FIX: Appliquer les mises à jour d'état en continu (stores)
+			try {
+				await processStateData(data);
+			} catch (e) {
+				console.error('Error processing status update:', e);
+			}
+			// 🔥 FIX: Synchroniser l'état scanner depuis is_scanning
+			if (data?.is_scanning !== undefined) {
+				const { startScanning, stopScanning } = await import('$lib/stores/scanner');
+				if (data.is_scanning) startScanning();
+				else stopScanning();
+			}
+			try {
+				const { setBotPhase } = await import('$lib/stores/botPhase');
+				if (data?.active_position) {
+					setBotPhase('position_active');
+				} else if (data?.is_scanning) {
+					setBotPhase('scan_setups');
+				} else {
+					setBotPhase('arrêt');
+				}
+			} catch (e) {
+				console.error('Error updating bot phase from status:', e);
 			}
 		});
 		

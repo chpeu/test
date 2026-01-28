@@ -2,9 +2,16 @@
 	import { isScanning } from '$lib/stores/scanner';
 	import { botPhase, getPhaseMessage } from '$lib/stores/botPhase';
 	import { activePosition } from '$lib/stores/position';
+	import { onMount } from 'svelte';
 
 	let loading = false;
 	let rebooting = false;
+
+	// 🔧 FIX: S'assurer que loading est toujours false au démarrage
+	onMount(() => {
+		loading = false;
+		rebooting = false;
+	});
 
 	// 🔥 NOUVEAU: Calculer le message de statut dynamique
 	$: statusMessage = (() => {
@@ -27,6 +34,12 @@
 	async function startBot() {
 		try {
 			loading = true;
+			// 🔧 PROTECTION: Timeout automatique pour éviter loading bloqué
+			const timeoutId = setTimeout(() => {
+				loading = false;
+				console.warn('⚠️ Timeout startBot - loading forcé à false');
+			}, 10000); // 10 secondes max
+
 			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
 
@@ -36,6 +49,7 @@
 
 			await sendCommandViaWS('start_scanner', {});
 			console.log('✅ Bot started via WebSocket');
+			clearTimeout(timeoutId);
 		} catch (err) {
 			console.error('❌ Error starting bot:', err);
 			alert(`❌ Erreur: ${err.message || 'Impossible de démarrer le scanner'}`);
@@ -47,6 +61,12 @@
 	async function stopBot() {
 		try {
 			loading = true;
+			// 🔧 PROTECTION: Timeout automatique pour éviter loading bloqué
+			const timeoutId = setTimeout(() => {
+				loading = false;
+				console.warn('⚠️ Timeout stopBot - loading forcé à false');
+			}, 10000); // 10 secondes max
+
 			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
 
@@ -56,6 +76,7 @@
 
 			await sendCommandViaWS('stop_scanner', {});
 			console.log('✅ Bot stopped via WebSocket');
+			clearTimeout(timeoutId);
 		} catch (err) {
 			console.error('❌ Error stopping bot:', err);
 			alert(`❌ Erreur: ${err.message || 'Impossible d\'arrêter le scanner'}`);

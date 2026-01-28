@@ -23,6 +23,7 @@ export interface WebSocketMessage {
     client_id?: string;
     session_id?: string;
     context?: any;
+    response_id?: string;
 }
 
 export interface CommandCallback {
@@ -119,61 +120,59 @@ export class BidirectionalWebSocket {
             this.lastRttMs = null;
             this.flushQueue();
             // 🔥 FIX: Mettre à jour le store de connexion
-            import('$lib/stores/connection').then(({ setConnected }) => {
-                setConnected();
-            });
+            import('$lib/stores/connection')
+                .then(({ setConnected }) => {
+                    setConnected();
+                })
+                .catch((err) => {
+                    console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on open:', err);
+                });
             this.sendClientHello();
             this.emit('connect', {}); // Émettre un événement de connexion
         };
 
         this.ws.onmessage = (event) => {
             try {
+                console.log('� WEBSOCKET MESSAGE RECEIVED:', event.data);
                 const message: WebSocketMessage = JSON.parse(event.data);
-                const now = Date.now();
-                // 🔥 FIX: Mettre à jour lastPing pour toute activité (pas seulement ping/pong)
-                this.lastPing = now;
-                // console.log('⬇️ Message WebSocket reçu:', message);
+                console.log('� Received:', message.type, message.event || 'unknown');
+                
+                if (message.type === 'ping') {
+                    this.lastPing = Date.now();
+                    const pongPayload: any = { type: 'pong', timestamp: Date.now() };
+                    if (typeof message.ping_id === 'number') {
+                        pongPayload.ping_id = message.ping_id;
+                    }
+                    this.sendRaw(JSON.stringify(pongPayload));
+                    return;
+                }
+                
+                if (message.type === 'pong') {
+                    this.lastRttMs = Date.now() - this.lastPing;
+                    this.lastPongAt = Date.now();
+                    return;
+                }
+                
+                if (message.type === 'server_hello') {
+                    this.serverConnectionId = message.connection_id || null;
+                    console.log(`🤝 Server hello: connection ${this.serverConnectionId}`);
+                    return;
+                }
 
-                if (message.type === 'event' && message.event) {
-                    this.handleEvent(message.event, message.data);
-                } else if (message.type === 'response' && message.id !== undefined) {
-                    this.handleResponse(message.id, message.result, message.error);
-                } else if (message.type === 'command_response' && message.id !== undefined) {
-                    this.handleResponse(message.id, message.result, message.error);
-                } else if (message.type === 'request_response' && message.id !== undefined) {
-                    this.handleResponse(message.id, message.data, message.error);
-                } else if (message.type === 'ping') {
-                    // 🔥 FIX CRITIQUE: Ping du serveur = preuve que la connexion est vivante
-                    this.lastPongAt = now; // Considérer ping serveur comme activité valide
-                    
-                    // Répondre immédiatement aux pings du serveur
-                    const pingId = message.ping_id;
-                    const serverTs = message.timestamp;
-                    console.debug(`📡 [WEBSOCKET-CLIENT] Ping serveur reçu (id: ${pingId}) - connexion vivante`);
-                    this.sendRaw(JSON.stringify({ 
-                        type: 'pong', 
-                        ping_id: pingId, 
-                        timestamp: now,
-                        server_ts: serverTs
-                    }));
-                } else if (message.type === 'pong') {
-                    // 🔥 FIX: Traitement des pongs du serveur en réponse à nos pings
-                    this.lastPongAt = now;
-                    const pingId = message.ping_id;
-                    if (typeof message.client_ts === 'number') {
-                        this.lastRttMs = now - message.client_ts;
-                        console.debug(`🏓 [WEBSOCKET-CLIENT] Pong reçu du serveur (ping_id: ${pingId}, RTT: ${this.lastRttMs}ms)`);
-                    } else {
-                        console.debug(`🏓 [WEBSOCKET-CLIENT] Pong reçu du serveur (ping_id: ${pingId})`);
-                    }
-                } else if (message.type === 'server_hello') {
-                    if (typeof message.connection_id === 'number') {
-                        this.serverConnectionId = message.connection_id;
-                        console.log(`🤝 [WEBSOCKET-CLIENT] Server hello reçu (connection_id: ${message.connection_id})`);
-                    }
+                if ((message.type === 'request_response' || message.type === 'command_response') && typeof message.id === 'number') {
+                    const payload = message.type === 'command_response' ? message.result : message.data;
+                    this.handleResponse(message.id, payload, message.error);
+                } else if (message.type === 'event' && message.event) {
+                    console.log('� PROCESSING EVENT:', message.event);
+                    const eventData = {
+                        ...message.data,
+                        session_id: message.session_id,
+                        timestamp: message.timestamp
+                    };
+                    this.handleEvent(message.event, eventData);
                 }
             } catch (error) {
-                console.error('❌ Erreur traitement message WebSocket:', error, event.data);
+                console.error('WebSocket message parsing error:', error, 'Raw data:', event.data);
             }
         };
 
@@ -201,13 +200,17 @@ export class BidirectionalWebSocket {
             });
             this.stopHeartbeat();
             // 🔥 FIX: Mettre à jour le store de connexion
-            import('$lib/stores/connection').then(({ setDisconnected, setReconnecting }) => {
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    setReconnecting();
-                } else {
-                    setDisconnected();
-                }
-            });
+            import('$lib/stores/connection')
+                .then(({ setDisconnected, setReconnecting }) => {
+                    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                        setReconnecting();
+                    } else {
+                        setDisconnected();
+                    }
+                })
+                .catch((err) => {
+                    console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on close:', err);
+                });
             this.emit('disconnect', {
                 code: event.code,
                 reason: event.reason,
@@ -279,22 +282,37 @@ export class BidirectionalWebSocket {
     }
 
     private handleResponse(id: number, result: any, error: string | undefined): void {
-        const callback = this.commandCallbacks.get(id);
-        if (callback) {
+        try {
+            const callback = this.commandCallbacks.get(id);
+            if (!callback) return;
             if (error) {
                 callback.reject(new Error(error));
             } else {
                 callback.resolve(result);
             }
             this.commandCallbacks.delete(id);
+        } catch (e) {
+            console.error('❌ [WEBSOCKET-CLIENT] handleResponse error:', e);
+            this.commandCallbacks.delete(id);
         }
     }
 
     private handleEvent(event: string, data: any): void {
         const handlers = this.eventHandlers.get(event);
-        if (handlers) {
-            handlers.forEach(handler => handler(data));
-        }
+        if (!handlers || handlers.length === 0) return;
+
+        handlers.forEach((handler) => {
+            try {
+                const maybePromise: any = handler(data);
+                if (maybePromise && typeof (maybePromise as any).then === 'function') {
+                    (maybePromise as Promise<any>).catch((err) => {
+                        console.error(`❌ [WEBSOCKET-CLIENT] Unhandled async error in handler for event '${event}':`, err);
+                    });
+                }
+            } catch (err) {
+                console.error(`❌ [WEBSOCKET-CLIENT] Error in handler for event '${event}':`, err);
+            }
+        });
     }
 
     on(event: string, handler: (data: any) => void): () => void {
@@ -317,15 +335,38 @@ export class BidirectionalWebSocket {
 
     emit(event: string, data: any): void {
         const handlers = this.eventHandlers.get(event);
-        if (handlers) {
-            handlers.forEach(handler => handler(data));
-        }
+        if (!handlers || handlers.length === 0) return;
+        handlers.forEach((handler) => {
+            try {
+                const maybePromise: any = handler(data);
+                if (maybePromise && typeof (maybePromise as any).then === 'function') {
+                    (maybePromise as Promise<any>).catch((err) => {
+                        console.error(`❌ [WEBSOCKET-CLIENT] Unhandled async error in emit('${event}') handler:`, err);
+                    });
+                }
+            } catch (err) {
+                console.error(`❌ [WEBSOCKET-CLIENT] Error in emit('${event}') handler:`, err);
+            }
+        });
     }
 
     once(event: string, handler: (data: any) => void): void {
         const wrappedHandler = (data: any) => {
-            handler(data);
-            this.off(event, wrappedHandler);
+            try {
+                const maybePromise: any = handler(data);
+                if (maybePromise && typeof (maybePromise as any).then === 'function') {
+                    (maybePromise as Promise<any>).catch((err) => {
+                        console.error(`❌ [WEBSOCKET-CLIENT] Unhandled async error in once('${event}') handler:`, err);
+                    }).finally(() => {
+                        this.off(event, wrappedHandler);
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error(`❌ [WEBSOCKET-CLIENT] Error in once('${event}') handler:`, err);
+            } finally {
+                this.off(event, wrappedHandler);
+            }
         };
         this.on(event, wrappedHandler);
     }
@@ -335,9 +376,13 @@ export class BidirectionalWebSocket {
 
         this.isReconnecting = true;
         // 🔥 FIX: Mettre à jour le store pour indiquer la reconnexion
-        import('$lib/stores/connection').then(({ setReconnecting }) => {
-            setReconnecting();
-        });
+        import('$lib/stores/connection')
+            .then(({ setReconnecting }) => {
+                setReconnecting();
+            })
+            .catch((err) => {
+                console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on reconnect:', err);
+            });
         this.reconnectTimeout = window.setTimeout(() => {
             if (this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
@@ -346,9 +391,13 @@ export class BidirectionalWebSocket {
             } else {
                 console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
                 // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
-                import('$lib/stores/connection').then(({ setDisconnected }) => {
-                    setDisconnected();
-                });
+                import('$lib/stores/connection')
+                    .then(({ setDisconnected }) => {
+                        setDisconnected();
+                    })
+                    .catch((err) => {
+                        console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on final disconnect:', err);
+                    });
                 this.emit('error', new Error('Max reconnect attempts reached'));
             }
             this.isReconnecting = false;

@@ -146,7 +146,6 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     # Si c'est une route /api/state, retourner réponse minimale avec 200
     if request.url.path == "/api/state":
         logger.info(f"🔍 Exception handler global appelé pour /api/state - Exception: {type(exc).__name__}: {exc}")
-        # 🔥 FIX: Gestion sécurisée de session_id (try/except imbriqué redondant supprimé)
         try:
             session_id_value = state.session_id or f"live_{int(time.time())}"
         except Exception:
@@ -297,6 +296,7 @@ except Exception as e:
     logger.debug(f"Injection WebSocket manager stats non disponible: {e}")
 
 from contextlib import asynccontextmanager
+from contextlib import suppress
 
 
 @asynccontextmanager
@@ -306,6 +306,58 @@ async def lifespan(app: FastAPI):
     
     # 🔥 SPRINT 2.1: StateManager for centralized state management
     state = get_state_manager()
+
+    status_task = None
+
+    async def _status_broadcast_loop():
+        last_log_ts = 0.0
+        last_conn_count = 0
+        while True:
+            try:
+                await asyncio.sleep(1.0)
+                ws_mgr = state.get_ws_manager()
+                if not ws_mgr:
+                    continue
+
+                conn_count = 0
+                try:
+                    conn_count = ws_mgr.get_connection_count()
+                except Exception:
+                    conn_count = 0
+
+                if conn_count == 0:
+                    last_conn_count = 0
+                    continue
+
+                now_ts = time.time()
+                if last_conn_count == 0:
+                    logger.info(f"📡 [STATUS-BROADCAST] Client(s) détecté(s) via WS: {conn_count} - démarrage push status")
+                    last_log_ts = now_ts
+                elif (now_ts - last_log_ts) >= 30.0:
+                    logger.info(f"📡 [STATUS-BROADCAST] Push status actif (clients={conn_count})")
+                    last_log_ts = now_ts
+
+                last_conn_count = conn_count
+
+                status_payload = None
+                try:
+                    status_payload = app_state.copy() if app_state else None
+                except Exception:
+                    status_payload = None
+                if not isinstance(status_payload, dict):
+                    try:
+                        status_payload = state.get_legacy_proxy().copy()
+                    except Exception:
+                        status_payload = None
+                if not isinstance(status_payload, dict):
+                    continue
+                status_payload.pop('logs', None)
+                status_payload.pop('trade_history', None)
+                await ws_mgr.send_status(status_payload)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                continue
     
     # 🔥 RESET SESSION: Notifier le frontend immédiatement pour nettoyer son état
     # Note: On essaiera d'émettre dès que ws_manager est prêt
@@ -372,6 +424,8 @@ async def lifespan(app: FastAPI):
                 'session_id': state.session_id
             })
             logger.info(f"✅ Événement reset_session émis (session_id: {state.session_id})")
+
+        status_task = asyncio.create_task(_status_broadcast_loop())
 
         # --- DÉMARRAGE DES SERVICES D'ARRIÈRE-PLAN ---
         # On lance tout ce qui n'est pas critique pour l'acceptation des premières requêtes HTTP
@@ -465,6 +519,11 @@ async def lifespan(app: FastAPI):
         logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
 
     finally:
+        if status_task:
+            status_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await status_task
+
         # 🔥 RESET SESSION: Notifier le frontend de l'arrêt
         ws_mgr = state.get_ws_manager()
         if ws_mgr:
@@ -636,12 +695,17 @@ except (ImportError, ConfigurationError) as e:
     logger.debug(f"Module regime trading non disponible ou erreur config: {e}")
 
 # 🔥 WEBSOCKET-FIX: Inclure le router WebSocket principal (/ws endpoint)
+logger.info(f"🔍 [DIAGNOSTIC] websocket_router = {websocket_router}")
+logger.info(f"🔍 [DIAGNOSTIC] type(websocket_router) = {type(websocket_router)}")
 try:
     if websocket_router:
+        logger.info("🔍 [DIAGNOSTIC] Appel app.include_router(websocket_router)...")
         app.include_router(websocket_router)
         logger.info("✅ Router WebSocket principal inclus: /ws")
+    else:
+        logger.error("❌ websocket_router est None - import probablement échoué")
 except Exception as e:
-    logger.debug(f"Module websocket principal non disponible: {e}")
+    logger.error(f"❌ Erreur inclusion router WebSocket: {e}", exc_info=True)
 
 # 🔥 WEBSOCKET-FIX: Inclure les routes WebSocket stats pour surveillance
 try:

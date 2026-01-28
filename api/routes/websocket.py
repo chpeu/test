@@ -62,11 +62,18 @@ async def websocket_endpoint(websocket: WebSocket):
             f"🔌 [WS-DEBUG] Nouvelle connexion WebSocket entrante: client={getattr(websocket, 'client', None)}, ua={user_agent}, origin={origin}"
         )
         
+        # 🔥 DIAGNOSTIC: Vérifier ws_mgr
+        logger.info(f"🔍 [WS-DIAGNOSTIC] _ws_manager = {_ws_manager}")
+        logger.info(f"🔍 [WS-DIAGNOSTIC] state.get_ws_manager() = {state.get_ws_manager()}")
+        logger.info(f"🔍 [WS-DIAGNOSTIC] ws_mgr = {ws_mgr}")
+        
         if not ws_mgr:
             logger.error("❌ WebSocketManager non trouvé")
             return
-            
+        
+        logger.info("🔍 [WS-DIAGNOSTIC] Appel ws_mgr.connect(websocket)...")
         await ws_mgr.connect(websocket)
+        logger.info("🔍 [WS-DIAGNOSTIC] ws_mgr.connect(websocket) terminé avec succès")
 
         connection_id = None
         try:
@@ -104,12 +111,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception:
                     status_data['active_position'] = None
             
+            logger.info(f"🔥 [BACKEND-DEBUG] ENVOI MESSAGE STATUS: {status_data}")
             await ws_mgr.send_personal_message({
                 'type': 'event',
                 'event': 'status',
                 'data': status_data
             }, websocket)
+            logger.info(f"✅ [BACKEND-DEBUG] MESSAGE STATUS ENVOYÉ AVEC SUCCÈS")
         except Exception as e:
+            logger.error(f"❌ [BACKEND-DEBUG] ERREUR ENVOI STATUS: {e}")
             logger.error(f"❌ Erreur envoi état initial: {e}")
         
         # Envoyer les derniers logs

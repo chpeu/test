@@ -30,6 +30,7 @@ class WebSocketManager:
         self.connection_data: Dict[WebSocket, dict] = {}
         self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
         self._lock: Optional[asyncio.Lock] = None  # 🔥 Lazy initialization
+        self._lock_loop = None
         self._connection_counter: int = 0
         # 🔥 LIVE TRADING: Système de commandes WebSocket
         self._command_handlers: Dict[str, callable] = {}
@@ -37,8 +38,13 @@ class WebSocketManager:
     @property
     def lock(self) -> asyncio.Lock:
         """Lazy initialization of the lock to ensure it's in the correct event loop"""
-        if self._lock is None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if self._lock is None or (loop is not None and self._lock_loop is not loop):
             self._lock = asyncio.Lock()
+            self._lock_loop = loop
         return self._lock
     
     def command(self, name: str):
@@ -100,7 +106,11 @@ class WebSocketManager:
     
     async def connect(self, websocket: WebSocket):
         """Accepter une nouvelle connexion WebSocket"""
+        logger.info("🔥 [WEBSOCKET-MANAGER] connect() appelé - DIAGNOSTIC FORCÉ")
+        logger.info(f"🔥 [WEBSOCKET-MANAGER] websocket = {websocket}")
+        logger.info(f"🔥 [WEBSOCKET-MANAGER] websocket.client = {getattr(websocket, 'client', 'NONE')}")
         await websocket.accept()
+        logger.info("🔥 [WEBSOCKET-MANAGER] websocket.accept() terminé avec succès")
         async with self.lock:
             self._connection_counter += 1
             connection_id = self._connection_counter
@@ -132,6 +142,8 @@ class WebSocketManager:
     
     async def disconnect(self, websocket: WebSocket):
         """Déconnecter un WebSocket (optimisé)"""
+        if websocket not in self.active_connections and websocket not in self.connection_data:
+            return
         conn_data = self.connection_data.get(websocket) or {}
         connection_id = conn_data.get('connection_id')
         client = conn_data.get('client') or getattr(websocket, 'client', None)
@@ -179,7 +191,16 @@ class WebSocketManager:
             f"ua={user_agent}, origin={origin}, remaining_connections={len(self.active_connections)}"
         )
         
-        # 🔥 WEBSOCKET-FIX: Si c'est une déconnexion rapide (< 30s), c'est suspect
+        # 🚨 DIAGNOSTIC CRITIQUE: Analyser cause déconnexion
+        logger.error("🚨 [DISCONNECT-DIAGNOSTIC] ANALYSE DÉCONNEXION:")
+        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] connect() s'est exécuté (counter={self._connection_counter})")
+        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] disconnect_reason = '{disconnect_reason}'")
+        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] websocket_state = {websocket_state}")
+        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] duration_s = {duration_s}")
+        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] last_message_type = '{last_message_type}'")
+        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] msg_in={msg_in}, msg_out={msg_out}, bytes_out={bytes_out}")
+        
+        # �� WEBSOCKET-FIX: Si c'est une déconnexion rapide (< 30s), c'est suspect
         if duration_s and duration_s < 30:
             logger.error(
                 f"🚨 [WEBSOCKET-FIX] DÉCONNEXION RAPIDE DÉTECTÉE: {duration_s}s - possible crash backend!"
