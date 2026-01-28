@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769559848.5340993,
+  "timestamp": 1769580065.3175223,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -17,6 +17,16 @@
       "max_vol": 3607500.0,
       "vol_unit": 1.0,
       "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 100.0
+    },
+    "DOGE_USDT": {
+      "symbol": "DOGE_USDT",
+      "min_vol": 1.0,
+      "max_vol": 250000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 100.0

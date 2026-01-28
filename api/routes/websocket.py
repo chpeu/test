@@ -163,6 +163,9 @@ async def websocket_endpoint(websocket: WebSocket):
                             conn_data['server_ping_counter'] = int(conn_data.get('server_ping_counter', 0)) + 1
                             ping_payload['ping_id'] = conn_data['server_ping_counter']
                             
+                            # 🔥 FIX CRITIQUE: Stocker ping_id pour validation pong
+                            conn_data['last_server_ping_id'] = conn_data['server_ping_counter']
+                            
                             # Mettre à jour timestamps
                             conn_data['last_server_ping_ts'] = now
                             conn_data['last_message_ts'] = now

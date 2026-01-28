@@ -3,11 +3,21 @@ Dashboard Flask pour monitoring du refactoring en temps réel
 Surveille les métriques, feature flags, et performance
 """
 
-from flask import Flask, render_template, jsonify, request
+try:
+    from flask import Flask, render_template, jsonify, request
+    FLASK_AVAILABLE = True
+except ImportError:
+    # Flask pas installé - dashboard indisponible mais pas critique pour les tests
+    FLASK_AVAILABLE = False
+    Flask = None
+    render_template = None
+    jsonify = None
+    request = None
+
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import threading
 import time
 
@@ -28,8 +38,13 @@ class RefactoringDashboard:
     - Contrôles de rollback d'urgence
     """
     
-    def __init__(self, app: Flask = None, host='localhost', port=5001):
-        self.app = app or Flask(__name__)
+    def __init__(self, app: Optional[Flask] = None, host='localhost', port=5001):
+        if not FLASK_AVAILABLE:
+            logger.warning("Flask non disponible - dashboard désactivé")
+            self.app = None
+        else:
+            self.app = app or Flask(__name__)
+            
         self.host = host
         self.port = port
         
@@ -50,7 +65,10 @@ class RefactoringDashboard:
     
     def _setup_routes(self):
         """Configure les routes Flask"""
-        
+        if not FLASK_AVAILABLE or not self.app:
+            logger.warning("Flask indisponible - routes désactivées")
+            return
+            
         @self.app.route('/')
         def dashboard_home():
             """Page principale du dashboard"""
@@ -480,6 +498,10 @@ class RefactoringDashboard:
     
     def run(self, debug=False):
         """Démarre le serveur Flask"""
+        if not FLASK_AVAILABLE or not self.app:
+            logger.warning("Flask indisponible - serveur désactivé")
+            return
+            
         logger.info(f"🚀 Démarrage dashboard sur http://{self.host}:{self.port}")
         self.app.run(host=self.host, port=self.port, debug=debug, threaded=True)
 
@@ -487,5 +509,9 @@ class RefactoringDashboard:
 # Factory function
 def create_dashboard(host='localhost', port=5001) -> RefactoringDashboard:
     """Crée une instance du dashboard"""
+    if not FLASK_AVAILABLE:
+        logger.warning("Flask indisponible - dashboard créé en mode dégradé")
+        return RefactoringDashboard(None, host, port)
+    
     app = Flask(__name__)
     return RefactoringDashboard(app, host, port)

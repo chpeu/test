@@ -143,10 +143,13 @@ export class BidirectionalWebSocket {
                 } else if (message.type === 'request_response' && message.id !== undefined) {
                     this.handleResponse(message.id, message.data, message.error);
                 } else if (message.type === 'ping') {
-                    // 🔥 FIX: Répondre immédiatement aux pings du serveur
+                    // 🔥 FIX CRITIQUE: Ping du serveur = preuve que la connexion est vivante
+                    this.lastPongAt = now; // Considérer ping serveur comme activité valide
+                    
+                    // Répondre immédiatement aux pings du serveur
                     const pingId = message.ping_id;
                     const serverTs = message.timestamp;
-                    console.debug(`📡 [WEBSOCKET-CLIENT] Ping reçu du serveur (ping_id: ${pingId}), envoi pong`);
+                    console.debug(`📡 [WEBSOCKET-CLIENT] Ping serveur reçu (id: ${pingId}) - connexion vivante`);
                     this.sendRaw(JSON.stringify({ 
                         type: 'pong', 
                         ping_id: pingId, 
