@@ -521,6 +521,11 @@ class TestWebSocketManagerIntegration:
         """Test broadcast avec plusieurs connexions"""
         manager = WebSocketManager()
         connections = [AsyncMock(spec=WebSocket) for _ in range(5)]
+        # 🔥 FIX: Ajouter propriétés d'état WebSocket pour nouvelles protections
+        for conn in connections:
+            conn.state = 1  # WebSocketState.CONNECTED
+            conn.websocket = Mock()
+            conn.websocket.state = 1
 
         # Connecter tous
         for conn in connections:
