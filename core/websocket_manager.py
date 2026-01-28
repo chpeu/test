@@ -192,15 +192,19 @@ class WebSocketManager:
             if websocket not in self.active_connections:
                 return  # Connexion déjà nettoyée
                 
-            # 🔥 PROTECTION: Vérifier l'état WebSocket avant send_text
-            if hasattr(websocket, 'websocket') and hasattr(websocket.websocket, 'state'):
-                if websocket.websocket.state != 1:  # WebSocketState.CONNECTED = 1
+            # 🔥 PROTECTION: Vérifications d'état simplifiées pour FastAPI WebSocket
+            # Les WebSocket FastAPI ont un attribut 'client_state' et 'application_state'
+            try:
+                if hasattr(websocket, 'client_state') and websocket.client_state == 3:  # DISCONNECTED
                     await self.disconnect(websocket)
                     return
-            elif hasattr(websocket, 'state'):
-                if websocket.state != 1:  # WebSocketState.CONNECTED = 1
+                elif hasattr(websocket, 'application_state') and websocket.application_state == 3:  # DISCONNECTED
                     await self.disconnect(websocket)
                     return
+                # Si pas d'états disponibles, laisser passer (connexion potentiellement active)
+            except Exception:
+                # En cas d'erreur d'accès aux états, laisser passer
+                pass
                     
             message_json = json.dumps(message, default=str)
             conn_data = self.connection_data.get(websocket)
