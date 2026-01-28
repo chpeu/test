@@ -142,7 +142,7 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             while True:
                 try:
-                    data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
                 except asyncio.TimeoutError:
                     # 🔥 FIX: Mécanisme ping simplifié et robuste
                     try:
@@ -186,12 +186,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                         
                     except Exception as e:
-                        # � FIX: Gestion d'erreur simplifiée sans fermeture agressive
-                        logger.warning(
-                            f"⚠️ [WS-PING-ERROR] Problème ping keep-alive: {e}"
-                        )
-                        # Continuer sans fermer la connexion - laisser le client gérer
-                        continue
+                        # Gestion d'erreur simplifiée - ne pas fermer la connexion brutalement
+                        logger.debug(f"🔧 [WS-PING-ERROR] Ping échoué (normal): {e}")
+                        # Si le ping échoue, la connexion est probablement fermée côté client
+                        # Laisser la boucle se terminer naturellement au prochain receive
+                        break
                 
                 conn_data_map = getattr(ws_mgr, 'connection_data', None)
                 conn_data = None
@@ -262,17 +261,17 @@ async def websocket_endpoint(websocket: WebSocket):
                             rtt_ms = round((now - last_ping_ts) * 1000.0, 2)
                             conn_data['last_server_rtt_ms'] = rtt_ms
                             
-                            # ✅ LOG CRITIQUE: Pong valide reçu
-                            logger.error(
+                            # ✅ LOG DEBUG: Pong valide reçu
+                            logger.debug(
                                 f"🏓 [WEBSOCKET-PONG-OK] Client {connection_id} répond: "
                                 f"ping#{pong_ping_id} RTT={rtt_ms}ms, health=GOOD"
                             )
                         else:
-                            # ⚠️ LOG CRITIQUE: Pong reçu mais pas de ping timestamp
+                            # ⚠️ LOG DEBUG: Pong reçu mais pas de ping timestamp
                             conn_data['last_server_rtt_ms'] = None
-                            logger.error(
+                            logger.debug(
                                 f"🏓 [WEBSOCKET-PONG-NO-TIMESTAMP] Client {connection_id} pong#{pong_ping_id} "
-                                f"reçu mais pas de timestamp ping - POSSIBLE BUG"
+                                f"reçu mais pas de timestamp ping"
                             )
                     else:
                         # 🚨 LOG CRITIQUE: Pong avec ping_id incorrect - client désynchronisé

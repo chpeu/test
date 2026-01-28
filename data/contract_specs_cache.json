@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769580065.3175223,
+  "timestamp": 1769589092.7755063,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -30,6 +30,26 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 100.0
+    },
+    "SUI_USDT": {
+      "symbol": "SUI_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "SOL_USDT": {
+      "symbol": "SOL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 120000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.1
     }
   }
 }

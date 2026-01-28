@@ -17,8 +17,14 @@ from typing import Dict, Optional, Tuple, List, Union
 import joblib
 import pandas as pd
 import numpy as np
-import lightgbm as lgb
-from lightgbm import LGBMClassifier
+try:
+    import lightgbm as lgb
+    from lightgbm import LGBMClassifier
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    lgb = None
+    LGBMClassifier = None
+    LIGHTGBM_AVAILABLE = False
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
@@ -93,6 +99,15 @@ class LightGBMTrainer:
         """
         Entraîner LightGBM avec split temporel et filtrage
         """
+        if not LIGHTGBM_AVAILABLE:
+            return {
+                "success": False,
+                "error": "LightGBM non installé (pip install lightgbm)",
+                "train_samples": 0,
+                "val_samples": 0,
+                "test_samples": 0,
+            }
+
         logger.info("=" * 80)
         logger.info("🚀 LIGHTGBM TRAINER - Temporal Split + Quality Filtering")
         logger.info("=" * 80)
@@ -254,7 +269,7 @@ class LightGBMTrainer:
         
         callbacks = [
             lgb.early_stopping(stopping_rounds=30, verbose=False),
-            lgb.log_evaluation(period=0)  # Silence logging
+            lgb.log_evaluation(period=0)
         ]
 
         self.model.fit(

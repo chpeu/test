@@ -357,8 +357,8 @@ export class BidirectionalWebSocket {
 
     private startHeartbeat(): void {
         this.stopHeartbeat(); // S'assurer qu'il n'y a qu'un seul intervalle
-        const PING_INTERVAL = 25000; // 25 secondes pour être compatible avec server 30s timeout
-        const PONG_TIMEOUT = 75000; // 75 secondes (3x ping interval pour être tolérant)
+        const PING_INTERVAL = 60000; // 60 secondes pour être compatible avec server 120s timeout
+        const PONG_TIMEOUT = 180000; // 180 secondes (3x ping interval pour être tolérant)
         
         // 🔥 FIX: Initialiser correctement les timestamps
         const now = Date.now();
