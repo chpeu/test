@@ -73,15 +73,15 @@ def _reset_ws_globals():
 
 
 @pytest.mark.asyncio
-async def test_websocket_endpoint_closes_when_no_ws_manager(monkeypatch: pytest.MonkeyPatch):
+async def test_websocket_endpoint_returns_when_no_ws_manager(monkeypatch: pytest.MonkeyPatch):
     state = _DummyState(ws_mgr=None, app_state={"logs": []})
     monkeypatch.setattr(state_manager, "get_state_manager", lambda: state)
 
     ws = _FakeWebSocket([])
     await ws_routes.websocket_endpoint(ws)
 
-    ws.close.assert_awaited_once()
-    assert ws.close.call_args.kwargs.get("code") == 1011
+    # Après corrections WebSocket : pas de fermeture agressive code 1011, juste return
+    ws.close.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -173,7 +173,7 @@ async def test_websocket_endpoint_timeout_sends_ping_then_continues(monkeypatch:
 
 
 @pytest.mark.asyncio
-async def test_websocket_endpoint_timeout_ping_send_fails_closes(monkeypatch: pytest.MonkeyPatch):
+async def test_websocket_endpoint_timeout_ping_send_fails_continues(monkeypatch: pytest.MonkeyPatch):
     ws_mgr = SimpleNamespace(
         connect=AsyncMock(),
         disconnect=AsyncMock(),
@@ -188,18 +188,27 @@ async def test_websocket_endpoint_timeout_ping_send_fails_closes(monkeypatch: py
     ws = _FakeWebSocket([])
     ws.send_text = AsyncMock(side_effect=RuntimeError("send failed"))
 
-    async def _fake_wait_for(awaitable, timeout=None):
-        try:
-            awaitable.close()
-        except Exception:
-            pass
-        raise ws_routes.asyncio.TimeoutError
+    # Simuler seulement 2 timeouts pour éviter boucle infinie
+    timeout_count = 0
+    original_wait_for = ws_routes.asyncio.wait_for
+    
+    async def _limited_wait_for(awaitable, timeout=None):
+        nonlocal timeout_count
+        timeout_count += 1
+        if timeout_count <= 2:
+            try:
+                awaitable.close()
+            except Exception:
+                pass
+            raise ws_routes.asyncio.TimeoutError
+        # Après 2 timeouts, simuler fermeture naturelle 
+        raise ws_routes.WebSocketDisconnect()
 
-    monkeypatch.setattr(ws_routes.asyncio, "wait_for", _fake_wait_for)
+    monkeypatch.setattr(ws_routes.asyncio, "wait_for", _limited_wait_for)
 
     await ws_routes.websocket_endpoint(ws)
 
-    ws.close.assert_awaited()
+    # Avec corrections WebSocket : continue sans fermeture agressive
     ws_mgr.disconnect.assert_awaited_once()
 
 

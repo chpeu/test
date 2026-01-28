@@ -63,8 +63,7 @@ async def websocket_endpoint(websocket: WebSocket):
         )
         
         if not ws_mgr:
-            logger.error("❌ WebSocketManager non trouvé, fermeture 1011")
-            await websocket.close(code=1011)
+            logger.error("❌ WebSocketManager non trouvé")
             return
             
         await ws_mgr.connect(websocket)
@@ -145,66 +144,51 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
                 except asyncio.TimeoutError:
+                    # 🔥 FIX: Mécanisme ping simplifié et robuste
                     try:
                         now = time.time()
                         conn_data_map = getattr(ws_mgr, 'connection_data', None)
                         conn_data = None
                         if isinstance(conn_data_map, dict) and websocket in conn_data_map:
                             conn_data = conn_data_map[websocket]
+                        
+                        # Envoyer un ping simple sans vérifications complexes
+                        ping_payload = {
+                            'type': 'ping', 
+                            'timestamp': now
+                        }
+                        
+                        if conn_data:
+                            # Incrémenter compteur ping
+                            conn_data['server_ping_counter'] = int(conn_data.get('server_ping_counter', 0)) + 1
+                            ping_payload['ping_id'] = conn_data['server_ping_counter']
                             
-                            # 🔥 FIX: Vérifier si le client répond aux pings
-                            last_ping_ts = conn_data.get('last_server_ping_ts')
-                            last_pong_ts = conn_data.get('last_server_pong_ts', 0)
-                            
-                            # Si un ping a été envoyé mais pas de pong reçu dans les 60s, déconnecter
-                            if last_ping_ts and (now - last_ping_ts) > 60.0 and last_pong_ts < last_ping_ts:
-                                logger.error(
-                                    f"🚨 [WEBSOCKET-FIX] Client ne répond pas aux pings depuis {now - last_ping_ts:.1f}s "
-                                    f"(client={websocket.client}, id={conn_data.get('connection_id')}) - DÉCONNEXION FORCÉE"
-                                )
-                                try:
-                                    await websocket.close(code=1000, reason="Ping timeout")
-                                except Exception:
-                                    pass
-                                return
-                            
-                            # Envoyer un nouveau ping
-                            ping_payload = {
-                                'type': 'ping',
-                                'timestamp': now,
-                            }
-                            conn_data['server_ping_counter'] = int(conn_data.get('server_ping_counter') or 0) + 1
-                            ping_id = conn_data['server_ping_counter']
-                            ping_payload['ping_id'] = ping_id
-                            conn_data['last_server_ping_id'] = ping_id
+                            # Mettre à jour timestamps
                             conn_data['last_server_ping_ts'] = now
                             conn_data['last_message_ts'] = now
                             conn_data['last_message_type'] = 'out:ping_keepalive'
                             
-                            # 🔥 FIX: Log détaillé des pings pour debugging
-                            time_since_last_pong = now - last_pong_ts if last_pong_ts else None
+                            # Log minimal pour débugging
                             logger.debug(
-                                f"📡 [WEBSOCKET-DEBUG] Envoi ping #{ping_id} à client {conn_data.get('connection_id')} "
-                                f"(last_pong: {time_since_last_pong:.1f}s ago)" if time_since_last_pong else
-                                f"📡 [WEBSOCKET-DEBUG] Envoi ping #{ping_id} à client {conn_data.get('connection_id')} (premier ping)"
-                            )
-                            
+                                f"📡 [WS-PING] Client {conn_data.get('connection_id', 'unknown')} "
+                                f"ping #{conn_data['server_ping_counter']}"
+                            )                          
+                        # Envoyer le ping
                         ping_json = json.dumps(ping_payload, default=str)
-                        if conn_data is not None:
-                            conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
-                            conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(ping_json)
+                        if conn_data:
+                            conn_data['message_out_count'] = int(conn_data.get('message_out_count', 0)) + 1
+                            conn_data['bytes_out'] = int(conn_data.get('bytes_out', 0)) + len(ping_json)
+                        
                         await websocket.send_text(ping_json)
                         continue
+                        
                     except Exception as e:
-                        logger.error(
-                            f"❌ [WEBSOCKET-FIX] Ping keep-alive échoué (client={websocket.client}), fermeture du WebSocket: {e}",
-                            exc_info=True,
+                        # � FIX: Gestion d'erreur simplifiée sans fermeture agressive
+                        logger.warning(
+                            f"⚠️ [WS-PING-ERROR] Problème ping keep-alive: {e}"
                         )
-                        try:
-                            await websocket.close(code=1000)
-                        except Exception:
-                            pass
-                        return
+                        # Continuer sans fermer la connexion - laisser le client gérer
+                        continue
                 
                 conn_data_map = getattr(ws_mgr, 'connection_data', None)
                 conn_data = None
@@ -263,27 +247,36 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 elif msg_type == 'pong':
                     pong_ping_id = message.get('ping_id')
-                    if conn_data is not None:
-                        now = time.time()
+                    expected_ping_id = conn_data.get('last_server_ping_id')
+                    connection_id = conn_data.get('connection_id', 'unknown')
+                    now = time.time()
+                    
+                    if pong_ping_id == expected_ping_id:
                         conn_data['last_server_pong_ts'] = now
-                        if pong_ping_id is not None and conn_data.get('last_server_ping_id') == pong_ping_id:
-                            last_ping_ts = conn_data.get('last_server_ping_ts')
-                            if isinstance(last_ping_ts, (int, float)):
-                                rtt_ms = round((now - last_ping_ts) * 1000.0, 2)
-                                conn_data['last_server_rtt_ms'] = rtt_ms
-                                
-                                # 🔥 FIX: Log détaillé des pongs reçus pour debugging
-                                logger.debug(
-                                    f"🏓 [WEBSOCKET-DEBUG] Pong reçu de client {conn_data.get('connection_id')} "
-                                    f"(ping #{pong_ping_id}, RTT: {rtt_ms}ms)"
-                                )
-                        else:
-                            # 🔥 FIX: Log des pongs avec ping_id incorrect
-                            expected_ping_id = conn_data.get('last_server_ping_id')
-                            logger.warning(
-                                f"⚠️ [WEBSOCKET-DEBUG] Pong reçu avec ping_id incorrect de client {conn_data.get('connection_id')} "
-                                f"(reçu: {pong_ping_id}, attendu: {expected_ping_id})"
+                        # Calculer RTT précis
+                        last_ping_ts = conn_data.get('last_server_ping_ts')
+                        if isinstance(last_ping_ts, (int, float)):
+                            rtt_ms = round((now - last_ping_ts) * 1000.0, 2)
+                            conn_data['last_server_rtt_ms'] = rtt_ms
+                            
+                            # ✅ LOG CRITIQUE: Pong valide reçu
+                            logger.error(
+                                f"🏓 [WEBSOCKET-PONG-OK] Client {connection_id} répond: "
+                                f"ping#{pong_ping_id} RTT={rtt_ms}ms, health=GOOD"
                             )
+                        else:
+                            # ⚠️ LOG CRITIQUE: Pong reçu mais pas de ping timestamp
+                            conn_data['last_server_rtt_ms'] = None
+                            logger.error(
+                                f"🏓 [WEBSOCKET-PONG-NO-TIMESTAMP] Client {connection_id} pong#{pong_ping_id} "
+                                f"reçu mais pas de timestamp ping - POSSIBLE BUG"
+                            )
+                    else:
+                        # 🚨 LOG CRITIQUE: Pong avec ping_id incorrect - client désynchronisé
+                        logger.error(
+                            f"⚠️ [WEBSOCKET-PONG-DESYNC] Client {connection_id} DÉSYNCHRONISÉ: "
+                            f"pong_id={pong_ping_id}, expected_id={expected_ping_id} - CLIENT PEUT ÊTRE BUGUÉ"
+                        )
 
                 elif msg_type == 'client_hello':
                     payload = message.get('context') or {}
@@ -417,10 +410,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 f"❌ Erreur inattendue boucle WebSocket (id={connection_id}): {type(e).__name__}: {e}",
                 exc_info=True,
             )
-            try:
-                await websocket.close(code=1011)
-            except Exception:
-                pass
+            # Laisser la connexion se fermer naturellement
         finally:
             try:
                 await ws_mgr.disconnect(websocket)
@@ -429,10 +419,7 @@ async def websocket_endpoint(websocket: WebSocket):
     
     except Exception as e:
         logger.critical(f"❌ CRITICAL: Erreur fatale dans websocket_endpoint: {e}", exc_info=True)
-        try:
-            await websocket.close(code=1011)
-        except:
-            pass
+        # Laisser la connexion se fermer naturellement
 
 async def handle_client_command(command: str, params: dict):
     """Exécuter une commande du client via WebSocket en utilisant les modules dédiés"""
