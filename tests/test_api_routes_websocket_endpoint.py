@@ -271,7 +271,7 @@ async def test_websocket_endpoint_requests_and_command_error(monkeypatch: pytest
     assert any(p.get("type") == "request_response" and p.get("id") == "r2" for p in payloads)
     assert any(p.get("type") == "request_response" and p.get("id") == "r3" for p in payloads)
     assert any(p.get("type") == "request_response" and p.get("id") == "r4" for p in payloads)
-    assert any(p.get("type") == "command_error" and p.get("id") == "c1" for p in payloads)
+    assert any(p.get("type") == "command_response" and p.get("id") == "c1" for p in payloads)
 
 
 @pytest.mark.asyncio

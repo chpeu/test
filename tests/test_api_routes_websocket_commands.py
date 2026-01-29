@@ -16,9 +16,13 @@ class _DummyState:
         self._ws_mgr = ws_mgr
         self.top_pairs = []
         self._is_scanning = False
+        self._scheduler = None
 
     def get_ws_manager(self):
         return self._ws_mgr
+
+    def get_scheduler(self):
+        return self._scheduler
 
     def set_is_scanning(self, value: bool):
         self._is_scanning = bool(value)

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769602820.425482,
+  "timestamp": 1769637936.6035903,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -70,6 +70,16 @@
       "price_precision": 3,
       "vol_precision": 1,
       "contract_size": 0.1
+    },
+    "PENGU_USDT": {
+      "symbol": "PENGU_USDT",
+      "min_vol": 1.0,
+      "max_vol": 2500000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-06,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
     }
   }
 }

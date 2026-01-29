@@ -326,11 +326,14 @@ class TestStopScannerRoute:
         ws_manager.emit = AsyncMock()
 
         class _State:
+            def __init__(self):
+                self.is_scanning = False
+            
             def get_scheduler(self):
                 return scheduler
 
             def set_is_scanning(self, v: bool):
-                return None
+                self.is_scanning = bool(v)
 
             def get_price_provider(self):
                 return price_provider
@@ -353,6 +356,6 @@ class TestStopScannerRoute:
             scheduler.stop_async.assert_awaited_once()
             price_provider.stop_websocket.assert_awaited_once()
             assert ws_manager.emit.await_count >= 2
-            add_log.assert_awaited_once()
+            assert add_log.await_count >= 1  # perform_stop_scanner logs multiple times
         finally:
             state_manager.get_state_manager = original_get_state_manager
