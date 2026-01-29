@@ -53,6 +53,7 @@ export class BidirectionalWebSocket {
     private lastRttMs: number | null = null;
     private clientPingIdCounter: number = 0;
     public connected: boolean = false;
+    private connectionTimeoutId: number | null = null;
 
     constructor(url: string = '') {
         if (typeof window !== 'undefined') {
@@ -99,7 +100,16 @@ export class BidirectionalWebSocket {
             this.serverConnectionId = null;
             this.lastPongAt = null;
             this.lastRttMs = null;
+            // 🔥 FIX: Timeout de connexion plus long pour gérer la surcharge
             this.ws = new WebSocket(this.url);
+            
+            // Timeout personnalisé pour handshake
+            this.connectionTimeoutId = window.setTimeout(() => {
+                if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+                    console.warn('⚠️ Timeout handshake WebSocket - serveur surchargé?');
+                    this.ws.close();
+                }
+            }, 30000); // 30s pour handshake
             this.setupEventHandlers();
             this.startHeartbeat();
         } catch (error) {
@@ -113,6 +123,10 @@ export class BidirectionalWebSocket {
 
         this.ws.onopen = () => {
              console.log('✅ WebSocket natif connecté');
+             if (this.connectionTimeoutId) {
+                 clearTimeout(this.connectionTimeoutId);
+                 this.connectionTimeoutId = null;
+             }
              this.connected = true;
              this.reconnectAttempts = 0;
              this.lastPing = Date.now();
@@ -407,31 +421,55 @@ export class BidirectionalWebSocket {
             .catch((err) => {
                 console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on reconnect:', err);
             });
-        this.reconnectTimeout = window.setTimeout(() => {
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                this.reconnectAttempts++;
-                console.log(`🔄 Tentative de reconnexion WebSocket #${this.reconnectAttempts}...`);
-                this.connect();
-            } else {
-                console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
-                // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
-                import('$lib/stores/connection')
-                    .then(({ setDisconnected }) => {
-                        setDisconnected();
-                    })
-                    .catch((err) => {
-                        console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on final disconnect:', err);
-                    });
-                this.emit('error', new Error('Max reconnect attempts reached'));
-            }
-            this.isReconnecting = false;
-        }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts)); // Backoff exponentiel
+        if (this.reconnectAttempts > 0) {
+            const delay = Math.min(2000 + (this.reconnectAttempts * 1000), 10000);
+            console.log(`⏳ Attente ${delay}ms avant reconnexion (serveur possiblement surchargé)`);
+            setTimeout(() => {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`🔄 Tentative de reconnexion WebSocket #${this.reconnectAttempts}...`);
+                    this.connect();
+                } else {
+                    console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
+                    // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
+                    import('$lib/stores/connection')
+                        .then(({ setDisconnected }) => {
+                            setDisconnected();
+                        })
+                        .catch((err) => {
+                            console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on final disconnect:', err);
+                        });
+                    this.emit('error', new Error('Max reconnect attempts reached'));
+                }
+                this.isReconnecting = false;
+            }, delay);
+        } else {
+            this.reconnectTimeout = window.setTimeout(() => {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`🔄 Tentative de reconnexion WebSocket #${this.reconnectAttempts}...`);
+                    this.connect();
+                } else {
+                    console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
+                    // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
+                    import('$lib/stores/connection')
+                        .then(({ setDisconnected }) => {
+                            setDisconnected();
+                        })
+                        .catch((err) => {
+                            console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on final disconnect:', err);
+                        });
+                    this.emit('error', new Error('Max reconnect attempts reached'));
+                }
+                this.isReconnecting = false;
+            }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts)); // Backoff exponentiel
+        }
     }
 
     private startHeartbeat(): void {
         this.stopHeartbeat(); // S'assurer qu'il n'y a qu'un seul intervalle
-        const PING_INTERVAL = 60000; // 60 secondes pour être compatible avec server 120s timeout
-        const PONG_TIMEOUT = 180000; // 180 secondes (3x ping interval pour être tolérant)
+        const PING_INTERVAL = 35_000; // 35s (augmenté pour surcharge)
+        const PONG_TIMEOUT = 120_000; // 120s (augmenté pour surcharge)
         
         // 🔥 FIX: Initialiser correctement les timestamps
         const now = Date.now();

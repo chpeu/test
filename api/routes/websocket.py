@@ -152,9 +152,9 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             while True:
                 try:
-                    data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=180.0)
                 except asyncio.TimeoutError:
-                    # 🔥 FIX: Mécanisme ping simplifié et robuste
+                    # 🔥 FIX: Mécanisme ping simplifié et robuste + gestion surcharge
                     try:
                         now = time.time()
                         conn_data_map = getattr(ws_mgr, 'connection_data', None)
@@ -196,11 +196,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         continue
                         
                     except Exception as e:
-                        # Gestion d'erreur simplifiée - ne pas fermer la connexion brutalement
-                        logger.debug(f"🔧 [WS-PING-ERROR] Ping échoué (normal): {e}")
-                        # Si le ping échoue, la connexion est probablement fermée côté client
-                        # Laisser la boucle se terminer naturellement au prochain receive
-                        break
+                        # 🔥 FIX: Gestion d'erreur robuste - éviter fermeture brutale pendant surcharge
+                        logger.warning(f"⚠️ [WS-PING-ERROR] Erreur ping (surcharge possible): {e}")
+                        # Attendre un peu avant de continuer si le serveur est surchargé
+                        await asyncio.sleep(2.0)
+                        continue
                 
                 conn_data_map = getattr(ws_mgr, 'connection_data', None)
                 conn_data = None
