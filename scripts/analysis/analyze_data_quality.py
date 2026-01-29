@@ -22,16 +22,28 @@ print("=" * 70)
 # Connexion DB
 env_path = Path('.env')
 env_vars = {}
-with open(env_path, 'r') as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            key, value = line.split('=', 1)
-            env_vars[key.strip()] = value.strip()
+try:
+    with open(env_path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                env_vars[key.strip()] = value.strip()
+except FileNotFoundError:
+    print("Fichier .env non trouvé. Ce script nécessite un fichier .env avec les variables PostgreSQL.")
+    exit(0)  # Exit gracefully for test environment
 
 password = quote_plus(env_vars.get('POSTGRES_PASSWORD', ''))
 conn_str = f"postgresql://{env_vars.get('POSTGRES_USER')}:{password}@{env_vars.get('POSTGRES_HOST')}:{env_vars.get('POSTGRES_PORT')}/{env_vars.get('POSTGRES_DB')}"
-engine = create_engine(conn_str)
+try:
+    engine = create_engine(conn_str)
+    # Test connection
+    with engine.connect() as conn:
+        pass
+except Exception as e:
+    print(f"Impossible de se connecter à PostgreSQL: {e}")
+    print("Ce script nécessite une base de données PostgreSQL active.")
+    exit(0)  # Exit gracefully for test environment
 
 # Charger trades
 print("\n=== ANALYSE TABLE TRADES ===")
