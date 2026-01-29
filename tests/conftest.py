@@ -12,11 +12,13 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_test_logging():
-    """Configure safe logging for tests - avoid file handlers that cause I/O errors"""
-    # Remove all existing handlers and configure simple console-only logging
+    """Configure safe logging for ALL tests - completely disable file operations"""
+    import logging
+    
+    # GLOBAL: Disable all existing loggers and handlers
     root_logger = logging.getLogger()
     
-    # Clear all existing handlers
+    # Remove ALL handlers from root logger
     for handler in root_logger.handlers[:]:
         try:
             root_logger.removeHandler(handler)
@@ -24,39 +26,51 @@ def configure_test_logging():
         except Exception:
             pass
     
-    # Add simple console handler without file operations
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.WARNING)  # Only warnings/errors in tests
+    # Disable propagation and set high level to minimize noise
+    root_logger.setLevel(logging.CRITICAL)
+    root_logger.propagate = False
     
-    formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
-    )
-    console_handler.setFormatter(formatter)
-    
-    root_logger.addHandler(console_handler)
-    root_logger.setLevel(logging.WARNING)
-    
-    # Configure specific loggers used by test modules
-    test_loggers = [
-        'core.implementations.testable_position_validator',
-        'core.implementations.testable_scanner_modules',
-        'core.implementations.testable_pair_filter',
-        'core.implementations.testable_market_data_collector',
-        'core.implementations.testable_scalability_scorer',
-        'core.implementations.testable_scan_pipeline'
-    ]
-    
-    for logger_name in test_loggers:
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(logging.CRITICAL)  # Only critical errors
-        # Remove any existing handlers
+    # Get all existing loggers and clean them
+    existing_loggers = [logging.getLogger(name) for name in logging.Logger.manager.loggerDict]
+    for logger in existing_loggers:
+        logger.setLevel(logging.CRITICAL)
+        logger.propagate = False
+        # Remove all handlers
         for handler in logger.handlers[:]:
             try:
                 logger.removeHandler(handler)
                 handler.close()
             except Exception:
                 pass
+    
+    # Add single null handler to root to prevent any output
+    null_handler = logging.NullHandler()
+    root_logger.addHandler(null_handler)
+    
+    # Override any future logger creation to be safe
+    def safe_getLogger(name=None):
+        logger = original_getLogger(name) if name else original_getLogger()
+        logger.setLevel(logging.CRITICAL)
+        logger.propagate = False
+        # Remove any handlers that might get added
+        for handler in logger.handlers[:]:
+            if not isinstance(handler, logging.NullHandler):
+                try:
+                    logger.removeHandler(handler)
+                    handler.close()
+                except Exception:
+                    pass
+        if not logger.handlers:
+            logger.addHandler(logging.NullHandler())
+        return logger
+    
+    # Store original before monkey patching
+    original_getLogger = logging.getLogger
+    # Monkey patch logging.getLogger to always return safe logger
+    logging.getLogger = safe_getLogger
+    
+    # Store original for cleanup
+    configure_test_logging._original_getLogger = original_getLogger
 
 
 @pytest.fixture
