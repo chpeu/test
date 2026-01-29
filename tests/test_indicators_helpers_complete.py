@@ -393,9 +393,11 @@ class TestBuildIndicatorsFromAnalysis:
         result = build_indicators_from_analysis("not a dict", '1m')
         assert result == {}
         
-        # Test avec dict vide
+        # Test avec dict vide - retourne un dict avec toutes les clés indicators à None
         result = build_indicators_from_analysis({}, '1m')
-        assert result == {}
+        assert isinstance(result, dict)
+        assert len(result) == 25  # Nombre de champs dans INDICATOR_FIELDS_1M
+        assert all(value is None for value in result.values())
 
     def test_build_indicators_from_analysis_no_logger(self):
         """Test sans logger"""

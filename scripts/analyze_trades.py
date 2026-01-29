@@ -18,7 +18,11 @@ FROM trades
 WHERE datetime(timestamp) >= datetime('now', '-8 hours')
 ''')
 r = c.fetchone()
-total, wins, pnl, avg_conf, min_ts, max_ts = r
+if r and len(r) == 6:
+    total, wins, pnl, avg_conf, min_ts, max_ts = r
+else:
+    # Pas de résultats, valeurs par défaut
+    total, wins, pnl, avg_conf, min_ts, max_ts = 0, 0, 0, 0, None, None
 print(f'=== TOUS LES TRADES (8h) ===')
 print(f'Total: {total} | Wins: {wins or 0}')
 if total and total > 0:

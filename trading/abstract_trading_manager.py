@@ -587,7 +587,8 @@ class AbstractTradingManager(ABC):
                 'winrate': 0,
                 'profit_factor': 0,
                 'total_pnl': 0,
-                'capital': self.capital
+                'capital': self.capital,
+                'roi': 0
             }
         
         total_trades = len(self.closed_trades)

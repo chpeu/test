@@ -432,8 +432,11 @@ class TestRoutesWebsocketStats:
         """Test récupération stats WebSocket"""
         try:
             from api.routes.websocket_stats import get_websocket_stats
-            stats = get_websocket_stats()
-            assert isinstance(stats, dict)
+            response = asyncio.run(get_websocket_stats())
+            assert response is not None
+            payload = json.loads(response.body)
+            assert isinstance(payload, dict)
+            assert 'active_connections' in payload
         except (ImportError, AttributeError):
             pytest.skip("Fonction get_websocket_stats non disponible")
 

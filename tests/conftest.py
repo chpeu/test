@@ -51,6 +51,15 @@ _disable_file_logging()
 @pytest.fixture(scope="session", autouse=True)
 def configure_test_logging():
     """Configure safe logging for ALL tests - completely disable file operations"""
+
+    def _safe_close_handler(handler):
+        try:
+            if isinstance(handler, logging.StreamHandler):
+                return
+            if hasattr(handler, 'close'):
+                handler.close()
+        except Exception:
+            pass
     
     # GLOBAL: Disable all existing loggers and handlers
     root_logger = logging.getLogger()
@@ -59,8 +68,7 @@ def configure_test_logging():
     for handler in root_logger.handlers[:]:
         try:
             root_logger.removeHandler(handler)
-            if hasattr(handler, 'close'):
-                handler.close()
+            _safe_close_handler(handler)
         except Exception:
             pass
     
@@ -80,8 +88,7 @@ def configure_test_logging():
             for handler in logger.handlers[:]:
                 try:
                     logger.removeHandler(handler)
-                    if hasattr(handler, 'close'):
-                        handler.close()
+                    _safe_close_handler(handler)
                 except Exception:
                     pass
         except Exception:
@@ -102,8 +109,7 @@ def configure_test_logging():
             if not isinstance(handler, logging.NullHandler):
                 try:
                     logger.removeHandler(handler)
-                    if hasattr(handler, 'close'):
-                        handler.close()
+                    _safe_close_handler(handler)
                 except Exception:
                     pass
         if not logger.handlers:

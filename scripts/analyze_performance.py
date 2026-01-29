@@ -86,8 +86,8 @@ print('\n' + '='*70)
 print('RESUME STATISTIQUE')
 print('='*70)
 
-winrate = (wins / len(rows) * 100) if rows else 0
-avg_pnl = total_pnl_pct / len(rows) if rows else 0
+winrate = (wins / len(rows) * 100) if rows and len(rows) > 0 else 0
+avg_pnl = total_pnl_pct / len(rows) if rows and len(rows) > 0 else 0
 
 print(f'  Total trades:        {len(rows)}')
 print(f'  Wins / Losses:       {wins} / {losses}')
