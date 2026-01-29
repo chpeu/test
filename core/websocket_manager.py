@@ -476,8 +476,10 @@ class WebSocketManager:
             # 🔥 OPTIMISATION: Envoyer en parallèle avec asyncio.gather
             async def send_to_connection(connection):
                 try:
-                    await connection.send_text(message_json)
+                    await asyncio.wait_for(connection.send_text(message_json), timeout=3.0)
                     return None  # Succès
+                except asyncio.TimeoutError:
+                    return connection  # Timeout - nettoyer connexion
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur emit room {room}: {e}")
                     return connection  # Échec

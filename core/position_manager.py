@@ -2809,7 +2809,8 @@ class PositionManager:
                         # Calculer le % à vendre pour ce niveau
                         level_pct = level_result['size_pct'] * 100  # Convertir en %
 
-                        escalier_order_result = self.live_order_manager.close_position(
+                        escalier_order_result = await asyncio.to_thread(
+                            self.live_order_manager.close_position,
                             symbol=self.active_position.symbol,
                             direction=self.active_position.direction,
                             entry_price=self.active_position.entry,
@@ -2977,7 +2978,8 @@ class PositionManager:
                 partial_pnl_usdt = None
                 if self.live_order_manager:
                     try:
-                        order_result = self.live_order_manager.close_position(
+                        order_result = await asyncio.to_thread(
+                            self.live_order_manager.close_position,
                             symbol=self.active_position.symbol,
                             direction=self.active_position.direction,
                             entry_price=self.active_position.entry,

@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769702577.3302512,
+  "timestamp": 1769709411.4780118,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -100,6 +100,46 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "OP_USDT": {
+      "symbol": "OP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "S_USDT": {
+      "symbol": "S_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "FARTCOIN_USDT": {
+      "symbol": "FARTCOIN_USDT",
+      "min_vol": 1.0,
+      "max_vol": 195000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 10.0
+    },
+    "XLM_USDT": {
+      "symbol": "XLM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 310000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
     }
   }
 }

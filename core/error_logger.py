@@ -7,11 +7,45 @@ import logging
 import traceback
 from typing import Optional, Dict, Any
 from functools import wraps
+import queue
+import threading
 
 logger = logging.getLogger(__name__)
 
 
-def log_error_to_db(
+_error_log_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue(maxsize=1000)
+_error_log_worker_started = False
+_error_log_worker_lock = threading.Lock()
+
+
+def _ensure_error_log_worker_started() -> None:
+    global _error_log_worker_started
+    if _error_log_worker_started:
+        return
+    with _error_log_worker_lock:
+        if _error_log_worker_started:
+            return
+
+        def _worker():
+            while True:
+                payload = _error_log_queue.get()
+                try:
+                    if isinstance(payload, dict):
+                        _log_error_to_db_sync(**payload)
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        _error_log_queue.task_done()
+                    except Exception:
+                        pass
+
+        thread = threading.Thread(target=_worker, name="error_logger_db_worker", daemon=True)
+        thread.start()
+        _error_log_worker_started = True
+
+
+def _log_error_to_db_sync(
     error_type: str,
     error_message: str,
     error_stack: Optional[str] = None,
@@ -42,6 +76,29 @@ def log_error_to_db(
             )
     except Exception as e:
         logger.debug(f"Impossible de logger l'erreur vers DB: {e}")
+
+
+def log_error_to_db(
+    error_type: str,
+    error_message: str,
+    error_stack: Optional[str] = None,
+    symbol: Optional[str] = None,
+    context: Optional[Dict] = None
+):
+    try:
+        _ensure_error_log_worker_started()
+        payload: Dict[str, Any] = {
+            'error_type': error_type,
+            'error_message': error_message,
+            'error_stack': error_stack,
+            'symbol': symbol,
+            'context': context
+        }
+        _error_log_queue.put_nowait(payload)
+    except queue.Full:
+        pass
+    except Exception:
+        pass
 
 
 def with_error_logging(error_type: str = "ERROR", symbol_arg: Optional[str] = None):
@@ -115,6 +172,13 @@ class ErrorLoggerHandler(logging.Handler):
     def emit(self, record: logging.LogRecord):
         """Appelé à chaque log >= level"""
         try:
+            try:
+                record_name = getattr(record, 'name', '') or ''
+                if record_name.startswith('core.postgresql_datalogger') or record_name.startswith('core.error_logger'):
+                    return
+            except Exception:
+                pass
+
             # Mapper les niveaux Python vers nos types
             level_map = {
                 logging.CRITICAL: 'CRITICAL',

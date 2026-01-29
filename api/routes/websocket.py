@@ -192,7 +192,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             conn_data['message_out_count'] = int(conn_data.get('message_out_count', 0)) + 1
                             conn_data['bytes_out'] = int(conn_data.get('bytes_out', 0)) + len(ping_json)
                         
-                        await websocket.send_text(ping_json)
+                        try:
+                            await asyncio.wait_for(websocket.send_text(ping_json), timeout=3.0)
+                        except asyncio.TimeoutError:
+                            logger.warning("⚠️ [WS-PING-ERROR] Timeout envoi ping (3s) - fermeture connexion")
+                            try:
+                                await websocket.close(code=1000, reason="Ping send timeout")
+                            except Exception:
+                                pass
+                            break
                         continue
                         
                     except Exception as e:

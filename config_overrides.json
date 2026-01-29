@@ -206,7 +206,5 @@
   "max_spread_pct_atr": 0.06,
   "trailing_mfe_lock_in_pct": 0.04,
   "partial_tp_be_lock_in_pct": 0.03,
-  "trailing_pnl_cap": 1.45,
-  "test_key": "test_value",
-  "number": 42
+  "trailing_pnl_cap": 1.45
 }
