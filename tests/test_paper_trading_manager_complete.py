@@ -248,6 +248,7 @@ class TestHooks:
             'exit': 51500.0,
             'reason': 'TP_HIT',
             'gross_pnl_pct': 3.0,
+            'net_pnl_pct': 2.8,  # Ajout de la clé manquante
             'net_pnl_usdt': 150.0,
             'fees': 5.0,
             'slippage': 2.0
@@ -271,7 +272,15 @@ class TestHooks:
         """Test hook fermeture position avec erreur logger"""
         manager_with_analytics.analytics_logger.log_trade.side_effect = Exception("Logger Error")
         
-        result = {'exit': 49500.0, 'reason': 'SL_HIT'}
+        result = {
+            'exit': 49500.0, 
+            'reason': 'SL_HIT',
+            'gross_pnl_pct': -1.0,
+            'net_pnl_pct': -1.2,
+            'net_pnl_usdt': -50.0,
+            'fees': 2.0,
+            'slippage': 1.0
+        }
         
         # Ne doit pas planter
         manager_with_analytics.on_position_closed(sample_position, result)
@@ -282,7 +291,15 @@ class TestHooks:
         manager = PaperTradingManager(analytics_db=mock_db)
         # analytics_logger n'est pas défini, doit fallback
         
-        result = {'exit': 48000.0, 'reason': 'SL_HIT'}
+        result = {
+            'exit': 48000.0, 
+            'reason': 'SL_HIT',
+            'gross_pnl_pct': -4.0,
+            'net_pnl_pct': -4.2,
+            'net_pnl_usdt': -200.0,
+            'fees': 3.0,
+            'slippage': 2.0
+        }
         
         manager.on_position_closed(sample_position, result)
         

@@ -21,8 +21,9 @@ class TestAnalysisScripts:
         """Test import analyze_performance"""
         try:
             with patch('sys.argv', ['analyze_performance.py']):
-                import scripts.analyze_performance
-                assert True
+                with patch('psycopg2.connect'), patch('os.getenv', return_value='test'):
+                    import scripts.analyze_performance
+                    assert True
         except (ImportError, SystemExit):
             pytest.skip("Script analyze_performance non disponible")
 
@@ -30,8 +31,9 @@ class TestAnalysisScripts:
         """Test import analyze_trades"""
         try:
             with patch('sys.argv', ['analyze_trades.py']):
-                import scripts.analyze_trades
-                assert True
+                with patch('sqlite3.connect'), patch('os.path.exists', return_value=True):
+                    import scripts.analyze_trades
+                    assert True
         except (ImportError, SystemExit):
             pytest.skip("Script analyze_trades non disponible")
 
@@ -110,8 +112,9 @@ class TestCheckScripts:
         """Test import check_live_config"""
         try:
             with patch('sys.argv', ['check_live_config.py']):
-                import scripts.check_live_config
-                assert True
+                with patch('builtins.open', create=True), patch('os.path.exists', return_value=True):
+                    import scripts.check_live_config
+                    assert True
         except (ImportError, SystemExit):
             pytest.skip("Script check_live_config non disponible")
 

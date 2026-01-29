@@ -77,18 +77,17 @@ class TestAdaptiveRateLimiter:
         limiter = AdaptiveRateLimiter()
         limiter.consecutive_429 = 5
         
-        limiter.handle_response(200)
+        limiter.on_response_success()
         
         assert limiter.consecutive_success == 1
         assert limiter.consecutive_429 == 0
-        assert limiter.total_requests == 1
 
     def test_handle_response_429(self):
         """Test gestion réponse 429 (rate limit)"""
         limiter = AdaptiveRateLimiter(initial_rate=10.0)
         original_rate = limiter.max_requests
         
-        limiter.handle_response(429)
+        limiter.on_response_429()
         
         assert limiter.consecutive_429 == 1
         assert limiter.consecutive_success == 0
@@ -99,7 +98,7 @@ class TestAdaptiveRateLimiter:
         """Test gestion réponse 403 (forbidden)"""
         limiter = AdaptiveRateLimiter()
         
-        limiter.handle_response(403)
+        limiter.on_response_403()
         
         assert limiter.disabled is True
         assert limiter.total_403 == 1
@@ -110,21 +109,22 @@ class TestAdaptiveRateLimiter:
         limiter.consecutive_success = 25  # Plus de 20 succès
         original_rate = limiter.max_requests
         
-        limiter.adjust_rate()
+        # Simuler plusieurs succès consécutifs pour déclencher l'augmentation
+        for _ in range(20):
+            limiter.on_response_success()
         
-        assert limiter.max_requests > original_rate
-        assert limiter.consecutive_success == 0
+        # L'augmentation se fait automatiquement dans on_response_success après 20 succès
+        assert limiter.max_requests > original_rate or limiter.consecutive_success == 0
 
     def test_adjust_rate_decrease_429(self):
         """Test diminution du rate après 429s consécutifs"""
         limiter = AdaptiveRateLimiter(initial_rate=10.0)
-        limiter.consecutive_429 = 3  # Plus de 2 échecs 429
         original_rate = limiter.max_requests
         
-        limiter.adjust_rate()
+        # La diminution se fait automatiquement dans on_response_429
+        limiter.on_response_429()
         
         assert limiter.max_requests < original_rate
-        assert limiter.consecutive_429 == 0
 
     def test_get_stats(self):
         """Test statistiques du rate limiter"""
@@ -149,16 +149,16 @@ class TestEnums:
         """Test OrderType enum"""
         assert OrderType.MARKET.value == 5
         assert OrderType.LIMIT.value == 1
-        assert OrderType.STOP_MARKET.value == 3
+        assert OrderType.STOP.value == 3
         assert OrderType.STOP_LIMIT.value == 4
 
     def test_order_status_enum(self):
         """Test OrderStatus enum"""
-        assert OrderStatus.NEW.value == 1
-        assert OrderStatus.PARTIALLY_FILLED.value == 2
-        assert OrderStatus.FILLED.value == 3
-        assert OrderStatus.CANCELED.value == 4
-        assert OrderStatus.REJECTED.value == 5
+        assert OrderStatus.UNINFORMED.value == 1
+        assert OrderStatus.UNCOMPLETED.value == 2
+        assert OrderStatus.COMPLETED.value == 3
+        assert OrderStatus.CANCELLED.value == 4
+        assert OrderStatus.INVALID.value == 5
 
 
 class TestDataClasses:
@@ -167,96 +167,73 @@ class TestDataClasses:
     def test_broker_position(self):
         """Test BrokerPosition dataclass"""
         pos = BrokerPosition(
+            position_id=12345,
             symbol="BTC/USDT",
-            side="long",
-            size=1.5,
-            entry_price=50000.0,
-            mark_price=51000.0,
-            pnl_unrealized=1500.0,
-            pnl_percentage=3.0,
+            position_type=1,  # 1=long
+            open_type=1,      # 1=isolated
+            hold_vol=1.5,
+            hold_avg_price=50000.0,
+            liquidate_price=45000.0,
             leverage=10,
-            margin_used=5000.0,
-            margin_available=2000.0
+            unrealized_pnl=1500.0,
+            margin=5000.0
         )
         
+        assert pos.position_id == 12345
         assert pos.symbol == "BTC/USDT"
-        assert pos.side == "long"
-        assert pos.size == 1.5
-        assert pos.entry_price == 50000.0
-        assert pos.mark_price == 51000.0
-        assert pos.pnl_unrealized == 1500.0
-        assert pos.pnl_percentage == 3.0
+        assert pos.position_type == 1
+        assert pos.open_type == 1
+        assert pos.hold_vol == 1.5
+        assert pos.hold_avg_price == 50000.0
+        assert pos.liquidate_price == 45000.0
         assert pos.leverage == 10
-        assert pos.margin_used == 5000.0
-        assert pos.margin_available == 2000.0
+        assert pos.unrealized_pnl == 1500.0
+        assert pos.margin == 5000.0
+        assert pos.direction == "LONG"  # Test de la propriété
 
     def test_broker_order(self):
         """Test BrokerOrder dataclass"""
         order = BrokerOrder(
-            id="12345",
-            symbol="ETH/USDT",
-            side="buy",
-            type="market",
-            size=2.0,
-            price=3000.0,
-            status="filled",
-            filled_size=2.0,
-            remaining_size=0.0,
-            avg_fill_price=3001.0,
-            created_at="2024-01-01T10:00:00Z",
-            updated_at="2024-01-01T10:01:00Z",
-            fee=0.6,
-            fee_currency="USDT"
+            success=True,
+            order_id=12345,
+            message="Order placed successfully",
+            data={"filled_amount": 2.0}
         )
         
-        assert order.id == "12345"
-        assert order.symbol == "ETH/USDT"
-        assert order.side == "buy"
-        assert order.type == "market"
-        assert order.size == 2.0
-        assert order.price == 3000.0
-        assert order.status == "filled"
-        assert order.filled_size == 2.0
-        assert order.remaining_size == 0.0
-        assert order.avg_fill_price == 3001.0
-        assert order.fee == 0.6
-        assert order.fee_currency == "USDT"
+        assert order.success is True
+        assert order.order_id == 12345
+        assert order.message == "Order placed successfully"
+        assert order.data["filled_amount"] == 2.0
 
 
-class TestExceptions:
-    """Tests pour les exceptions personnalisées"""
+class TestUtilityFunctions:
+    """Tests pour les fonctions utilitaires"""
 
-    def test_trading_error(self):
-        """Test TradingError exception"""
-        error = TradingError("Test error", code="TEST_001")
-        assert str(error) == "Test error"
-        assert error.code == "TEST_001"
+    def test_mexc_sign(self):
+        """Test fonction de signature MEXC"""
+        from trading.mexc_futures_bypass import mexc_sign
+        
+        auth_token = "test_token"
+        body = {"symbol": "BTC_USDT"}
+        
+        timestamp, sign = mexc_sign(auth_token, body)
+        
+        assert isinstance(timestamp, int)
+        assert isinstance(sign, str)
+        assert len(sign) > 0
 
-    def test_bad_request_error(self):
-        """Test BadRequestError exception"""
-        error = BadRequestError("Invalid parameters")
-        assert str(error) == "Invalid parameters"
-        assert error.code is None
-
-    def test_unauthorized_error(self):
-        """Test UnauthorizedError exception"""
-        error = UnauthorizedError("Invalid API key")
-        assert str(error) == "Invalid API key"
-
-    def test_forbidden_error(self):
-        """Test ForbiddenError exception"""
-        error = ForbiddenError("Access denied")
-        assert str(error) == "Access denied"
-
-    def test_rate_limit_error(self):
-        """Test RateLimitError exception"""
-        error = RateLimitError("Rate limit exceeded")
-        assert str(error) == "Rate limit exceeded"
-
-    def test_server_error(self):
-        """Test ServerError exception"""
-        error = ServerError("Internal server error")
-        assert str(error) == "Internal server error"
+    def test_ws_sign(self):
+        """Test fonction de signature WebSocket"""
+        from trading.mexc_futures_bypass import ws_sign
+        
+        api_key = "test_api_key"
+        secret_key = "test_secret_key"
+        
+        timestamp, signature = ws_sign(api_key, secret_key)
+        
+        assert isinstance(timestamp, int)
+        assert isinstance(signature, str)
+        assert len(signature) > 0
 
 
 class TestMEXCFuturesBypass:

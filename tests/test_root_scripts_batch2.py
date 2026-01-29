@@ -44,21 +44,34 @@ class TestBalanceAll:
         """Test import du script balance_all"""
         try:
             with patch('sys.argv', ['balance_all.py']):
-                import balance_all
-                assert True
+                with patch('os.path.exists', return_value=True):
+                    with patch('builtins.open', create=True):
+                        with patch('os.getenv') as mock_getenv:
+                            mock_getenv.side_effect = lambda key, default=None: {
+                                'POSTGRES_HOST': 'localhost',
+                                'POSTGRES_PORT': '5432',
+                                'POSTGRES_DB': 'test_db',
+                                'POSTGRES_USER': 'test_user',
+                                'POSTGRES_PASSWORD': 'test_pass'
+                            }.get(key, default)
+                            with patch('sqlalchemy.create_engine'):
+                                import balance_all
+                                assert True
         except (ImportError, SystemExit):
             pytest.skip("Script balance_all non disponible")
 
     def test_balance_all_get_balances(self):
         """Test récupération de tous les balances"""
         try:
-            from balance_all import get_all_balances
-            with patch('ccxt.mexc') as mock_exchange:
-                mock_exchange.return_value.fetch_balance.return_value = {
-                    'USDT': {'free': 1000, 'used': 0, 'total': 1000}
-                }
-                balances = get_all_balances()
-                assert isinstance(balances, dict)
+            with patch('os.path.exists', return_value=True):
+                with patch('builtins.open', create=True):
+                    from balance_all import get_all_balances
+                    with patch('ccxt.mexc') as mock_exchange:
+                        mock_exchange.return_value.fetch_balance.return_value = {
+                            'USDT': {'free': 1000, 'used': 0, 'total': 1000}
+                        }
+                        balances = get_all_balances()
+                        assert isinstance(balances, dict)
         except (ImportError, AttributeError):
             pytest.skip("Fonction get_all_balances non disponible")
 

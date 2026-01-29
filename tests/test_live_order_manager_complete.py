@@ -125,20 +125,17 @@ class TestLiveOrderManagerInit:
         mock_exchange.set_sandbox_mode.assert_called_once_with(True)
 
     @patch('ccxt.mexc')
-    def test_live_order_manager_testnet_warning(self, mock_mexc):
+    @patch('trading.live_order_manager.logger')
+    def test_live_order_manager_testnet_warning(self, mock_logger, mock_mexc):
         """Test warning pour testnet"""
         mock_exchange = Mock()
         mock_mexc.return_value = mock_exchange
         
-        with patch('logging.getLogger') as mock_logger:
-            mock_log = Mock()
-            mock_logger.return_value = mock_log
-            
-            manager = LiveOrderManager("key", "secret", testnet=True)
-            
-            # Vérifier warning loggé
-            mock_log.warning.assert_called_once()
-            assert "testnet non disponible" in str(mock_log.warning.call_args)
+        manager = LiveOrderManager("key", "secret", testnet=True)
+        
+        # Vérifier warning loggé
+        mock_logger.warning.assert_called_once()
+        assert "testnet non disponible" in str(mock_logger.warning.call_args)
 
 
 class TestOpenPosition:
@@ -384,7 +381,7 @@ class TestClosePosition:
             assert result.order_id == 'close_12345'
             assert result.filled_price == 50950.0
             assert result.filled_amount == 0.002
-            assert result.actual_pnl_usdt == 1.9  # (50950-50000)*0.002
+            assert result.actual_pnl_usdt == pytest.approx(1.9, abs=0.001)  # (50950-50000)*0.002
             assert result.actual_fees_usdt == 2.0
             assert result.actual_slippage_pct == pytest.approx(0.098, abs=0.001)  # abs((50950-51000)/51000*100)
             assert result.balance_after == 1050.0
@@ -661,14 +658,17 @@ class TestEdgeCases:
         with patch('ccxt.mexc'):
             manager = LiveOrderManager("key", "secret", dry_run=True)
             
-            # Devrait gérer division par zéro
-            with pytest.raises(ZeroDivisionError):
-                manager.open_position(
-                    symbol='BTC/USDT',
-                    direction='LONG',
-                    entry_price=0.0,  # Prix invalide
-                    size_usdt=100.0
-                )
+            # Division par zéro est gérée et retourne success=False
+            result = manager.open_position(
+                symbol='BTC/USDT',
+                direction='LONG',
+                entry_price=0.0,  # Prix invalide - cause division par zéro
+                size_usdt=100.0
+            )
+            
+            # Vérifier que l'erreur est gérée correctement
+            assert result.success is False
+            assert "division by zero" in result.error_message
 
     def test_close_position_zero_amount(self):
         """Test fermeture position avec quantité zéro"""
