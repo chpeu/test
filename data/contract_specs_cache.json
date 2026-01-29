@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769683650.2291906,
+  "timestamp": 1769702577.3302512,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -8,7 +8,8 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "PUMPFUN_USDT": {
       "symbol": "PUMPFUN_USDT",
@@ -17,7 +18,8 @@
       "vol_unit": 1.0,
       "price_unit": 1e-06,
       "price_precision": 0,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "DOGE_USDT": {
       "symbol": "DOGE_USDT",
@@ -26,7 +28,8 @@
       "vol_unit": 1.0,
       "price_unit": 1e-05,
       "price_precision": 0,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "SUI_USDT": {
       "symbol": "SUI_USDT",
@@ -35,7 +38,8 @@
       "vol_unit": 1.0,
       "price_unit": 0.0001,
       "price_precision": 4,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "SOL_USDT": {
       "symbol": "SOL_USDT",
@@ -44,7 +48,8 @@
       "vol_unit": 1.0,
       "price_unit": 0.01,
       "price_precision": 2,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "SHIB_USDT": {
       "symbol": "SHIB_USDT",
@@ -53,7 +58,8 @@
       "vol_unit": 1.0,
       "price_unit": 1e-09,
       "price_precision": 0,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "UNI_USDT": {
       "symbol": "UNI_USDT",
@@ -62,7 +68,8 @@
       "vol_unit": 1.0,
       "price_unit": 0.001,
       "price_precision": 3,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
     },
     "PENGU_USDT": {
       "symbol": "PENGU_USDT",
@@ -71,7 +78,28 @@
       "vol_unit": 1.0,
       "price_unit": 1e-06,
       "price_precision": 0,
-      "vol_precision": 1
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "GRT_USDT": {
+      "symbol": "GRT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1300000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "H_USDT": {
+      "symbol": "H_USDT",
+      "min_vol": 1.0,
+      "max_vol": 200000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }

@@ -24,7 +24,7 @@ class MEXCTokenExtractor:
     def __init__(self, config_file="mexc_config.json"):
         self.config_file = config_file
         self.config = self.load_config()
-        self.token_file = "mexc_tokens.json"
+        self.token_file = "mexc_tokens.json"  # Sauvegarde dans le même répertoire que le script
         
     def load_config(self):
         """Charge la configuration"""

@@ -12,8 +12,8 @@ from datetime import datetime
 
 class MEXCTokenSyncer:
     def __init__(self):
-        self.token_file = "mexc_tokens.json"
-        self.env_file = "../.env"
+        self.token_file = "tools/mexc_tokens.json"
+        self.env_file = ".env"
         
     def extract_token_from_composite(self, token_composite):
         """Extrait le token simple d'un token composite JSON"""
@@ -92,8 +92,38 @@ class MEXCTokenSyncer:
             print(f"ERREUR mise a jour .env: {e}")
             return False
     
+    def update_config_live_persistent(self, new_token):
+        """Met a jour le token dans config_live_persistent.json"""
+        config_file = "config_live_persistent.json"
+        
+        if not os.path.exists(config_file):
+            print(f"AVERTISSEMENT: {config_file} non trouve - ignore")
+            return True
+        
+        try:
+            # Lire le fichier JSON
+            with open(config_file, 'r') as f:
+                config_data = json.load(f)
+            
+            # Mettre a jour le token
+            old_token = config_data.get('browser_token_mexc', 'N/A')
+            config_data['browser_token_mexc'] = new_token
+            
+            # Reecrire le fichier JSON
+            with open(config_file, 'w') as f:
+                json.dump(config_data, f, indent=2)
+            
+            print(f"✅ Token mis a jour dans {config_file}")
+            print(f"   Ancien: {old_token[:20] if old_token != 'N/A' else 'N/A'}...")
+            print(f"   Nouveau: {new_token[:20]}...")
+            return True
+            
+        except Exception as e:
+            print(f"ERREUR mise a jour {config_file}: {e}")
+            return False
+    
     def sync(self):
-        """Synchronise le token depuis mexc_tokens.json vers .env"""
+        """Synchronise le token depuis mexc_tokens.json vers .env et config_live_persistent.json"""
         print("=== Synchronisation Token MEXC ===")
         
         # Recuperer le token actuel
@@ -102,15 +132,24 @@ class MEXCTokenSyncer:
             return False
         
         # Mettre a jour .env
-        success = self.update_env_file(current_token)
+        env_success = self.update_env_file(current_token)
         
-        if success:
+        # Mettre a jour config_live_persistent.json
+        config_success = self.update_config_live_persistent(current_token)
+        
+        overall_success = env_success and config_success
+        
+        if overall_success:
             print("✅ Synchronisation terminee avec succes")
             print("⚠️  REDEMARREZ le bot pour prendre en compte le nouveau token")
         else:
             print("❌ Echec de la synchronisation")
+            if not env_success:
+                print("   - .env: ECHEC")
+            if not config_success:
+                print("   - config_live_persistent.json: ECHEC")
         
-        return success
+        return overall_success
 
 def main():
     syncer = MEXCTokenSyncer()
