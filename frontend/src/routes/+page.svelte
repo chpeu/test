@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { initWebSocket, getWebSocket } from '$lib/utils/websocket';
 	type BidirectionalWebSocket = ReturnType<typeof initWebSocket>;
 	
@@ -209,6 +209,8 @@
 	
 	// 🔥 FIX: Session ID pour détecter les redémarrages du backend
 	let currentSessionId: string | null = null;
+	let stateRefreshInterval: ReturnType<typeof setInterval> | null = null;
+	const STATE_REFRESH_MS = 5000;
 
 	const tabs = [
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
@@ -318,6 +320,29 @@
 			}, 2000);
 		}
 	});
+
+	onDestroy(() => {
+		stopStateAutoRefresh();
+	});
+
+	function startStateAutoRefresh() {
+		stopStateAutoRefresh();
+		stateRefreshInterval = setInterval(() => {
+			if (!backendConnected) {
+				return;
+			}
+			loadInitialState().catch(err => {
+				console.error('Error refreshing state:', err);
+			});
+		}, STATE_REFRESH_MS);
+	}
+
+	function stopStateAutoRefresh() {
+		if (stateRefreshInterval) {
+			clearInterval(stateRefreshInterval);
+			stateRefreshInterval = null;
+		}
+	}
 	
 	function setupWebSocketListeners(ws: BidirectionalWebSocket) {
 		// 🔥 MIGRATION COMPLÈTE: Écouter les événements WebSocket pour mises à jour temps réel
@@ -501,6 +526,7 @@
 				} else {
 					setBotPhase('arrêt');
 				}
+				startStateAutoRefresh();
 			} catch (err) {
 				console.error('Error loading initial state on connect:', err);
 			}
@@ -509,6 +535,7 @@
 		ws.on('disconnect', async () => {
 			console.warn('⚠️ WebSocket déconnecté');
 			backendConnected = false;
+			stopStateAutoRefresh();
 			// 🔥 FIX: NE PAS effacer l'historique lors de la déconnexion
 			// L'historique doit persister tant que le backend tourne
 			// On ne clear que si le backend émet explicitement 'reset_session'
@@ -522,8 +549,14 @@
 	async function processStateData(data: any) {
 		// 🔥 FIX: Mettre à jour l'état du bot dans BotControls via l'API status
 		// (BotControls utilise le store isScanning mis à jour via WebSocket natif)
-		if (data.is_scanning !== undefined) {
-			// L'état sera mis à jour via WebSocket natif ou le composant BotControls
+		if (data.is_scanning !== undefined || data.scanner?.is_scanning !== undefined) {
+			const isScanningValue = data.is_scanning ?? data.scanner?.is_scanning;
+			const { startScanning, stopScanning } = await import('$lib/stores/scanner');
+			if (isScanningValue) {
+				startScanning();
+			} else {
+				stopScanning();
+			}
 		}
 		
 		// 🔥 FIX: Détecter changement de session (redémarrage backend)
@@ -576,6 +609,12 @@
 			};
 			updateStats(cleanStats);
 		}
+
+		const topPairs = data.top_pairs || data.scanner?.top_pairs;
+		if (Array.isArray(topPairs)) {
+			const { updateTopPairs } = await import('$lib/stores/scanner');
+			updateTopPairs(topPairs);
+		}
 	}
 
 	async function loadInitialState() {
@@ -604,6 +643,9 @@
 			
 			// Traiter les autres données
 			await processStateData(stateData);
+			if (backendConnected) {
+				startStateAutoRefresh();
+			}
 		} catch (err) {
 			console.error('Error loading initial state:', err);
 			backendError = err.message || 'Backend not reachable';

@@ -6,7 +6,7 @@
       "description": "Utiliser TestablePositionManager au lieu de PositionManager legacy",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-29T12:42:57.322589",
+      "updated_at": "2026-01-30T06:51:59.783510",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": true,
@@ -66,7 +66,7 @@
       "description": "Comparer r\u00e9sultats legacy vs nouveau",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-29T12:42:57.325609",
+      "updated_at": "2026-01-30T06:51:59.786509",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": false,
@@ -90,7 +90,7 @@
       "description": "Monitoring des m\u00e9triques et performances",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-29T12:42:57.268628",
+      "updated_at": "2026-01-30T06:51:59.728382",
       "environment": "all",
       "dependencies": [],
       "rollback_on_error": false,
@@ -119,7 +119,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.225686"
+          "timestamp": "2026-01-30T06:51:59.684189"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -128,7 +128,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.231319"
+          "timestamp": "2026-01-30T06:51:59.690263"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -137,7 +137,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-29T12:42:57.234828"
+          "timestamp": "2026-01-30T06:51:59.693776"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -146,7 +146,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.240395"
+          "timestamp": "2026-01-30T06:51:59.699916"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -155,7 +155,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.244499"
+          "timestamp": "2026-01-30T06:51:59.704045"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -164,7 +164,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.247522"
+          "timestamp": "2026-01-30T06:51:59.708177"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -173,7 +173,7 @@
           "old_percentage": 0.0,
           "new_percentage": 50.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.254057"
+          "timestamp": "2026-01-30T06:51:59.714324"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -182,7 +182,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.273157"
+          "timestamp": "2026-01-30T06:51:59.733951"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -191,7 +191,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.278692"
+          "timestamp": "2026-01-30T06:51:59.738010"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -200,7 +200,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-29T12:42:57.281206"
+          "timestamp": "2026-01-30T06:51:59.740521"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -209,7 +209,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-29T12:42:57.285210"
+          "timestamp": "2026-01-30T06:51:59.745050"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -218,7 +218,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-29T12:42:57.288225"
+          "timestamp": "2026-01-30T06:51:59.748199"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -227,7 +227,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-29T12:42:57.291312"
+          "timestamp": "2026-01-30T06:51:59.751704"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -236,7 +236,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.293823"
+          "timestamp": "2026-01-30T06:51:59.754214"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -245,7 +245,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.298864"
+          "timestamp": "2026-01-30T06:51:59.759223"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -254,7 +254,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.302386"
+          "timestamp": "2026-01-30T06:51:59.763778"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -263,7 +263,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.305903"
+          "timestamp": "2026-01-30T06:51:59.767307"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -272,7 +272,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.309924"
+          "timestamp": "2026-01-30T06:51:59.770821"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -281,7 +281,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.313924"
+          "timestamp": "2026-01-30T06:51:59.774836"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -290,18 +290,18 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.325609"
+          "timestamp": "2026-01-30T06:51:59.786509"
         }
       ],
       "success_rate": 0.0,
       "error_rate": 1.0,
       "avg_processing_time": 0.0,
-      "last_request_id": "req_20260129_124257_3",
+      "last_request_id": "req_20260130_065159_3",
       "last_success": false,
-      "last_updated": "2026-01-29T12:42:57.288792",
+      "last_updated": "2026-01-30T06:51:59.749198",
       "performance_delta": -0.05,
       "rollout_paused": true,
-      "pause_timestamp": "2026-01-29T12:42:57.220659",
+      "pause_timestamp": "2026-01-30T06:51:59.678068",
       "rollout_history": [
         {
           "from_percentage": 0.0,
@@ -537,56 +537,16 @@
           "from_percentage": 0.0,
           "to_percentage": 10.0,
           "timestamp": "2026-01-29T12:42:57.223172"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-01-30T06:51:59.680575"
         }
       ]
     },
     "comparison_mode": {
       "changes": [
-        {
-          "flag_name": "comparison_mode",
-          "old_state": true,
-          "new_state": false,
-          "old_percentage": 0,
-          "new_percentage": 0,
-          "reason": "Test cleanup",
-          "timestamp": "2026-01-28T06:03:35.592215"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-28T06:03:35.727826"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": true,
-          "new_state": false,
-          "old_percentage": 0,
-          "new_percentage": 0,
-          "reason": "Test cleanup",
-          "timestamp": "2026-01-28T06:03:35.783658"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-28T06:03:36.188720"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-28T21:55:29.851602"
-        },
         {
           "flag_name": "comparison_mode",
           "old_state": true,
@@ -721,38 +681,56 @@
           "new_percentage": 100.0,
           "reason": "",
           "timestamp": "2026-01-29T12:42:57.317032"
-        }
-      ]
-    },
-    "monitoring_enabled": {
-      "changes": [
-        {
-          "flag_name": "monitoring_enabled",
-          "old_state": true,
-          "new_state": false,
-          "old_percentage": 0,
-          "new_percentage": 0,
-          "reason": "Test cleanup",
-          "timestamp": "2026-01-27T21:59:23.541717"
         },
         {
-          "flag_name": "monitoring_enabled",
+          "flag_name": "comparison_mode",
           "old_state": false,
           "new_state": true,
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-27T23:57:40.267465"
+          "timestamp": "2026-01-30T06:51:59.654428"
         },
         {
-          "flag_name": "monitoring_enabled",
+          "flag_name": "comparison_mode",
           "old_state": true,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Test cleanup",
+          "timestamp": "2026-01-30T06:51:59.665520"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
           "new_state": true,
-          "old_percentage": 100.0,
+          "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-27T23:57:40.336259"
+          "timestamp": "2026-01-30T06:51:59.688206"
         },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": true,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Test cleanup",
+          "timestamp": "2026-01-30T06:51:59.695777"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-30T06:51:59.776951"
+        }
+      ]
+    },
+    "monitoring_enabled": {
+      "changes": [
         {
           "flag_name": "monitoring_enabled",
           "old_state": true,
@@ -905,6 +883,33 @@
           "new_percentage": 0,
           "reason": "Test cleanup",
           "timestamp": "2026-01-29T12:42:57.270650"
+        },
+        {
+          "flag_name": "monitoring_enabled",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-30T06:51:59.656933"
+        },
+        {
+          "flag_name": "monitoring_enabled",
+          "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-01-30T06:51:59.712243"
+        },
+        {
+          "flag_name": "monitoring_enabled",
+          "old_state": true,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Test cleanup",
+          "timestamp": "2026-01-30T06:51:59.731448"
         }
       ]
     },
@@ -936,62 +941,6 @@
     }
   },
   "rollback_history": [
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.146081",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.242051",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.369798",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.606163",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.630706",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.655334",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T21:59:23.670435",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
@@ -1335,7 +1284,63 @@
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.660975",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.674555",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.693776",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.740521",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.745050",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.748199",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Metrics threshold exceeded",
+      "timestamp": "2026-01-30T06:51:59.751704",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
     }
   ],
-  "last_saved": "2026-01-29T12:42:57.325609"
+  "last_saved": "2026-01-30T06:51:59.786509"
 }

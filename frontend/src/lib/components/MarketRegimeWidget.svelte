@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { getWebSocket } from '$lib/utils/websocket';
+	import { initWebSocket } from '$lib/utils/websocket';
 
 	// Types
 	interface RegimeStatus {
@@ -35,6 +35,8 @@
 	let loading = false;
 	let error: string | null = null;
 	let refreshInterval: ReturnType<typeof setInterval>;
+	let unsubscribeRegimeChange: (() => void) | null = null;
+	let unsubscribeWsConnect: (() => void) | null = null;
 
 	// Couleurs par régime
 	const REGIME_COLORS: Record<string, { bg: string; border: string; icon: string; text: string }> = {
@@ -60,14 +62,21 @@
 		// refreshInterval = setInterval(loadRegimeStatus, 60000);
 		
 		// WebSocket listener pour changements temps réel
-		const ws = getWebSocket();
+		const ws = initWebSocket();
 		if (ws) {
-			ws.on('regime_changed', handleRegimeChange);
+			unsubscribeRegimeChange = ws.on('regime_changed', handleRegimeChange);
+			unsubscribeWsConnect = ws.on('connect', () => {
+				loadRegimeStatus().catch((err) => {
+					console.error('Erreur rechargement régime après reconnexion:', err);
+				});
+			});
 		}
 	});
 
 	onDestroy(() => {
 		if (refreshInterval) clearInterval(refreshInterval);
+		if (unsubscribeRegimeChange) unsubscribeRegimeChange();
+		if (unsubscribeWsConnect) unsubscribeWsConnect();
 	});
 
 	async function loadRegimeStatus() {

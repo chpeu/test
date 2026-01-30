@@ -39,6 +39,23 @@ class Scheduler:
     def set_scalability_refresh_callback(self, callback: Callable):
         """Définir callback pour scalability refresh (appelé toutes les 90s)"""
         self.scalability_refresh_callback = callback
+
+    def _attach_task_monitor(self, name: str, task: asyncio.Task) -> None:
+        """Ajouter un callback de monitoring pour tracer les arrêts inattendus."""
+        def _on_done(done_task: asyncio.Task) -> None:
+            try:
+                if done_task.cancelled():
+                    logger.warning(f"⚠️ Tâche '{name}' annulée")
+                    return
+                exc = done_task.exception()
+                if exc:
+                    logger.error(f"❌ Tâche '{name}' arrêtée avec erreur: {exc}", exc_info=exc)
+                else:
+                    logger.warning(f"⚠️ Tâche '{name}' terminée sans exception (arrêt inattendu)")
+            except Exception:
+                logger.error(f"❌ Erreur monitoring tâche '{name}'", exc_info=True)
+
+        task.add_done_callback(_on_done)
     
     async def _scanner_loop(self):
         """Boucle scanner - toutes les 45 secondes"""
@@ -106,16 +123,19 @@ class Scheduler:
         # Démarrer scanner loop
         if self.scanner_callback:
             self.scanner_task = asyncio.create_task(self._scanner_loop())
+            self._attach_task_monitor("scanner_loop", self.scanner_task)
             logger.info("✅ Scanner loop démarré (45s)")
         
         # Démarrer position check loop
         if self.position_check_callback:
             self.position_check_task = asyncio.create_task(self._position_check_loop())
+            self._attach_task_monitor("position_check_loop", self.position_check_task)
             logger.info("✅ Position check loop démarré (0.1s)")
         
         # Démarrer scalability refresh loop
         if self.scalability_refresh_callback:
             self.scalability_refresh_task = asyncio.create_task(self._scalability_refresh_loop())
+            self._attach_task_monitor("scalability_refresh_loop", self.scalability_refresh_task)
             logger.info("✅ Scalability refresh loop démarré (90s)")
     
     def stop(self):

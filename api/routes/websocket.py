@@ -235,7 +235,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     params = message.get('params', {})
                     
                     # 🔍 DIAGNOSTIC: Tracer toutes les commandes reçues
-                    logger.info(f"🔍 [WS-COMMAND] Commande reçue: '{command}' avec params: {params}")
+                    connection_id = None
+                    client_id = None
+                    if conn_data is not None:
+                        connection_id = conn_data.get('connection_id')
+                        client_id = conn_data.get('client_id')
+                    logger.info(
+                        "🔍 [WS-COMMAND] Commande reçue: '%s' params=%s client_id=%s conn_id=%s",
+                        command,
+                        params,
+                        client_id,
+                        connection_id
+                    )
                     
                     if conn_data is not None:
                         conn_data['last_message_type'] = f"in:command:{command}"
@@ -510,7 +521,7 @@ async def handle_client_command(command: str, params: dict):
     elif command == 'reboot_backend':
         from api.routes.dashboard import initiate_backend_reboot
         reason = params.get('reason', 'manual')
-        return await initiate_backend_reboot(reason=reason)
+        return await initiate_backend_reboot(reason=reason, source='ws')
 
     elif command == 'log_config':
         # Simple log pas besoin de modulariser pour l'instant

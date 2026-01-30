@@ -63,7 +63,43 @@ def get_dashboard_stats() -> Dict[str, Any]:
             return getattr(_app_state, "stats") or {}
     except Exception:
         return {}
-    return {}
+
+
+async def initiate_backend_reboot(
+    reason: str = 'manual',
+    source: str = 'http',
+    request: Optional[Request] = None
+) -> Dict[str, Any]:
+    """Déclencher un reboot backend avec logs détaillés."""
+    client_host = None
+    user_agent = None
+    if request is not None:
+        try:
+            client_host = getattr(request.client, 'host', None)
+        except Exception:
+            client_host = None
+        try:
+            user_agent = request.headers.get('user-agent')
+        except Exception:
+            user_agent = None
+
+    logger.warning(
+        "♻️ Reboot backend demandé",
+        extra={
+            "reason": reason,
+            "source": source,
+            "client_host": client_host,
+            "user_agent": user_agent
+        }
+    )
+
+    from core.bootstrap import perform_backend_reboot
+    asyncio.create_task(perform_backend_reboot(reason=reason))
+    return {
+        'status': 'rebooting',
+        'reason': reason,
+        'source': source
+    }
 
 
 # Créer le router
@@ -471,10 +507,8 @@ async def api_reboot_backend(request: Request):
     try:
         data = await request.json() if hasattr(request, 'json') else {}
         reason = data.get('reason', 'manual')
-        from core.bootstrap import perform_backend_reboot
-        import asyncio
-        asyncio.create_task(perform_backend_reboot(reason=reason))
-        return JSONResponse({'status': 'rebooting', 'reason': reason})
+        result = await initiate_backend_reboot(reason=reason, source='http', request=request)
+        return JSONResponse(result)
     except Exception as e:
         logger.error(f"Erreur reboot backend: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)

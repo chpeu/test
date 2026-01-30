@@ -1,6 +1,9 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
+const backendUrl = process.env.VITE_BACKEND_URL || 'http://127.0.0.1:5000';
+const wsTarget = backendUrl.replace(/^http/, 'ws');
+
 export default defineConfig({
 	plugins: [sveltekit()],
 
@@ -10,13 +13,13 @@ export default defineConfig({
 		proxy: {
 			// Proxy API vers FastAPI backend
 			'/api': {
-				target: 'http://127.0.0.1:5000',
+				target: backendUrl,
 				changeOrigin: true,
 				ws: false
 			},
 			// 🔥 REMPLACEMENT: WebSocket natif au lieu de Socket.IO
 			'/ws': {
-				target: 'ws://127.0.0.1:5000',
+				target: wsTarget,
 				changeOrigin: true,
 				ws: true, // WebSocket support
 				rewrite: (path) => path,

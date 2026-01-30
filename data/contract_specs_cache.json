@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769720544.8373394,
+  "timestamp": 1769774421.945985,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -150,6 +150,56 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "ASTER_USDT": {
+      "symbol": "ASTER_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1650000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "XAUT_USDT": {
+      "symbol": "XAUT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 185000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.1,
+      "price_precision": 1,
+      "vol_precision": 1,
+      "contract_size": 0.001
+    },
+    "ICP_USDT": {
+      "symbol": "ICP_USDT",
+      "min_vol": 1.0,
+      "max_vol": 27000000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "ATOM_USDT": {
+      "symbol": "ATOM_USDT",
+      "min_vol": 1.0,
+      "max_vol": 3365000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "WLD_USDT": {
+      "symbol": "WLD_USDT",
+      "min_vol": 1.0,
+      "max_vol": 600000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
