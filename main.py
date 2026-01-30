@@ -252,7 +252,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 state = get_state_manager()
 
 # 🔥 WebSocket Natif - Initialize and store in StateManager
-state.set_ws_manager(get_websocket_manager())
+ws_mgr = get_websocket_manager()
+state.set_ws_manager(ws_mgr)
+logger.info(f"🔍 WebSocketManager created: {ws_mgr is not None}, type={type(ws_mgr).__name__}")
 
 # 🔥 Legacy App State Proxy for compatibility with routes
 app_state = state.get_legacy_proxy()

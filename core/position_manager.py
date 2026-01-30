@@ -797,7 +797,6 @@ class PositionManager:
 
         try:
             from api.mexc import get_mexc_client
-            import asyncio
 
             # Récupérer le client MEXC
             client = get_mexc_client()
@@ -1436,7 +1435,6 @@ class PositionManager:
                     from core.postgresql_datalogger import PostgreSQLDataLogger
                     pg_logger = PostgreSQLDataLogger()
                     if pg_logger.enabled:
-                        import asyncio
                         try:
                             loop = asyncio.get_running_loop()
                             async def _log_rejection_async():
@@ -2298,7 +2296,6 @@ class PositionManager:
 
                 # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
                 # Fire-and-forget pattern: scheduler la tâche async sans bloquer
-                import asyncio
                 try:
                     loop = asyncio.get_running_loop()
 
@@ -2365,7 +2362,6 @@ class PositionManager:
         # 📢 NOTIFICATION: Position ouverte
         if hasattr(self, 'notification_manager') and self.notification_manager:
             try:
-                import asyncio
                 # 🔥 FIX: Structure de données correcte pour notify_position_opened
                 position_data = {
                     'symbol': symbol,
@@ -2893,7 +2889,6 @@ class PositionManager:
 
                 if hasattr(self, 'notification_manager') and self.notification_manager:
                     try:
-                        import asyncio
                         notification_data = {
                             'symbol': self.active_position.symbol,
                             'level': level_result.get('level'),
@@ -4070,7 +4065,6 @@ class PositionManager:
                     existing_trade_id = getattr(self.active_position, '_trade_id', None)
 
                     # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
-                    import asyncio
                     _active_pos_ref = self.active_position  # Capturer référence
                     try:
                         loop = asyncio.get_running_loop()
@@ -4254,7 +4248,6 @@ class PositionManager:
 
                 if trade_id:
                     # Logger la sortie (non-blocking avec create_task)
-                    import asyncio
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
@@ -4419,7 +4412,6 @@ class PositionManager:
         # 📢 NOTIFICATION: Position fermée
         if hasattr(self, 'notification_manager') and self.notification_manager:
             try:
-                import asyncio
                 notification_data = {
                     'symbol': result['symbol'],
                     'direction': result['direction'],
@@ -4447,7 +4439,6 @@ class PositionManager:
         # 📢 NOTIFICATION: Early invalidation (si applicable)
         if reason == 'EARLY_INVALIDATION' and hasattr(self, 'notification_manager') and self.notification_manager:
             try:
-                import asyncio
                 early_invalidation_data = {
                     'symbol': result['symbol'],
                     'direction': result['direction'],
@@ -4651,7 +4642,6 @@ class PositionManager:
             pg_logger = get_pg_datalogger()
             trade_id = getattr(position, '_trade_id', None)
             if pg_logger and trade_id:
-                import asyncio
                 try:
                     loop = asyncio.get_running_loop()
                     async def _log_exit_event():

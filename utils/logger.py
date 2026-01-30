@@ -188,7 +188,6 @@ class WebSocketLogHandler(logging.Handler):
             
             # Envoyer via WebSocket (asynchrone, fire-and-forget)
             # 🔥 FIX: Utiliser call_soon_threadsafe avec une coroutine simplifiée
-            import asyncio
             try:
                 loop = asyncio.get_running_loop()
                 

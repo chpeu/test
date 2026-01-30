@@ -53,6 +53,16 @@ def set_websocket_manager(ws_manager):
     _ws_manager = ws_manager
 
 
+def _get_ws_manager():
+    if _ws_manager:
+        return _ws_manager
+    try:
+        from core.state_manager import get_state_manager
+        return get_state_manager().get_ws_manager()
+    except Exception:
+        return None
+
+
 def set_position_lock(lock):
     """Injecter le lock de position"""
     global _position_lock
@@ -237,10 +247,11 @@ async def position_check_loop_callback():
                     pass
 
                 # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-                if _ws_manager:
-                    await _ws_manager.emit('position_closed', result)
-                    # 🔥 FIX: Émettre stats_update après fermeture de position
-                    await _emit_stats_update()
+                ws_mgr = _get_ws_manager()
+                if ws_mgr:
+                    await ws_mgr.emit('position_closed', result)
+                # 🔥 FIX: Émettre stats_update après fermeture de position
+                await _emit_stats_update()
         else:
             close_reason = await _position_manager.check_position(current_price)
 
@@ -542,18 +553,19 @@ async def _emit_position_update(position, current_price: float):
             'stagnation_pullback_at_exit': getattr(position, 'stagnation_pullback_at_exit', None)
         }
 
+        ws_mgr = _get_ws_manager()
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-        if _ws_manager:
-            await _ws_manager.emit('position_update', update_data)
+        if ws_mgr:
+            await ws_mgr.emit('position_update', update_data)
         # 🔥 FIX: Émettre aussi status pour synchronisation temps réel complète
-        if _app_state and _ws_manager:
+        if _app_state and ws_mgr:
             status_data = {
                 'is_scanning': _app_state.get('is_scanning', False),
                 'active_position': update_data,
                 'stats': _app_state.get('stats', {}),
                 'top_pairs': _app_state.get('top_pairs', [])
             }
-            await _ws_manager.emit('status', status_data)
+            await ws_mgr.emit('status', status_data)
 
         logger.debug(
             f"📡 position_update émis: {position.symbol} | "
@@ -572,7 +584,10 @@ async def _emit_stats_update():
     Cette fonction calcule les stats depuis analytics_db ou app_state
     et les émet via WebSocket pour synchronisation temps réel
     """
-    if not _ws_manager or not _app_state:
+    if not _app_state:
+        return
+    ws_mgr = _get_ws_manager()
+    if not ws_mgr:
         return
     
     try:
@@ -662,7 +677,7 @@ async def _emit_stats_update():
                 logger.error(f"❌ Erreur récupération stats app_state: {e}")
         
         # Émettre stats_update via WebSocket
-        await _ws_manager.emit('stats_update', stats_dict)
+        await ws_mgr.emit('stats_update', stats_dict)
         logger.debug(f"📊 stats_update émis: {stats_dict['wins']}W/{stats_dict['losses']}L - Total: {stats_dict['total_trades']}")
         
     except Exception as e:

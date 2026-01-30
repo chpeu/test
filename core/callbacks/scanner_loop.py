@@ -88,6 +88,16 @@ def set_websocket_manager(ws_manager):
     _ws_manager = ws_manager
 
 
+def _get_ws_manager():
+    if _ws_manager:
+        return _ws_manager
+    try:
+        from core.state_manager import get_state_manager
+        return get_state_manager().get_ws_manager()
+    except Exception:
+        return None
+
+
 def set_notification_manager(notification_manager):
     """Injecter NotificationManager pour remonter les erreurs critiques"""
     global _notification_manager
@@ -273,8 +283,9 @@ async def _scan_initial_top_pairs():
                         await _notify_error('start_websocket_top_pairs', str(e))
 
             # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-            if _ws_manager:
-                await _ws_manager.emit('top_pairs_update', {'pairs': top_pairs})
+            ws_mgr = _get_ws_manager()
+            if ws_mgr:
+                await ws_mgr.emit('top_pairs_update', {'pairs': top_pairs})
 
     except Exception as e:
         logger.error(f"❌ Erreur scan initial: {e}")
@@ -860,8 +871,9 @@ async def _scan_top_pairs():
                             await _notify_error('restart_websocket_position', f"{symbol}: {e}")
 
                     # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-                    if _ws_manager:
-                        await _ws_manager.emit('position_opened', position_result.to_dict())
+                    ws_mgr = _get_ws_manager()
+                    if ws_mgr:
+                        await ws_mgr.emit('position_opened', position_result.to_dict())
 
             except ValueError as e:
                 logger.error(f"❌ Erreur validation position: {e}")
@@ -870,8 +882,9 @@ async def _scan_top_pairs():
                 await _notify_error('open_position', f"{symbol}: {e}")
 
         # 🔥 MIGRATION COMPLÈTE: Utiliser WebSocket natif uniquement
-        if _ws_manager:
-            await _ws_manager.emit('volume_stats_update', {
+        ws_mgr = _get_ws_manager()
+        if ws_mgr:
+            await ws_mgr.emit('volume_stats_update', {
                 'total': len(results),
                 'validated': len(valid_setups),
                 'ratio': (len(valid_setups) / len(results) * 100) if results else 0

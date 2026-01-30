@@ -47,6 +47,7 @@ async def init_instances() -> None:
         root_logger = logging.getLogger()
         has_ws_handler = any(isinstance(h, WebSocketLogHandler) for h in root_logger.handlers)
         ws_mgr = state.get_ws_manager()
+        logger.info(f"🔍 WebSocket handler check: has_ws_handler={has_ws_handler}, ws_mgr={ws_mgr is not None}")
         if not has_ws_handler and ws_mgr:
             ws_handler = WebSocketLogHandler()
             ws_handler.set_ws_manager(ws_mgr)
@@ -54,8 +55,10 @@ async def init_instances() -> None:
             ws_handler.setFormatter(logging.Formatter('%(message)s'))
             root_logger.addHandler(ws_handler)
             logger.info(f"✅ WebSocket log handler configured ({time.time()-start:.3f}s)")
+        else:
+            logger.warning(f"⚠️ WebSocket log handler NOT configured: has_ws_handler={has_ws_handler}, ws_mgr={ws_mgr is not None}")
     except Exception as e:
-        logger.debug(f"Could not configure WebSocket log handler: {e}")
+        logger.error(f"❌ Error configuring WebSocket log handler: {e}", exc_info=True)
 
     # 2b. Initialize TradeDatabase (Legacy SQLite)
     start = time.time()

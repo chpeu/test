@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769774421.945985,
+  "timestamp": 1769781911.9974902,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -200,6 +200,36 @@
       "price_precision": 4,
       "vol_precision": 1,
       "contract_size": 1.0
+    },
+    "TIA_USDT": {
+      "symbol": "TIA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 550000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "CHZ_USDT": {
+      "symbol": "CHZ_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1750000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "TAO_USDT": {
+      "symbol": "TAO_USDT",
+      "min_vol": 1.0,
+      "max_vol": 260000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.1,
+      "price_precision": 1,
+      "vol_precision": 1,
+      "contract_size": 0.01
     }
   }
 }
