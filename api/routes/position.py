@@ -44,6 +44,20 @@ def set_scheduler(s):
     global _scheduler
     _scheduler = s
 
+
+def get_current_position() -> Optional[Dict[str, Any]]:
+    """Compatibilité tests: retourner position active si disponible."""
+    try:
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
+        pos_mgr = _position_manager or state.get_position_manager()
+        if not pos_mgr or not pos_mgr.active_position:
+            return None
+        position = pos_mgr.active_position
+        return position.to_dict() if hasattr(position, "to_dict") else None
+    except Exception:
+        return None
+
 router = APIRouter(prefix="/api/position", tags=["position"])
 
 @router.post("/open")

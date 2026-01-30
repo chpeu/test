@@ -59,6 +59,19 @@ def save_live_config(config: Dict[str, Any]) -> bool:
         return False
 
 
+def get_live_trading_status() -> Dict[str, Any]:
+    """Compatibilité tests: statut live trading (sync)."""
+    config = load_live_config()
+    return {
+        "trading_mode": config.get("trading_mode", "PAPER"),
+        "dry_run": config.get("dry_run", True),
+        "max_slippage_pct": config.get("max_slippage_pct", 0.15),
+        "max_latency_ms": config.get("max_latency_ms", 1000),
+        "max_pnl_discrepancy_pct": config.get("max_pnl_discrepancy_pct", 20),
+        "default_leverage": config.get("default_leverage", 1),
+    }
+
+
 @router.post("/reconcile-mexc")
 async def run_mexc_reconciliation():
     """

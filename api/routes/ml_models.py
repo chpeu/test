@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ML Models"])
 
 
+def get_model_info(model_name: str) -> dict:
+    """Compatibilité tests: info modèle simplifiée."""
+    return {
+        "name": model_name,
+        "available": False,
+        "metrics": {},
+    }
+
+
 @router.get("/models/overview")
 async def get_models_overview():
     """

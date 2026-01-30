@@ -16,6 +16,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["regime", "circuit-breaker"])
 
 
+def get_current_regime():
+    """Compatibilité tests: retourner le régime courant ou UNKNOWN."""
+    try:
+        from core.market_regime_selector import get_regime_selector
+        selector = get_regime_selector()
+        status = selector.get_status()
+        return status.get("current_regime", "UNKNOWN")
+    except Exception:
+        return "UNKNOWN"
+
+
 # ==============================================================================
 # MARKET REGIME ENDPOINTS
 # ==============================================================================

@@ -8,6 +8,16 @@ from utils.error_history import get_error_history
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/logs", tags=["logs"])
 
+
+def get_recent_logs(limit: int = 50):
+    """Compatibilité tests: retourner liste d'erreurs récentes."""
+    try:
+        error_history = get_error_history()
+        errors = error_history.get_errors()
+        return errors[:limit]
+    except Exception:
+        return []
+
 @router.get('/errors')
 async def api_get_errors(limit: int = 50, offset: int = 0):
     """Récupérer les erreurs avec pagination depuis ErrorHistoryManager (en mémoire)"""

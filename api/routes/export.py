@@ -21,6 +21,17 @@ def set_app_state(as_):
     global _app_state
     _app_state = as_
 
+
+def export_trade_data(format: str = "csv"):
+    """Compatibilité tests: export simplifié (sync)."""
+    data = _app_state.get('trade_history', []) if _app_state else []
+    if format == "json":
+        return data
+    return {
+        "format": format,
+        "count": len(data),
+    }
+
 @router.get("/export/trades")
 async def export_trades_csv(
     start_date: Optional[str] = None,

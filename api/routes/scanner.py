@@ -55,6 +55,18 @@ def set_socketio(sio):
     _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
 
 
+def get_scan_results():
+    """Compatibilité tests: renvoyer top_pairs ou dict additif."""
+    try:
+        if _app_state is None:
+            return []
+        if hasattr(_app_state, "get"):
+            return _app_state.get("top_pairs", [])
+        return []
+    except Exception:
+        return []
+
+
 # ==================== DEPENDENCY INJECTION ====================
 
 def get_scanner():

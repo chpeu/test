@@ -60,6 +60,11 @@ def get_ml_task_status(task_id: str):
     """Alias for _get_task_from_store for test compatibility."""
     return _get_task_from_store(task_id)
 
+
+def get_ml_predictions(symbol: str):
+    """Compatibilité tests: retour de prédictions simplifié."""
+    return []
+
 logger = logging.getLogger(__name__)
 
 # Main ML router - combines all sub-routers

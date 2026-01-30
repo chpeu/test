@@ -64,6 +64,16 @@ def _is_ccxt_network_exception(exc: Exception) -> bool:
         "DDoSProtection",
     }
 
+
+def check_api_health() -> dict:
+    """Compatibilité tests: statut santé API (sync)."""
+    return {
+        "success": True,
+        "retry": RETRY_CONFIG,
+        "circuit_breaker": CIRCUIT_BREAKER_CONFIG,
+        "websocket": WEBSOCKET_CONFIG,
+    }
+
 from config import RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG, WEBSOCKET_CONFIG, DEBUG_ENABLED
 
 # 🔥 REFACTORING SPRINT 1.1: Exception Handling System

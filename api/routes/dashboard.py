@@ -52,6 +52,20 @@ def set_socketio(sio):
     _ws_manager = sio if hasattr(sio, 'emit') and not hasattr(sio, 'on') else None
 
 
+def get_dashboard_stats() -> Dict[str, Any]:
+    """Compatibilité tests: stats synthétiques du dashboard."""
+    try:
+        if _app_state is None:
+            return {"status": "unavailable", "stats": {}}
+        if hasattr(_app_state, "get"):
+            return _app_state.get("stats", {}) or {}
+        if hasattr(_app_state, "stats"):
+            return getattr(_app_state, "stats") or {}
+    except Exception:
+        return {}
+    return {}
+
+
 # Créer le router
 router = APIRouter(prefix="/api", tags=["dashboard"])
 

@@ -28,6 +28,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ML Configuration"])
 
 
+def get_ml_configuration() -> dict:
+    """Compatibilité tests: configuration ML courante (sync)."""
+    return {
+        "gb_filter_enabled": TRADING_CONFIG.get('gb_filter_enabled', True),
+        "gb_min_confidence": TRADING_CONFIG.get('gb_min_confidence', 0.55),
+        "threshold_optimizer_enabled": TRADING_CONFIG.get('threshold_optimizer_enabled', False),
+        "threshold_min": TRADING_CONFIG.get('threshold_min', 0.45),
+        "threshold_max": TRADING_CONFIG.get('threshold_max', 0.70),
+        "drift_detection_enabled": TRADING_CONFIG.get('drift_detection_enabled', True),
+        "drift_pnl_delta": TRADING_CONFIG.get('drift_pnl_delta', 0.002),
+        "drift_winrate_delta": TRADING_CONFIG.get('drift_winrate_delta', 0.005),
+    }
+
+
 class MLConfigUpdate(BaseModel):
     """Modèle pour mise à jour de la configuration ML."""
     gb_filter_enabled: Optional[bool] = None

@@ -22,6 +22,19 @@ def set_app_state(as_):
     global _app_state
     _app_state = as_
 
+
+def get_current_prices() -> Dict[str, Any]:
+    """Compatibilité tests: retourner prix en cache ou dict vide."""
+    try:
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
+        pp = _price_provider or state.get_price_provider()
+        if pp and hasattr(pp, "price_cache"):
+            return dict(pp.price_cache)
+    except Exception:
+        pass
+    return {}
+
 router = APIRouter(prefix="/api", tags=["price"])
 
 @router.get("/price/{symbol}")

@@ -193,6 +193,25 @@ class MEXCClient:
         pass
 
 
+def get_price(symbol: str) -> Optional[str]:
+    """Compatibilité tests: récupération synchrone de prix (mockable)."""
+    if not symbol:
+        return None
+    try:
+        import requests
+        response = requests.get(
+            "https://api.mexc.com/api/v3/ticker/price",
+            params={"symbol": symbol},
+            timeout=5,
+        )
+        data = response.json() if hasattr(response, "json") else {}
+        if isinstance(data, dict):
+            return data.get("price") or data.get("lastPrice") or data.get("last")
+    except Exception:
+        return None
+    return None
+
+
 # Instance globale
 _mexc_client: Optional[MEXCClient] = None
 

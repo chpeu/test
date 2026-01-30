@@ -81,6 +81,16 @@ async def api_get_config():
     })
 
 
+def get_configuration() -> dict:
+    """Compatibilité tests: récupérer la configuration effective."""
+    try:
+        from utils.effective_config import get_effective_config
+        return get_effective_config()
+    except Exception:
+        from config import TRADING_CONFIG
+        return TRADING_CONFIG
+
+
 @router.get("/complete")
 async def api_get_complete_config():
     """Récupérer TOUTES les variables de configuration"""
