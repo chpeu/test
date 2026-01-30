@@ -521,7 +521,10 @@ async def handle_client_command(command: str, params: dict):
     elif command == 'reboot_backend':
         from api.routes.dashboard import initiate_backend_reboot
         reason = params.get('reason', 'manual')
-        return await initiate_backend_reboot(reason=reason, source='ws')
+        try:
+            return await initiate_backend_reboot(reason=reason, source='ws')
+        except TypeError:
+            return await initiate_backend_reboot(reason=reason)
 
     elif command == 'log_config':
         # Simple log pas besoin de modulariser pour l'instant
