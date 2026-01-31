@@ -200,9 +200,9 @@ async def scanner_loop_callback():
     5. Analyser les résultats et ouvrir position si setup trouvé
     6. Émettre événements SocketIO de mise à jour
     """
-    logger.info("📡 [DEBUG-SCAN] scanner_loop_callback: Début de l'itération")
+    logger.debug("📡 [DEBUG-SCAN] scanner_loop_callback: Début de l'itération")
     if not _scanner or not _app_state or not _scanner_lock:
-        logger.info("⚠️ [DEBUG-SCAN] Instances non disponibles pour scanner_loop_callback - vérifiez bootstrap")
+        logger.debug("⚠️ [DEBUG-SCAN] Instances non disponibles pour scanner_loop_callback - vérifiez bootstrap")
         if not _scanner: logger.warning("   - _scanner est None")
         if not _app_state: logger.warning("   - _app_state est None")
         if not _scanner_lock: logger.warning("   - _scanner_lock est None")
@@ -217,7 +217,7 @@ async def scanner_loop_callback():
             cooldown_mgr = get_cooldown_manager()
             can_trade, cooldown_reason = cooldown_mgr.can_trade("")  # Check général
             if not can_trade:
-                logger.info(f"⏸️ [DEBUG-SCAN] Scanner ignoré: {cooldown_reason}")
+                logger.debug(f"⏸️ [DEBUG-SCAN] Scanner ignoré: {cooldown_reason}")
                 return
             
             # Vérifier qu'on n'a pas déjà une position active
@@ -227,24 +227,24 @@ async def scanner_loop_callback():
                 # BUG #11 FIX: Logging informatif au lieu de debug
                 active_pos = _position_manager.active_position if _position_manager else _app_state.get('active_position')
                 symbol = active_pos.symbol if hasattr(active_pos, 'symbol') else active_pos.get('symbol', 'UNKNOWN') if isinstance(active_pos, dict) else 'UNKNOWN'
-                logger.info(f"⏸️ [DEBUG-SCAN] Scanner ignoré: position active sur {symbol}")
+                logger.debug(f"⏸️ [DEBUG-SCAN] Scanner ignoré: position active sur {symbol}")
                 return
 
             # Si on n'a pas de top_pairs, les scanner d'abord
             if not _app_state.get('top_pairs'):
-                logger.info("📡 [DEBUG-SCAN] top_pairs vide, lancement scan initial...")
+                logger.debug("📡 [DEBUG-SCAN] top_pairs vide, lancement scan initial...")
                 await _scan_initial_top_pairs()
                 # 🔥 OPT #14: Enchaîner immédiatement avec un scan de setups
                 # après avoir trouvé les top_pairs (ne pas attendre 45s)
                 if _app_state.get('top_pairs'):
-                    logger.info(f"📡 [DEBUG-SCAN] {len(_app_state['top_pairs'])} paires trouvées, enchaînement immédiat setup scan")
+                    logger.debug(f"📡 [DEBUG-SCAN] {len(_app_state['top_pairs'])} paires trouvées, enchaînement immédiat setup scan")
                     await _scan_top_pairs()
                 return
 
             # Scanner les top pairs
-            logger.info("📡 [DEBUG-SCAN] Lancement du scan des top pairs...")
+            logger.debug("📡 [DEBUG-SCAN] Lancement du scan des top pairs...")
             await _scan_top_pairs()
-            logger.info("📡 [DEBUG-SCAN] scanner_loop_callback: Itération terminée avec succès")
+            logger.debug("📡 [DEBUG-SCAN] scanner_loop_callback: Itération terminée avec succès")
 
     except Exception as e:
         logger.error(f"❌ [DEBUG-SCAN] Erreur scanner_loop_callback: {e}", exc_info=True)
@@ -1053,7 +1053,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): DÉBUT - _analyzer: {_analyzer is not None}")
+        logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): DÉBUT - _analyzer: {_analyzer is not None}")
         logger.debug(f"🔎 Analyse setup: {symbol}")
         
         # 🔥 PHASE 3: Mesurer la durée du scan
@@ -1072,7 +1072,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         trend_data = await _analyzer.calculate_trend_data(symbol, trend_timeframe)
 
         # Analyser la paire
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT analyze_pair")
+        logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT analyze_pair")
         analysis = await _analyzer.analyze_pair(
             symbol,
             trend_data=trend_data,
@@ -1082,11 +1082,11 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             active_positions=[],
             position_manager=_position_manager
         )
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS analyze_pair, analysis: {analysis is not None}, type: {type(analysis)}")
+        logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS analyze_pair, analysis: {analysis is not None}, type: {type(analysis)}")
 
         # 🔥 DEBUG: Vérifier ce que contient analysis
         if analysis:
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): analysis type: {type(analysis)}, keys: {list(analysis.keys())[:15] if isinstance(analysis, dict) else 'N/A'}")
+            logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): analysis type: {type(analysis)}, keys: {list(analysis.keys())[:15] if isinstance(analysis, dict) else 'N/A'}")
         else:
             logger.warning(f"⚠️ scan_pair_for_setup({symbol}): analysis est None ou False")
 
@@ -1105,17 +1105,17 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             indicators_1m = analysis.get('indicators_1m', {})
             indicators_5m = analysis.get('indicators_5m', {})
             
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
+            logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
             
             # Si les indicateurs ne sont pas présents, essayer de les construire depuis les données disponibles
             if not indicators_1m or not any(v is not None for v in indicators_1m.values()):
-                logger.info(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
+                logger.debug(f"🔧 Construction indicators_1m depuis analysis pour {symbol}")
                 
                 # Essayer d'abord depuis analysis_1m (priorité haute)
                 constructed_indicators = {}
                 analysis_1m = analysis.get('analysis_1m')
                 if analysis_1m and isinstance(analysis_1m, dict):
-                    logger.info(f"🔍 Tentative extraction depuis analysis_1m pour {symbol}")
+                    logger.debug(f"🔍 Tentative extraction depuis analysis_1m pour {symbol}")
                     # Essayer les noms standards et alternatifs
                     constructed_indicators = {
                         'rsi': (analysis_1m.get('rsi') or analysis_1m.get('rsi_1m') or 
@@ -1271,7 +1271,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             # 🔥 DIAGNOSTIC: Vérifier intégrité des indicateurs
             null_count_1m = sum(1 for v in indicators_1m.values() if v is None)
             null_count_5m = sum(1 for v in indicators_5m.values() if v is None)
-            logger.info(
+            logger.debug(
                 f"✅ Indicateurs ajoutés à analysis pour {symbol}: "
                 f"indicators_1m: {len(indicators_1m)} keys ({null_count_1m} NULL), "
                 f"indicators_5m: {len(indicators_5m)} keys ({null_count_5m} NULL)"
@@ -1280,7 +1280,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
             logger.warning(f"⚠️ analysis n'est pas un dict pour {symbol}: {type(analysis)}")
 
         # 🔥 DEBUG: Vérifier que le code atteint cette section AVANT Simple Logger
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT Simple Logger, analysis type: {type(analysis)}")
+        logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT Simple Logger, analysis type: {type(analysis)}")
 
         # 🔥 Simple Logger: DÉSACTIVÉ - On utilise PostgreSQLDataLogger pour les 46 features ML
         # try:
@@ -1311,7 +1311,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         #     logger.debug(f"Traceback: {traceback.format_exc()}")
 
         # 🔥 DEBUG: Vérifier que le code atteint cette section
-        logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT filtres avancés")
+        logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS ajout indicateurs, AVANT filtres avancés")
 
         # =================================================================
         # 🔥 OPT #15-19: Filtres Avancés
@@ -1396,7 +1396,7 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         # 🔥 PHASE 3: Calculer durée du scan
         try:
             scan_duration_ms = int((time.time() - scan_start_time) * 1000)
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification pg_datalogger")
+            logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): scan_duration_ms={scan_duration_ms}ms, AVANT vérification pg_datalogger")
         except Exception as e:
             logger.error(f"❌ Erreur calcul scan_duration_ms pour {symbol}: {e}")
             scan_duration_ms = 0
@@ -1406,18 +1406,18 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         pg_datalogger = get_pg_datalogger()
         
         try:
-            logger.info(f"🔍 DEBUG scan_pair_for_setup({symbol}): pg_datalogger={pg_datalogger is not None}, enabled={getattr(pg_datalogger, 'enabled', False) if pg_datalogger else False}")
+            logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): pg_datalogger={pg_datalogger is not None}, enabled={getattr(pg_datalogger, 'enabled', False) if pg_datalogger else False}")
         except Exception as e:
             logger.error(f"❌ Erreur log pg_datalogger pour {symbol}: {e}")
         
         if pg_datalogger and pg_datalogger.enabled:
             try:
-                logger.info(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
+                logger.debug(f"📝 Tentative de log scan PostgreSQL pour {symbol}")
                 # Récupérer les données du scan de scalabilité depuis top_pairs
                 scalability_data: Dict[str, Any] = {}
-                logger.info(f"💹 DEBUG log_scan: _app_state existe={_app_state is not None}, top_pairs={'présent' if (_app_state and _app_state.get('top_pairs')) else 'absent'}")
+                logger.debug(f"💹 DEBUG log_scan: _app_state existe={_app_state is not None}, top_pairs={'présent' if (_app_state and _app_state.get('top_pairs')) else 'absent'}")
                 if _app_state and _app_state.get('top_pairs'):
-                    logger.info(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
+                    logger.debug(f"💹 DEBUG log_scan: top_pairs contient {len(_app_state['top_pairs'])} paires")
                     for pair in _app_state['top_pairs']:
                         # 🔥 FIX: Normaliser symboles avant comparaison (BTC/USDT vs BTC/USDT:USDT)
                         pair_symbol = (pair.get('symbol') or '').split(':')[0]

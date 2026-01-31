@@ -120,11 +120,11 @@ class WebSocketManager:
     
     async def connect(self, websocket: WebSocket):
         """Accepter une nouvelle connexion WebSocket"""
-        logger.info("🔥 [WEBSOCKET-MANAGER] connect() appelé - DIAGNOSTIC FORCÉ")
-        logger.info(f"🔥 [WEBSOCKET-MANAGER] websocket = {websocket}")
-        logger.info(f"🔥 [WEBSOCKET-MANAGER] websocket.client = {getattr(websocket, 'client', 'NONE')}")
+        logger.debug("🔥 [WEBSOCKET-MANAGER] connect() appelé - DIAGNOSTIC FORCÉ")
+        logger.debug(f"🔥 [WEBSOCKET-MANAGER] websocket = {websocket}")
+        logger.debug(f"🔥 [WEBSOCKET-MANAGER] websocket.client = {getattr(websocket, 'client', 'NONE')}")
         await websocket.accept()
-        logger.info("🔥 [WEBSOCKET-MANAGER] websocket.accept() terminé avec succès")
+        logger.debug("🔥 [WEBSOCKET-MANAGER] websocket.accept() terminé avec succès")
         async with self.lock:
             self._connection_counter += 1
             connection_id = self._connection_counter
@@ -198,28 +198,43 @@ class WebSocketManager:
             for room_connections in self.rooms.values():
                 room_connections.discard(websocket)
                 
-        # 🔥 WEBSOCKET-FIX: Log détaillé pour diagnostiquer les déconnexions
-        logger.warning(
-            f"🔌 [WEBSOCKET-FIX] WebSocket déconnecté: id={connection_id}, client={client}, "
-            f"reason={disconnect_reason}, state={websocket_state}, duration_s={duration_s}, "
-            f"in={msg_in}, out={msg_out}, bytes_in={bytes_in}, bytes_out={bytes_out}, "
-            f"last_msg={last_message_type}, last_msg_age_s={last_message_age_s}, rtt_ms={rtt_ms}, "
-            f"ua={user_agent}, origin={origin}, remaining_connections={len(self.active_connections)}"
+        logger.info(
+            "� WebSocket déconnecté: id=%s reason=%s duration_s=%s client=%s remaining=%s",
+            connection_id,
+            disconnect_reason,
+            duration_s,
+            client,
+            len(self.active_connections),
         )
-        
-        # 🚨 DIAGNOSTIC CRITIQUE: Analyser cause déconnexion
-        logger.error("🚨 [DISCONNECT-DIAGNOSTIC] ANALYSE DÉCONNEXION:")
-        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] connect() s'est exécuté (counter={self._connection_counter})")
-        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] disconnect_reason = '{disconnect_reason}'")
-        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] websocket_state = {websocket_state}")
-        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] duration_s = {duration_s}")
-        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] last_message_type = '{last_message_type}'")
-        logger.error(f"🚨 [DISCONNECT-DIAGNOSTIC] msg_in={msg_in}, msg_out={msg_out}, bytes_out={bytes_out}")
-        
-        # �� WEBSOCKET-FIX: Si c'est une déconnexion rapide (< 30s), c'est suspect
+        logger.debug(
+            "[WS-DEBUG] disconnect details: state=%s in=%s out=%s bytes_in=%s bytes_out=%s last_msg=%s last_msg_age_s=%s rtt_ms=%s ua=%s origin=%s",
+            websocket_state,
+            msg_in,
+            msg_out,
+            bytes_in,
+            bytes_out,
+            last_message_type,
+            last_message_age_s,
+            rtt_ms,
+            user_agent,
+            origin,
+        )
+
+        # 🚨 DIAGNOSTIC CRITIQUE: Analyser cause déconnexion (mode debug)
+        logger.debug("🚨 [DISCONNECT-DIAGNOSTIC] ANALYSE DÉCONNEXION:")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] connect() counter={self._connection_counter}")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] disconnect_reason = '{disconnect_reason}'")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] websocket_state = {websocket_state}")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] duration_s = {duration_s}")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] last_message_type = '{last_message_type}'")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] msg_in={msg_in}, msg_out={msg_out}, bytes_out={bytes_out}")
+
+        # 🔥 WEBSOCKET-FIX: Si c'est une déconnexion rapide (< 30s), c'est suspect
         if duration_s and duration_s < 30:
-            logger.error(
-                f"🚨 [WEBSOCKET-FIX] DÉCONNEXION RAPIDE DÉTECTÉE: {duration_s}s - possible crash backend!"
+            logger.warning(
+                "⚠️ WebSocket déconnexion rapide détectée: %ss (id=%s)",
+                duration_s,
+                connection_id,
             )
     
     async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 10.0):
@@ -257,7 +272,7 @@ class WebSocketManager:
                     await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
             else:
                 await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
-            logger.info(f"📤 [WS-DEBUG] Message envoyé via send_text: {message_json}")
+            logger.debug(f"📤 [WS-DEBUG] Message envoyé via send_text: {message_json}")
         except asyncio.TimeoutError:
             conn_data = self.connection_data.get(websocket)
             if conn_data is not None:

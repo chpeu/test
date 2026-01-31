@@ -88,17 +88,17 @@ async def websocket_endpoint(websocket: WebSocket):
         )
         
         # 🔥 DIAGNOSTIC: Vérifier ws_mgr
-        logger.info(f"🔍 [WS-DIAGNOSTIC] _ws_manager = {_ws_manager}")
-        logger.info(f"🔍 [WS-DIAGNOSTIC] state.get_ws_manager() = {state.get_ws_manager()}")
-        logger.info(f"🔍 [WS-DIAGNOSTIC] ws_mgr = {ws_mgr}")
+        logger.debug(f"🔍 [WS-DIAGNOSTIC] _ws_manager = {_ws_manager}")
+        logger.debug(f"🔍 [WS-DIAGNOSTIC] state.get_ws_manager() = {state.get_ws_manager()}")
+        logger.debug(f"🔍 [WS-DIAGNOSTIC] ws_mgr = {ws_mgr}")
         
         if not ws_mgr:
             logger.error("❌ WebSocketManager non trouvé")
             return
         
-        logger.info("🔍 [WS-DIAGNOSTIC] Appel ws_mgr.connect(websocket)...")
+        logger.debug("🔍 [WS-DIAGNOSTIC] Appel ws_mgr.connect(websocket)...")
         await ws_mgr.connect(websocket)
-        logger.info("🔍 [WS-DIAGNOSTIC] ws_mgr.connect(websocket) terminé avec succès")
+        logger.debug("🔍 [WS-DIAGNOSTIC] ws_mgr.connect(websocket) terminé avec succès")
 
         connection_id = None
         try:
@@ -123,7 +123,7 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception:
             pass
 
-        logger.info(
+        logger.debug(
             f"🔌 [WS-DEBUG] WebSocket accepté: id={connection_id}, client={getattr(websocket, 'client', None)}"
         )
         
@@ -136,13 +136,17 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception:
                     status_data['active_position'] = None
             
-            logger.info(f"🔥 [BACKEND-DEBUG] ENVOI MESSAGE STATUS: {status_data}")
+            logger.debug(
+                "� [WS-STATUS] Envoi status initial (keys=%s, active_position=%s)",
+                list(status_data.keys()),
+                bool(status_data.get('active_position'))
+            )
             await ws_mgr.send_personal_message({
                 'type': 'event',
                 'event': 'status',
                 'data': status_data
             }, websocket)
-            logger.info(f"✅ [BACKEND-DEBUG] MESSAGE STATUS ENVOYÉ AVEC SUCCÈS")
+            logger.debug("✅ [WS-STATUS] Status initial envoyé")
         except Exception as e:
             logger.error(f"❌ [BACKEND-DEBUG] ERREUR ENVOI STATUS: {e}")
             logger.error(f"❌ Erreur envoi état initial: {e}")
@@ -167,14 +171,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 'connection_id': connection_id,
                 'session_id': getattr(state, 'session_id', None),
             }, websocket)
-            logger.info(f"👋 server_hello envoyé pour connexion {connection_id}")
+            logger.debug(f"👋 server_hello envoyé pour connexion {connection_id}")
             # Envoyer un ping de test pour confirmer que la connexion est bidirectionnelle
             await ws_mgr.send_personal_message({
                 'type': 'ping',
                 'timestamp': time.time(),
                 'ping_id': 9999,
             }, websocket)
-            logger.info(f"🏓 ping de test (ping_id=9999) envoyé juste après server_hello")
+            logger.debug("🏓 ping de test (ping_id=9999) envoyé juste après server_hello")
         except Exception as e:
             logger.error(f"❌ Erreur envoi server_hello: {e}")
         
@@ -265,7 +269,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     message = json.loads(data)
-                    logger.info(f"🔍 [WS-DEBUG] Message reçu brut: {data}")
+                    logger.debug(f"🔍 [WS-DEBUG] Message reçu brut: {data}")
                 except json.JSONDecodeError:
                     if conn_data is not None:
                         conn_data['last_message_type'] = 'in:invalid_json'
@@ -286,7 +290,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if conn_data is not None:
                         connection_id = conn_data.get('connection_id')
                         client_id = conn_data.get('client_id')
-                    logger.info(
+                    logger.debug(
                         "🔍 [WS-COMMAND] Commande reçue: '%s' params=%s client_id=%s conn_id=%s",
                         command,
                         params,
@@ -299,7 +303,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     try:
                         result = await handle_client_command(command, params)
-                        logger.info(f"🔍 [WS-COMMAND] Commande '{command}' exécutée, résultat: {result}")
+                        result_status = result.get('status') if isinstance(result, dict) else None
+                        logger.debug(
+                            "🔍 [WS-COMMAND] Commande '%s' exécutée (status=%s)",
+                            command,
+                            result_status or 'ok'
+                        )
                     except Exception as e:
                         logger.error(f"❌ [WS-COMMAND] Erreur exécution commande '{command}': {e}")
                         result = {'error': str(e), 'status': 'error'}
@@ -321,18 +330,18 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif msg_type == 'ping':
                     ping_id = message.get('ping_id')
                     client_ts = message.get('timestamp')
-                    logger.info(f"🏓 [WS-DEBUG] Ping reçu: ping_id={ping_id}, ts={client_ts}")
+                    logger.debug(f"🏓 [WS-DEBUG] Ping reçu: ping_id={ping_id}, ts={client_ts}")
                     await ws_mgr.send_personal_message({
                         'type': 'pong',
                         'timestamp': time.time(),
                         'ping_id': ping_id,
                         'client_ts': client_ts,
                     }, websocket)
-                    logger.info(f"🏓 [WS-DEBUG] Pong envoyé en réponse à ping_id={ping_id}")
+                    logger.debug(f"🏓 [WS-DEBUG] Pong envoyé en réponse à ping_id={ping_id}")
 
                 elif msg_type == 'pong':
                     if conn_data is None:
-                        logger.warning("⚠️ [WS-DEBUG] Pong reçu mais conn_data introuvable - ignoré")
+                        logger.debug("⚠️ [WS-DEBUG] Pong reçu mais conn_data introuvable - ignoré")
                         continue
                     pong_ping_id = message.get('ping_id')
                     expected_ping_id = conn_data.get('last_server_ping_id')
