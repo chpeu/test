@@ -1716,6 +1716,13 @@ class PositionManager:
             tp_sl_mode=tp_sl_mode  # 🔥 NEW: Stocker le mode utilisé à l'ouverture
         )
 
+        position = self.active_position
+        if position is None:
+            logger.error(
+                f"❌ open_position: active_position non créée pour {symbol} ({direction})"
+            )
+            return None
+
         # Invariant FIXE: ne jamais élargir le SL au-delà du SL% initial
         self._enforce_fixe_sl_not_wider(context='OPEN_POSITION')
 
@@ -1825,6 +1832,11 @@ class PositionManager:
         executed_size_usdt = size
 
         if self.live_order_manager:
+            if self.active_position is None and position is not None:
+                logger.warning(
+                    "⚠️ open_position: active_position perdu avant ordre live - restauration locale"
+                )
+                self.active_position = position
             try:
                 # Calculer la taille en tokens (amount) depuis la taille en USDT
                 size_amount = size / entry if entry else 0.0
@@ -2090,6 +2102,16 @@ class PositionManager:
         # ========================================
         # ✅ POINT C : CAPTURE INDICATEURS D'ENTRÉE (pour PostgreSQL)
         # ========================================
+        if self.active_position is None and position is not None:
+            logger.warning(
+                "⚠️ open_position: active_position perdu avant capture indicateurs - restauration locale"
+            )
+            self.active_position = position
+        if self.active_position is None:
+            logger.error(
+                f"❌ open_position: active_position manquante avant capture indicateurs pour {symbol}"
+            )
+            return None
         # 🔥 FIX: Capturer les indicateurs TOUJOURS, pas seulement si data_logger.is_running
         # Récupérer scan_uuid, opportunity_id et setup depuis les attributs stockés
         scan_uuid = getattr(self, '_last_setup_scan_uuid', None)
