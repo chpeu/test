@@ -75,6 +75,9 @@ class ApplicationState:
     # Logs buffer
     logs: List[Dict[str, Any]] = field(default_factory=list)
 
+    # Quiet mode (réduction verbosité logs)
+    quiet_mode: bool = False
+
     # Trade history
     trade_history: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -366,6 +369,17 @@ class StateManager:
             self._app_state.backend_reboot_in_progress = value
 
     @property
+    def quiet_mode(self) -> bool:
+        """Get quiet mode flag"""
+        with self._thread_lock:
+            return self._app_state.quiet_mode
+
+    def set_quiet_mode(self, value: bool) -> None:
+        """Set quiet mode flag (thread-safe)"""
+        with self._thread_lock:
+            self._app_state.quiet_mode = bool(value)
+
+    @property
     def session_id(self) -> str:
         """Get session ID"""
         with self._thread_lock:
@@ -575,6 +589,7 @@ class StateManager:
                 "trade_history": self._app_state.trade_history.copy(),
                 "close_failure_count": self._app_state.close_failure_count,
                 "close_failure_symbol": self._app_state.close_failure_symbol,
+                "quiet_mode": self._app_state.quiet_mode,
                 "session_id": self._app_state.session_id,
             }
 
@@ -760,6 +775,8 @@ class LegacyAppStateProxy(MutableMapping):
             return self._state.close_failure_symbol
         if key == "backend_reboot_in_progress":
             return self._state.backend_reboot_in_progress
+        if key == "quiet_mode":
+            return self._state.quiet_mode
         if key == "session_id":
             return self._state.session_id
         
@@ -807,6 +824,9 @@ class LegacyAppStateProxy(MutableMapping):
         if key == "backend_reboot_in_progress":
             self._state.set_backend_reboot(bool(value))
             return
+        if key == "quiet_mode":
+            self._state.set_quiet_mode(bool(value))
+            return
         if key == "session_id":
             self._extras[key] = value
             return
@@ -826,6 +846,7 @@ class LegacyAppStateProxy(MutableMapping):
             "close_failure_count",
             "close_failure_symbol",
             "backend_reboot_in_progress",
+            "quiet_mode",
             "session_id",
         ]
         seen = set(keys)
@@ -859,6 +880,7 @@ class LegacyAppStateProxy(MutableMapping):
             "close_failure_count": self._state.close_failure_count,
             "close_failure_symbol": self._state.close_failure_symbol,
             "backend_reboot_in_progress": self._state.backend_reboot_in_progress,
+            "quiet_mode": self._state.quiet_mode,
             "session_id": self._state.session_id,
         }
         for k, v in self._extras.items():

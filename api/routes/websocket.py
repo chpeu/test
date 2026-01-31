@@ -173,12 +173,25 @@ async def websocket_endpoint(websocket: WebSocket):
             }, websocket)
             logger.debug(f"👋 server_hello envoyé pour connexion {connection_id}")
             # Envoyer un ping de test pour confirmer que la connexion est bidirectionnelle
+            ping_id = 9999
+            try:
+                conn_data_map = getattr(ws_mgr, 'connection_data', None)
+                if isinstance(conn_data_map, dict) and websocket in conn_data_map:
+                    conn_data = conn_data_map[websocket]
+                    conn_data['server_ping_counter'] = int(conn_data.get('server_ping_counter', 0)) + 1
+                    ping_id = conn_data['server_ping_counter']
+                    now = time.time()
+                    conn_data['last_server_ping_id'] = ping_id
+                    conn_data['last_server_ping_ts'] = now
+                    conn_data['last_message_type'] = 'out:ping_test'
+            except Exception:
+                pass
             await ws_mgr.send_personal_message({
                 'type': 'ping',
                 'timestamp': time.time(),
-                'ping_id': 9999,
+                'ping_id': ping_id,
             }, websocket)
-            logger.debug("🏓 ping de test (ping_id=9999) envoyé juste après server_hello")
+            logger.debug(f"🏓 ping de test (ping_id={ping_id}) envoyé juste après server_hello")
         except Exception as e:
             logger.error(f"❌ Erreur envoi server_hello: {e}")
         
@@ -347,6 +360,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     expected_ping_id = conn_data.get('last_server_ping_id')
                     connection_id = conn_data.get('connection_id', 'unknown')
                     now = time.time()
+                    if expected_ping_id is None:
+                        conn_data['last_server_pong_ts'] = now
+                        conn_data['last_server_rtt_ms'] = None
+                        logger.debug(
+                            f"🏓 [WEBSOCKET-PONG-UNEXPECTED] Client {connection_id} pong#{pong_ping_id} reçu sans ping attendu"
+                        )
+                        continue
                     
                     if pong_ping_id == expected_ping_id:
                         conn_data['last_server_pong_ts'] = now
@@ -592,6 +612,28 @@ async def handle_client_command(command: str, params: dict):
         config_change = params.get('change', 'unknown')
         await add_log('INFO', f'Config modifiée: {config_key}', str(config_change))
         return {'status': 'logged', 'key': config_key, 'change': config_change}
+
+    elif command == 'set_quiet_mode':
+        from utils.logger import apply_quiet_mode, is_quiet_mode
+        enabled = params.get('enabled')
+        if enabled is None:
+            enabled = not is_quiet_mode()
+        enabled = bool(enabled)
+        apply_quiet_mode(enabled)
+        state.set_quiet_mode(enabled)
+        if _app_state is not None:
+            try:
+                _app_state['quiet_mode'] = enabled
+            except Exception:
+                pass
+        await add_log('INFO', 'Quiet mode', 'Activé' if enabled else 'Désactivé')
+        ws_mgr = _ws_manager or state.get_ws_manager()
+        if ws_mgr:
+            await ws_mgr.emit('quiet_mode', {
+                'enabled': enabled,
+                'timestamp': time.time()
+            })
+        return {'status': 'success', 'quiet_mode': enabled}
     
     # Vérifier si la commande est enregistrée dynamiquement
     ws_mgr = _ws_manager or state.get_ws_manager()

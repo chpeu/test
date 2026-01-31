@@ -15,6 +15,67 @@ from config import DEBUG_ENABLED
 
 _ws_log_handlers = weakref.WeakSet()
 
+# Quiet mode globals
+QUIET_MODE = False
+QUIET_MODE_LOGGERS = (
+    "api.routes.websocket",
+    "core.websocket_manager",
+    "core.callbacks.scanner_loop",
+)
+QUIET_MODE_TAGS = (
+    "[WS-DEBUG]",
+    "[WS-PING]",
+    "[WS-STATUS]",
+    "[WS-COMMAND]",
+    "[DEBUG-SCAN]",
+    "[WEBSOCKET-PONG",
+    "[WEBSOCKET-FIX]",
+    "[WEBSOCKET-MONITOR]",
+)
+_quiet_mode_prev_levels = {}
+
+
+class QuietModeFilter(logging.Filter):
+    """Filtre global pour réduire la verbosité quand quiet mode est actif."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not QUIET_MODE:
+            return True
+        if record.levelno >= logging.WARNING:
+            return True
+        try:
+            message = record.getMessage()
+        except Exception:
+            message = ""
+        if message and any(tag in message for tag in QUIET_MODE_TAGS):
+            return False
+        if any(record.name.startswith(prefix) for prefix in QUIET_MODE_LOGGERS):
+            return False
+        return True
+
+
+_quiet_mode_filter = QuietModeFilter()
+
+
+def _install_quiet_mode_filter(target_logger: logging.Logger) -> None:
+    if _quiet_mode_filter not in target_logger.filters:
+        target_logger.addFilter(_quiet_mode_filter)
+    for handler in target_logger.handlers:
+        if _quiet_mode_filter not in handler.filters:
+            handler.addFilter(_quiet_mode_filter)
+
+
+def _apply_quiet_logger_levels(enabled: bool) -> None:
+    for logger_name in QUIET_MODE_LOGGERS:
+        target = logging.getLogger(logger_name)
+        if enabled:
+            if logger_name not in _quiet_mode_prev_levels:
+                _quiet_mode_prev_levels[logger_name] = target.level
+            target.setLevel(logging.WARNING)
+        else:
+            if logger_name in _quiet_mode_prev_levels:
+                target.setLevel(_quiet_mode_prev_levels.pop(logger_name))
+
 
 class SafeRotatingFileHandler(RotatingFileHandler):
     """RotatingFileHandler sécurisé pour Windows qui gère les PermissionError"""
@@ -347,6 +408,8 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         ws_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
         if isinstance(ws_handler, logging.Handler):
             log.addHandler(ws_handler)
+
+    _install_quiet_mode_filter(log)
     
     logger = log
     return log
@@ -374,6 +437,19 @@ def get_logger() -> logging.Logger:
     if _logger is None:
         _logger = setup_logger()
     return _logger
+
+
+def apply_quiet_mode(enabled: bool) -> None:
+    """Activer/désactiver le quiet mode pour les logs."""
+    global QUIET_MODE
+    QUIET_MODE = bool(enabled)
+    _install_quiet_mode_filter(logging.getLogger())
+    _install_quiet_mode_filter(logging.getLogger("TradeCursor"))
+    _apply_quiet_logger_levels(QUIET_MODE)
+
+
+def is_quiet_mode() -> bool:
+    return QUIET_MODE
 
 
 

@@ -31,6 +31,7 @@
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
 	import { activePosition, clearPosition, updatePosition } from '$lib/stores/position';
+	import { setQuietMode } from '$lib/stores/quietMode';
 
 	// 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages)
 	let showErrorPopup = false;
@@ -292,6 +293,13 @@
 				console.log('✅ WebSocket connecté, chargement de l\'état initial...');
 				await loadInitialState();
 			});
+
+		// 🔇 Quiet mode: sync runtime toggle
+		ws.on('quiet_mode', (data: any) => {
+			if (data && typeof data.enabled !== 'undefined') {
+				setQuietMode(Boolean(data.enabled));
+			}
+		});
 			
 			// Configurer les listeners
 			setupWebSocketListeners(ws);
@@ -618,6 +626,10 @@
 		if (Array.isArray(topPairs)) {
 			const { updateTopPairs } = await import('$lib/stores/scanner');
 			updateTopPairs(topPairs);
+		}
+
+		if (data.quiet_mode !== undefined) {
+			setQuietMode(Boolean(data.quiet_mode));
 		}
 	}
 

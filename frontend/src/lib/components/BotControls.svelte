@@ -3,9 +3,11 @@
 	import { botPhase, getPhaseMessage } from '$lib/stores/botPhase';
 	import { activePosition } from '$lib/stores/position';
 	import { onMount } from 'svelte';
+	import { quietMode, setQuietMode } from '$lib/stores/quietMode';
 
 	let loading = false;
 	let rebooting = false;
+	let quietLoading = false;
 
 	// 🔧 FIX: S'assurer que loading est toujours false au démarrage
 	onMount(() => {
@@ -119,6 +121,32 @@
 			rebooting = false;
 		}
 	}
+
+	async function toggleQuietMode() {
+		if (quietLoading) return;
+		try {
+			quietLoading = true;
+			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+
+			if (!ws || !ws.connected) {
+				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
+			}
+
+			const target = !$quietMode;
+			const result = await sendCommandViaWS('set_quiet_mode', { enabled: target });
+			if (result && typeof result.quiet_mode !== 'undefined') {
+				setQuietMode(result.quiet_mode);
+			} else {
+				setQuietMode(target);
+			}
+		} catch (err) {
+			console.error('❌ Error toggling quiet mode:', err);
+			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode quiet'}`);
+		} finally {
+			quietLoading = false;
+		}
+	}
 </script>
 
 <div class="bot-controls" data-debug-name="botControls">
@@ -132,6 +160,15 @@
 				data-debug-name="botControls.rebootButton"
 			>
 				{rebooting ? '♻️ Rebooting...' : 'Reboot backend'}
+			</button>
+			<button
+				class="btn-quiet"
+				class:active={$quietMode}
+				on:click={toggleQuietMode}
+				disabled={quietLoading}
+				data-debug-name="botControls.quietModeButton"
+			>
+				{quietLoading ? '⏳ Quiet...' : $quietMode ? '🔕 Quiet' : '🔊 Logs'}
 			</button>
 		</div>
 		<div class="bot-status" class:active={$isScanning} data-debug-name="isScanning">
@@ -286,6 +323,34 @@
 	}
 
 	.btn-reboot:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn-quiet {
+		padding: 8px 12px;
+		border-radius: 8px;
+		border: 1px solid #5cc8ff;
+		background: rgba(92, 200, 255, 0.15);
+		color: #5cc8ff;
+		font-size: 13px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.btn-quiet:hover:not(:disabled) {
+		background: rgba(92, 200, 255, 0.3);
+		transform: translateY(-1px);
+	}
+
+	.btn-quiet.active {
+		background: rgba(92, 200, 255, 0.4);
+		border-color: #9be0ff;
+		color: #e6f7ff;
+	}
+
+	.btn-quiet:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
