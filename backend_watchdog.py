@@ -22,10 +22,30 @@ class BackendWatchdog:
         self.last_successful_check = None
         self.backend_stdout_file = None
         self.backend_stderr_file = None
+        self.last_health_error = None
+        self.last_restart_reason = None
+        self.log_file_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "logs",
+            "backend_watchdog.log"
+        )
+        self._log_file = None
+        try:
+            os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)
+            self._log_file = open(self.log_file_path, "a", encoding="utf-8")
+        except Exception:
+            self._log_file = None
         
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        print(f"[{timestamp}] WATCHDOG: {message}")
+        line = f"[{timestamp}] WATCHDOG: {message}"
+        print(line)
+        if self._log_file:
+            try:
+                self._log_file.write(line + "\n")
+                self._log_file.flush()
+            except Exception:
+                pass
         
     async def check_websocket_health(self):
         """Test si le WebSocket backend répond"""
@@ -38,13 +58,16 @@ class BackendWatchdog:
                 
                 if response and len(response) > 50:  # Réponse valide attendue
                     self.last_successful_check = datetime.now()
+                    self.last_health_error = None
                     return True
                 else:
                     self.log(f"Réponse WebSocket invalide: {len(response)} chars")
+                    self.last_health_error = "invalid_response"
                     return False
                     
         except Exception as e:
-            self.log(f"WebSocket Health Check FAILED: {str(e)}")
+            self.last_health_error = str(e)
+            self.log(f"WebSocket Health Check FAILED: {self.last_health_error}")
             return False
             
     def find_backend_process(self):
@@ -83,7 +106,8 @@ class BackendWatchdog:
     def start_backend(self):
         """Démarre le backend"""
         try:
-            self.log("Démarrage du backend...")
+            reason = self.last_restart_reason or "watchdog_start"
+            self.log(f"Démarrage du backend (reason={reason})...")
             log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
             os.makedirs(log_dir, exist_ok=True)
 
@@ -110,11 +134,14 @@ class BackendWatchdog:
             )
 
             # Démarrer en arrière-plan sans bloquer le watchdog
+            env = os.environ.copy()
+            env["BACKEND_REBOOT_REASON"] = reason
             self.backend_process = subprocess.Popen(
                 ['python', 'main.py'],
                 cwd=os.path.dirname(os.path.abspath(__file__)),
                 stdout=self.backend_stdout_file,
-                stderr=self.backend_stderr_file
+                stderr=self.backend_stderr_file,
+                env=env
             )
             
             # Attendre un peu pour que le serveur démarre
@@ -143,6 +170,7 @@ class BackendWatchdog:
                     self.log("❌ Backend WebSocket: BLOQUE - Redémarrage nécessaire")
                     
                     # Tuer le processus bloqué
+                    self.last_restart_reason = f"watchdog_ws_unhealthy:{self.last_health_error or 'no_response'}"
                     self.kill_backend_process()
                     
                     # Redémarrer

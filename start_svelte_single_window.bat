@@ -34,6 +34,10 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+if not exist "logs" (
+    mkdir logs
+)
+
 REM Installer dépendances si nécessaire
 if not exist "frontend\node_modules" (
     echo 📦 Installing frontend dependencies...
@@ -46,6 +50,7 @@ echo ✅ Starting backend and frontend...
 echo.
 echo 📍 Frontend:  http://localhost:3000
 echo 📍 Backend:   http://localhost:5000
+echo 📄 Watchdog log: logs\backend_watchdog.log
 echo.
 echo Press Ctrl+C to stop both servers
 echo ========================================
@@ -53,7 +58,7 @@ echo.
 
 REM Créer script temporaire pour lancer les deux
 echo @echo off > temp_start.bat
-echo start /B python main.py >> temp_start.bat
+echo start /B python backend_watchdog.py >> temp_start.bat
 echo cd frontend >> temp_start.bat
 echo npm run dev >> temp_start.bat
 

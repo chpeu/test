@@ -107,6 +107,14 @@ try:
 except ImportError:
     colorama = None
 
+# 🔥 FIX Windows: éviter l'AssertionError Proactor (_loop_writing)
+if os.name == "nt":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        logging.getLogger(__name__).info("✅ Event loop policy WindowsSelector activée")
+    except Exception:
+        pass
+
 # 🔥 INSTANCES GLOBALES (Maintenues pour compatibilité descendante via StateManager)
 live_order_manager = None
 trade_db = None
