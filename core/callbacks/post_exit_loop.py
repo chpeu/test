@@ -39,7 +39,7 @@ async def post_exit_loop():
     if _started_event is not None:
         _started_event.set()
     
-    logger.warning("\ud83d\udd04 Post-Exit Loop démarrée")
+    logger.warning("[POST-EXIT] Loop démarrée")
     
     while _is_running:
         try:
@@ -60,7 +60,7 @@ async def post_exit_loop():
                 post_exit_loop._iteration_count = 0
             post_exit_loop._iteration_count += 1
             if post_exit_loop._iteration_count % 30 == 1:
-                logger.warning(f"\ud83d\udcca PostExit Loop: {len(active_symbols)} symboles actifs: {active_symbols}")
+                logger.warning(f"[POST-EXIT] {len(active_symbols)} symboles actifs: {active_symbols}")
             
             if not _price_provider:
                 logger.warning("Pas de price provider disponible")

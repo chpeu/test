@@ -355,11 +355,17 @@ async def init_background_services() -> None:
         live_config = load_live_config()
         if live_config.get('trading_mode') == 'LIVE' and (live_config.get('api_key_mexc') or live_config.get('browser_token_mexc')):
             try:
+                from config import TRADING_CONFIG
                 from trading.live_order_manager_futures import LiveOrderManagerFutures
+                default_leverage = live_config.get(
+                    'default_leverage',
+                    TRADING_CONFIG.get('default_leverage', 1)
+                )
                 lom = LiveOrderManagerFutures(
                     api_key=live_config.get('api_key_mexc'),
                     api_secret=live_config.get('api_secret_mexc'),
                     browser_token=live_config.get('browser_token_mexc'),
+                    default_leverage=default_leverage,
                     dry_run=live_config.get('dry_run', True),
                     use_bypass=True # Forcer bypass si disponible
                 )
