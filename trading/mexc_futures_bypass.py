@@ -756,7 +756,8 @@ class MexcFuturesBypass:
                     'vol_unit': spec.vol_unit,
                     'price_unit': spec.price_unit,
                     'price_precision': spec.price_precision,
-                    'vol_precision': spec.vol_precision
+                    'vol_precision': spec.vol_precision,
+                    'contract_size': spec.contract_size
                 }
                 for symbol, spec in self._contract_specs.items()
             }
@@ -1307,7 +1308,16 @@ class MexcFuturesBypass:
         """
         # Vérifier le cache
         if symbol in self._contract_specs:
-            return self._contract_specs[symbol]
+            spec = self._contract_specs[symbol]
+            logger.warning(
+                "📋 ContractSpec %s (cache): contractSize=%s minVol=%s volUnit=%s priceUnit=%s",
+                symbol,
+                spec.contract_size,
+                spec.min_vol,
+                spec.vol_unit,
+                spec.price_unit,
+            )
+            return spec
         
         # Récupérer depuis l'API
         response = await self.get_contract_detail(symbol)
@@ -1380,7 +1390,15 @@ class MexcFuturesBypass:
                 contract_size=contract_size,
             )
             
-            logger.info(f"📋 ContractSpec {symbol}: contractSize={contract_size}, minVol={spec.min_vol}")
+            logger.info(
+                "📋 ContractSpec %s (api): contractSize=%s (raw=%s) minVol=%s volUnit=%s priceUnit=%s",
+                symbol,
+                contract_size,
+                raw_contract_size,
+                spec.min_vol,
+                spec.vol_unit,
+                spec.price_unit,
+            )
             
             # Cacher en mémoire
             self._contract_specs[symbol] = spec

@@ -20,6 +20,8 @@ class BackendWatchdog:
         self.backend_process = None
         self.restart_count = 0
         self.last_successful_check = None
+        self.backend_stdout_file = None
+        self.backend_stderr_file = None
         
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -82,12 +84,37 @@ class BackendWatchdog:
         """Démarre le backend"""
         try:
             self.log("Démarrage du backend...")
+            log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+            os.makedirs(log_dir, exist_ok=True)
+
+            if self.backend_stdout_file:
+                try:
+                    self.backend_stdout_file.close()
+                except Exception:
+                    pass
+            if self.backend_stderr_file:
+                try:
+                    self.backend_stderr_file.close()
+                except Exception:
+                    pass
+
+            self.backend_stdout_file = open(
+                os.path.join(log_dir, "backend_stdout.log"),
+                "a",
+                encoding="utf-8"
+            )
+            self.backend_stderr_file = open(
+                os.path.join(log_dir, "backend_stderr.log"),
+                "a",
+                encoding="utf-8"
+            )
+
             # Démarrer en arrière-plan sans bloquer le watchdog
             self.backend_process = subprocess.Popen(
                 ['python', 'main.py'],
                 cwd=os.path.dirname(os.path.abspath(__file__)),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stdout=self.backend_stdout_file,
+                stderr=self.backend_stderr_file
             )
             
             # Attendre un peu pour que le serveur démarre

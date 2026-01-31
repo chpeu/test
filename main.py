@@ -118,6 +118,40 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 🔥 Logging fichier pour capturer les crashs/backends en arrière-plan
+try:
+    from utils.logger import SafeRotatingFileHandler
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    root_logger = logging.getLogger()
+    if not any(isinstance(h, SafeRotatingFileHandler) for h in root_logger.handlers):
+        file_handler = SafeRotatingFileHandler(
+            os.path.join(log_dir, "app.log"),
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+            delay=True,
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter(
+            "[%(asctime)s] %(levelname)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        ))
+        root_logger.addHandler(file_handler)
+        logger.info("✅ File logging activé: %s", os.path.join(log_dir, "app.log"))
+except Exception as e:
+    logger.warning("⚠️ Impossible d'activer file logging: %s", e)
+
+_faulthandler_file = None
+try:
+    import faulthandler
+    crash_log_path = os.path.join(os.path.dirname(__file__), "logs", "faulthandler.log")
+    _faulthandler_file = open(crash_log_path, "a", encoding="utf-8")
+    faulthandler.enable(file=_faulthandler_file)
+    logger.info("✅ Faulthandler activé: %s", crash_log_path)
+except Exception as e:
+    logger.debug("⚠️ Faulthandler non activé: %s", e)
+
 # 🔥 Ajouter handler pour logger les erreurs vers PostgreSQL scan_errors
 try:
     from core.error_logger import ErrorLoggerHandler
@@ -156,6 +190,17 @@ def _log_uncaught_exception(exc_type, exc, tb):
 
 
 sys.excepthook = _log_uncaught_exception
+
+def _log_thread_exception(args):
+    logger.critical(
+        "💥 Exception non gérée dans thread %s (pid=%s)",
+        getattr(args.thread, "name", "unknown"),
+        os.getpid(),
+        exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+    )
+
+if hasattr(threading, "excepthook"):
+    threading.excepthook = _log_thread_exception
 
 
 def _log_process_exit():
@@ -464,6 +509,17 @@ async def lifespan(app: FastAPI):
             set_shutdown_manager(shutdown_manager)
         except Exception:
             pass
+
+        try:
+            loop_for_signals = None
+            try:
+                loop_for_signals = asyncio.get_running_loop()
+            except RuntimeError:
+                loop_for_signals = None
+            shutdown_manager.install_signal_handlers(loop_for_signals)
+            logger.info("✅ GracefulShutdown handlers installés")
+        except Exception as e:
+            logger.warning("⚠️ Impossible d'installer les handlers de shutdown: %s", e)
 
         try:
             from utils.logger import drain_websocket_log_handlers
