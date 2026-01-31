@@ -267,17 +267,31 @@ class GracefulShutdown:
                 # Créer task shutdown dans la loop
                 asyncio.create_task(self.shutdown())
 
+        def _install_loop_handler(sig) -> bool:
+            try:
+                loop.add_signal_handler(sig, lambda: signal_handler(sig))
+                logger.info("✅ Handler %s installé (pid=%s)", signal.Signals(sig).name, os.getpid())
+                return True
+            except (NotImplementedError, RuntimeError):
+                return False
+
+        def _install_signal_fallback(sig, sig_name: str) -> None:
+            try:
+                signal.signal(sig, lambda *_: signal_handler(sig))
+                logger.info("✅ Handler %s installé via signal.signal (pid=%s)", sig_name, os.getpid())
+            except Exception as e:
+                logger.warning("⚠️ Impossible d'installer handler %s: %s", sig_name, e)
+
         # SIGINT (CTRL+C)
-        loop.add_signal_handler(signal.SIGINT, lambda: signal_handler(signal.SIGINT))
-        logger.info("✅ Handler SIGINT installé (pid=%s)", os.getpid())
+        if not _install_loop_handler(signal.SIGINT):
+            _install_signal_fallback(signal.SIGINT, "SIGINT")
 
         # SIGTERM (kill)
-        try:
-            loop.add_signal_handler(signal.SIGTERM, lambda: signal_handler(signal.SIGTERM))
-            logger.info("✅ Handler SIGTERM installé (pid=%s)", os.getpid())
-        except (AttributeError, NotImplementedError):
-            # SIGTERM non supporté sur Windows
-            logger.warning("⚠️ SIGTERM non supporté sur cette plateforme (Windows?)")
+        if hasattr(signal, "SIGTERM"):
+            if not _install_loop_handler(signal.SIGTERM):
+                _install_signal_fallback(signal.SIGTERM, "SIGTERM")
+        else:
+            logger.info("ℹ️ SIGTERM non supporté sur cette plateforme")
 
     async def wait_for_shutdown(self) -> None:
         """
