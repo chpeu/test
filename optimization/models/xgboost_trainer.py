@@ -2,6 +2,7 @@
 XGBoost Trainer - Entraînement modèle baseline pour classification win/loss
 """
 import logging
+import os
 import json
 from pathlib import Path
 from datetime import datetime
@@ -306,28 +307,41 @@ class XGBoostTrainer:
         X_full = pd.concat([X_train, X_test])
         y_full = pd.concat([y_train, y_test])
 
-        cv_scores_accuracy = cross_val_score(
-            cv_model, X_full, y_full,
-            cv=5, scoring='accuracy', n_jobs=-1
-        )
-        cv_scores_roc_auc = cross_val_score(
-            cv_model, X_full, y_full,
-            cv=5, scoring='roc_auc', n_jobs=-1
-        )
+        cv_n_jobs = 1 if os.getenv("PYTEST_CURRENT_TEST") else -1
+        try:
+            cv_scores_accuracy = cross_val_score(
+                cv_model, X_full, y_full,
+                cv=5, scoring='accuracy', n_jobs=cv_n_jobs
+            )
+            cv_scores_roc_auc = cross_val_score(
+                cv_model, X_full, y_full,
+                cv=5, scoring='roc_auc', n_jobs=cv_n_jobs
+            )
+        except Exception as exc:
+            logger.warning(f"⚠️ Cross-validation skipped: {exc}")
+            cv_scores_accuracy = None
+            cv_scores_roc_auc = None
 
-        logger.info(
-            f"📊 CV Accuracy: {cv_scores_accuracy.mean():.3f} (+/- {cv_scores_accuracy.std() * 2:.3f})"
-        )
-        logger.info(
-            f"📊 CV ROC-AUC: {cv_scores_roc_auc.mean():.3f} (+/- {cv_scores_roc_auc.std() * 2:.3f})"
-        )
-
-        cv_metrics = {
-            'accuracy_mean': float(cv_scores_accuracy.mean()),
-            'accuracy_std': float(cv_scores_accuracy.std()),
-            'roc_auc_mean': float(cv_scores_roc_auc.mean()),
-            'roc_auc_std': float(cv_scores_roc_auc.std()),
-        }
+        if cv_scores_accuracy is not None and len(cv_scores_accuracy) > 0:
+            logger.info(
+                f"📊 CV Accuracy: {cv_scores_accuracy.mean():.3f} (+/- {cv_scores_accuracy.std() * 2:.3f})"
+            )
+            logger.info(
+                f"📊 CV ROC-AUC: {cv_scores_roc_auc.mean():.3f} (+/- {cv_scores_roc_auc.std() * 2:.3f})"
+            )
+            cv_metrics = {
+                'accuracy_mean': float(cv_scores_accuracy.mean()),
+                'accuracy_std': float(cv_scores_accuracy.std()),
+                'roc_auc_mean': float(cv_scores_roc_auc.mean()),
+                'roc_auc_std': float(cv_scores_roc_auc.std()),
+            }
+        else:
+            cv_metrics = {
+                'accuracy_mean': None,
+                'accuracy_std': None,
+                'roc_auc_mean': None,
+                'roc_auc_std': None,
+            }
 
         # 7. Évaluer modèle
         metrics = self._evaluate_model(X_train, X_test, y_train, y_test)

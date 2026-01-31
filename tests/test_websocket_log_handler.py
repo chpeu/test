@@ -29,6 +29,7 @@ async def test_websocket_log_handler_drain_cancels_pending_tasks():
     logger.handlers.clear()
     logger.propagate = False
     logger.setLevel(logging.INFO)
+    logger.disabled = False
     logger.addHandler(handler)
 
     # Ensure we're in an event loop context
@@ -38,10 +39,12 @@ async def test_websocket_log_handler_drain_cancels_pending_tasks():
     logger.info("hello")
     await asyncio.sleep(0.1)  # Give time for task to be created
     
-    # If no tasks created, skip the test as the WebSocket handler might not be creating tasks in test environment
-    if len(handler._tasks) == 0:
-        import pytest
-        pytest.skip("WebSocket handler not creating tasks in test environment")
+    # Wait for at least one task to be created
+    for _ in range(10):
+        if handler._tasks:
+            break
+        await asyncio.sleep(0.05)
+    assert handler._tasks
 
     await handler.drain(timeout=0)
     assert len(handler._tasks) == 0
@@ -61,6 +64,7 @@ async def test_websocket_log_handler_skips_when_shutdown_in_progress():
     logger.handlers.clear()
     logger.propagate = False
     logger.setLevel(logging.INFO)
+    logger.disabled = False
     logger.addHandler(handler)
 
     shutdown = GracefulShutdown(timeout=1.0)
@@ -87,15 +91,18 @@ async def test_drain_websocket_log_handlers_drains_all_instances():
     logger.handlers.clear()
     logger.propagate = False
     logger.setLevel(logging.INFO)
+    logger.disabled = False
     logger.addHandler(handler)
 
     logger.info("hello")
     await asyncio.sleep(0.1)  # Give time for task to be created
     
-    # If no tasks created, skip the test as the WebSocket handler might not be creating tasks in test environment
-    if len(handler._tasks) == 0:
-        import pytest
-        pytest.skip("WebSocket handler not creating tasks in test environment")
+    # Wait for at least one task to be created
+    for _ in range(10):
+        if handler._tasks:
+            break
+        await asyncio.sleep(0.05)
+    assert handler._tasks
 
     await drain_websocket_log_handlers(timeout=0)
     assert len(handler._tasks) == 0
@@ -116,15 +123,18 @@ async def test_websocket_log_handler_flood_protection_drops_when_backlog_full():
     logger.handlers.clear()
     logger.propagate = False
     logger.setLevel(logging.INFO)
+    logger.disabled = False
     logger.addHandler(handler)
 
     logger.info("first")
     await asyncio.sleep(0.1)  # Give time for task to be created
     
-    # If no tasks created, skip the test as the WebSocket handler might not be creating tasks in test environment
-    if len(handler._tasks) == 0:
-        import pytest
-        pytest.skip("WebSocket handler not creating tasks in test environment")
+    # Wait for at least one task to be created
+    for _ in range(10):
+        if handler._tasks:
+            break
+        await asyncio.sleep(0.05)
+    assert handler._tasks
     
     initial_task_count = len(handler._tasks)
     logger.info("second")

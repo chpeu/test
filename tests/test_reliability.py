@@ -5,6 +5,7 @@ import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from core.exceptions import NetworkError
+import api.reliability as reliability_mod
 from api.reliability import (
     AdaptiveCircuitBreaker,
     fetch_with_retry,
@@ -213,14 +214,32 @@ class TestWithCircuitBreaker:
     @pytest.mark.asyncio
     async def test_decorated_function_success(self):
         """Test fonction décorée réussit"""
-        # 🔥 FIX: Skip ce test à cause d'incompatibilité pybreaker
-        pytest.skip("pybreaker call_async compatibility issue")
+        breaker = AdaptiveCircuitBreaker()
+
+        async def mock_func():
+            return "success"
+
+        with patch.object(reliability_mod, "_adaptive_circuit_breaker", breaker):
+            decorated = reliability_mod.with_circuit_breaker(mock_func)
+            result = await decorated()
+
+        assert result == "success"
+        assert breaker.success_count == 1
 
     @pytest.mark.asyncio
     async def test_decorated_function_failure(self):
         """Test fonction décorée échoue"""
-        # 🔥 FIX: Skip ce test à cause d'incompatibilité pybreaker
-        pytest.skip("pybreaker call_async compatibility issue")
+        breaker = AdaptiveCircuitBreaker()
+
+        async def mock_func():
+            raise NetworkError("Connection failed")
+
+        with patch.object(reliability_mod, "_adaptive_circuit_breaker", breaker):
+            decorated = reliability_mod.with_circuit_breaker(mock_func)
+            with pytest.raises(NetworkError):
+                await decorated()
+
+        assert breaker.error_count == 1
 
 
 class TestFetchWithAllProtections:
@@ -229,14 +248,30 @@ class TestFetchWithAllProtections:
     @pytest.mark.asyncio
     async def test_fetch_all_protections_success(self):
         """Test fetch avec toutes protections réussit"""
-        # 🔥 FIX: Skip ce test à cause d'incompatibilité pybreaker
-        pytest.skip("pybreaker call_async compatibility issue")
+        breaker = AdaptiveCircuitBreaker()
+        mock_func = AsyncMock(return_value={"data": "success"})
+
+        with patch.object(reliability_mod, "_adaptive_circuit_breaker", breaker):
+            result = await reliability_mod.fetch_with_all_protections(mock_func)
+
+        assert result == {"data": "success"}
+        assert mock_func.call_count == 1
+        assert breaker.success_count == 1
 
     @pytest.mark.asyncio
     async def test_fetch_all_protections_with_retry(self):
         """Test fetch avec retry automatique"""
-        # 🔥 FIX: Skip ce test à cause d'incompatibilité pybreaker
-        pytest.skip("pybreaker call_async compatibility issue")
+        breaker = AdaptiveCircuitBreaker()
+        mock_func = AsyncMock(side_effect=[
+            ConnectionError("Error 1"),
+            {"data": "success"}
+        ])
+
+        with patch.object(reliability_mod, "_adaptive_circuit_breaker", breaker):
+            result = await reliability_mod.fetch_with_all_protections(mock_func)
+
+        assert result == {"data": "success"}
+        assert mock_func.call_count == 2
 
 
 class TestWebSocketManager:

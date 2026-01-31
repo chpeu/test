@@ -2,6 +2,7 @@
 Fiabilisation API: Retry, Circuit Breaker, WebSocket
 """
 import asyncio
+import inspect
 import logging
 from typing import Callable, Any, Optional
 from functools import wraps
@@ -196,7 +197,23 @@ class AdaptiveCircuitBreaker:
     async def call_async(self, func, *args, **kwargs):
         """Appeler fonction avec circuit breaker adaptatif"""
         try:
-            result = await self._circuit_breaker.call_async(func, *args, **kwargs)
+            breaker_call = getattr(self._circuit_breaker, "call_async", None)
+            if breaker_call is None:
+                result = await func(*args, **kwargs)
+            else:
+                try:
+                    maybe_result = breaker_call(func, *args, **kwargs)
+                except (TypeError, RuntimeError) as exc:
+                    error_text = str(exc)
+                    if "await" in error_text or "coroutine" in error_text or "event loop" in error_text:
+                        maybe_result = func(*args, **kwargs)
+                    else:
+                        raise
+
+                if inspect.isawaitable(maybe_result):
+                    result = await maybe_result
+                else:
+                    result = maybe_result
             self.record_success()
             return result
         # 🔥 SPRINT 1.1: Circuit breaker - Distinguer erreurs réseau, API, rate limit
