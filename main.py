@@ -254,7 +254,7 @@ state = get_state_manager()
 # 🔥 WebSocket Natif - Initialize and store in StateManager
 ws_mgr = get_websocket_manager()
 state.set_ws_manager(ws_mgr)
-logger.info(f"🔍 WebSocketManager created: {ws_mgr is not None}, type={type(ws_mgr).__name__}")
+print(f"🔍 [DEBUG] WebSocketManager created: {ws_mgr is not None}, type={type(ws_mgr).__name__}")
 
 # 🔥 Legacy App State Proxy for compatibility with routes
 app_state = state.get_legacy_proxy()
@@ -273,6 +273,15 @@ from core.position.sl_services import setup_realtime_sl_check, schedule_sl_order
 if api_router and set_app_state:
     set_app_state(app_state)
     logger.info("✅ app_state injecté dans API routes")
+
+# 🔥 WEBSOCKET-FIX: Injecter le WebSocket manager dans les routes API
+try:
+    if set_websocket_manager_routes:
+        ws_mgr = state.get_ws_manager()
+        set_websocket_manager_routes(ws_mgr)
+        logger.info("✅ WebSocket manager injecté dans API routes")
+except Exception as e:
+    logger.debug(f"Injection WebSocket manager routes non disponible: {e}")
 
 # 🔥 LIVE TRADING: Enregistrer les commandes WebSocket pour live trading
 try:

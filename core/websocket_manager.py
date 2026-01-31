@@ -5,12 +5,26 @@ Remplace Socket.IO pour des performances optimales
 import asyncio
 import json
 import logging
+import math
 import time
 from typing import Dict, Set, Optional
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_json(value):
+    """Remplacer NaN/Inf par None pour éviter les JSON invalides côté frontend."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_for_json(item) for item in value]
+    return value
 
 
 class WebSocketManager:
@@ -135,6 +149,8 @@ class WebSocketManager:
                 'client_info': None,
                 'user_agent': None,
                 'origin': None,
+                'send_timeout_count': 0,
+                'send_lock': asyncio.Lock(),
             }
         logger.info(
             f"✅ WebSocket connecté (id={connection_id}, client={getattr(websocket, 'client', None)}, total: {len(self.active_connections)})"
@@ -206,7 +222,7 @@ class WebSocketManager:
                 f"🚨 [WEBSOCKET-FIX] DÉCONNEXION RAPIDE DÉTECTÉE: {duration_s}s - possible crash backend!"
             )
     
-    async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 3.0):
+    async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 10.0):
         """Envoyer un message à un WebSocket spécifique"""
         try:
             # 🔥 PROTECTION: Vérifier que la connexion est active avant envoi
@@ -227,16 +243,32 @@ class WebSocketManager:
                 # En cas d'erreur d'accès aux états, laisser passer
                 pass
                     
-            message_json = json.dumps(message, default=str)
+            safe_message = _sanitize_for_json(message)
+            message_json = json.dumps(safe_message, default=str)
             conn_data = self.connection_data.get(websocket)
             if conn_data is not None:
                 conn_data['last_message_ts'] = time.time()
                 conn_data['last_message_type'] = f"out:{message.get('type') or 'unknown'}"
                 conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
                 conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(message_json)
-            await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
+            send_lock = conn_data.get('send_lock') if conn_data else None
+            if send_lock:
+                async with send_lock:
+                    await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
+            else:
+                await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
+            logger.info(f"📤 [WS-DEBUG] Message envoyé via send_text: {message_json}")
         except asyncio.TimeoutError:
-            await self.disconnect(websocket)
+            # Timeout ponctuel: ne pas couper immédiatement la connexion
+            conn_data = self.connection_data.get(websocket)
+            if conn_data is not None:
+                conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
+                conn_data['last_message_type'] = 'out:timeout'
+                if conn_data['send_timeout_count'] >= 3:
+                    logger.warning("⚠️ WebSocket timeout répété (>=3) - fermeture de la connexion")
+                    await self.disconnect(websocket)
+            else:
+                logger.warning("⚠️ Timeout envoi message WebSocket (connexion non suivie)")
         except (WebSocketDisconnect, ConnectionError, RuntimeError):
             await self.disconnect(websocket)
         except Exception as e:
@@ -250,7 +282,8 @@ class WebSocketManager:
         
         # 🔥 OPTIMISATION: Créer le message JSON une seule fois avec encodeur robuste
         try:
-            message_json = json.dumps(message, default=str)
+            safe_message = _sanitize_for_json(message)
+            message_json = json.dumps(safe_message, default=str)
         except Exception as e:
             logger.error(f"❌ Erreur sérialisation JSON broadcast: {e}")
             return
@@ -282,15 +315,21 @@ class WebSocketManager:
                     # FastAPI WebSocket
                     if connection.websocket.state != 1:  # WebSocketState.CONNECTED = 1
                         return connection  # État non-connecté
-                elif hasattr(connection, 'state'):
-                    # Autre implémentation WebSocket  
-                    if connection.state != 1:  # WebSocketState.CONNECTED = 1
-                        return connection  # État non-connecté
-                        
-                await asyncio.wait_for(connection.send_text(message_json), timeout=3.0)  # Timeout réduit 5s->3s
+                send_lock = conn_data.get('send_lock') if conn_data else None
+                if send_lock:
+                    async with send_lock:
+                        await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
+                else:
+                    await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
                 return None  # Succès
             except asyncio.TimeoutError:
-                return connection  # Timeout - nettoyer connexion
+                conn_data = self.connection_data.get(connection)
+                if conn_data is not None:
+                    conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
+                    conn_data['last_message_type'] = 'out:timeout'
+                    if conn_data['send_timeout_count'] >= 3:
+                        return connection  # Timeout répété - nettoyer connexion
+                return None  # Timeout ponctuel - garder la connexion
             except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
                 # 🔥 FIX: Ignorer les erreurs de déconnexion normales
                 return connection  # Échec - retourner connexion à nettoyer
@@ -471,15 +510,28 @@ class WebSocketManager:
                 'data': data,
                 'timestamp': datetime.now().isoformat()
             }
-            message_json = json.dumps(message)
+            safe_message = _sanitize_for_json(message)
+            message_json = json.dumps(safe_message, default=str)
             
             # 🔥 OPTIMISATION: Envoyer en parallèle avec asyncio.gather
             async def send_to_connection(connection):
                 try:
-                    await asyncio.wait_for(connection.send_text(message_json), timeout=3.0)
+                    conn_data = self.connection_data.get(connection)
+                    send_lock = conn_data.get('send_lock') if conn_data else None
+                    if send_lock:
+                        async with send_lock:
+                            await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
+                    else:
+                        await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
                     return None  # Succès
                 except asyncio.TimeoutError:
-                    return connection  # Timeout - nettoyer connexion
+                    conn_data = self.connection_data.get(connection)
+                    if conn_data is not None:
+                        conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
+                        conn_data['last_message_type'] = 'out:timeout'
+                        if conn_data['send_timeout_count'] >= 3:
+                            return connection  # Timeout répété - nettoyer connexion
+                    return None  # Timeout ponctuel - garder la connexion
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur emit room {room}: {e}")
                     return connection  # Échec

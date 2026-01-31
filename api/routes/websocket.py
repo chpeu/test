@@ -22,6 +22,27 @@ def set_websocket_manager(wm):
     global _ws_manager
     _ws_manager = wm
 
+def _resolve_ws_manager(state):
+    global _ws_manager
+    ws_mgr = _ws_manager or state.get_ws_manager()
+    if ws_mgr is None:
+        from core.websocket_manager import get_websocket_manager
+        ws_mgr = get_websocket_manager()
+        state.set_ws_manager(ws_mgr)
+    state_ws = state.get_ws_manager()
+    if state_ws is None:
+        state.set_ws_manager(ws_mgr)
+    elif state_ws is not ws_mgr:
+        logger.warning(
+            "⚠️ [WS-DIAGNOSTIC] ws_manager mismatch: route=%s state=%s - alignement sur state",
+            id(ws_mgr),
+            id(state_ws),
+        )
+        ws_mgr = state_ws
+    if _ws_manager is None or _ws_manager is not ws_mgr:
+        _ws_manager = ws_mgr
+    return ws_mgr
+
 def set_app_state(as_):
     global _app_state
     _app_state = as_
@@ -45,7 +66,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """Endpoint WebSocket bidirectionnel natif"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
-    ws_mgr = _ws_manager or state.get_ws_manager()
+    ws_mgr = _resolve_ws_manager(state)
     headers = getattr(websocket, 'headers', None)
     user_agent = None
     origin = None
@@ -134,6 +155,25 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception:
             pass
         
+        # Envoyer server_hello pour handshake frontend
+        try:
+            await ws_mgr.send_personal_message({
+                'type': 'server_hello',
+                'timestamp': time.time(),
+                'connection_id': connection_id,
+                'session_id': getattr(state, 'session_id', None),
+            }, websocket)
+            logger.info(f"👋 server_hello envoyé pour connexion {connection_id}")
+            # Envoyer un ping de test pour confirmer que la connexion est bidirectionnelle
+            await ws_mgr.send_personal_message({
+                'type': 'ping',
+                'timestamp': time.time(),
+                'ping_id': 9999,
+            }, websocket)
+            logger.info(f"🏓 ping de test (ping_id=9999) envoyé juste après server_hello")
+        except Exception as e:
+            logger.error(f"❌ Erreur envoi server_hello: {e}")
+        
         # Reset session frontend - 🔥 REMOVED: Should not clear history on every new connection
         # only on real backend startup/reboot via lifespan or command.
         # try:
@@ -221,9 +261,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 try:
                     message = json.loads(data)
+                    logger.info(f"🔍 [WS-DEBUG] Message reçu brut: {data}")
                 except json.JSONDecodeError:
                     if conn_data is not None:
                         conn_data['last_message_type'] = 'in:invalid_json'
+                    logger.warning(f"⚠️ [WS-DEBUG] JSON invalide reçu: {data}")
                     continue
                 
                 msg_type = message.get('type')
@@ -275,14 +317,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 elif msg_type == 'ping':
                     ping_id = message.get('ping_id')
                     client_ts = message.get('timestamp')
+                    logger.info(f"🏓 [WS-DEBUG] Ping reçu: ping_id={ping_id}, ts={client_ts}")
                     await ws_mgr.send_personal_message({
                         'type': 'pong',
                         'timestamp': time.time(),
                         'ping_id': ping_id,
                         'client_ts': client_ts,
                     }, websocket)
+                    logger.info(f"🏓 [WS-DEBUG] Pong envoyé en réponse à ping_id={ping_id}")
 
                 elif msg_type == 'pong':
+                    if conn_data is None:
+                        logger.warning("⚠️ [WS-DEBUG] Pong reçu mais conn_data introuvable - ignoré")
+                        continue
                     pong_ping_id = message.get('ping_id')
                     expected_ping_id = conn_data.get('last_server_ping_id')
                     connection_id = conn_data.get('connection_id', 'unknown')

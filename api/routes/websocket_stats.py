@@ -21,25 +21,33 @@ def set_websocket_manager(wm):
 async def get_websocket_stats():
     """Récupérer les statistiques des connexions WebSocket"""
     try:
-        if not _ws_manager:
+        ws_manager = _ws_manager
+        if ws_manager is None:
+            try:
+                from core.state_manager import get_state_manager
+                ws_manager = get_state_manager().get_ws_manager()
+            except Exception:
+                ws_manager = None
+        if not ws_manager:
             return JSONResponse({
                 "active_connections": 0,
-                "error": "WebSocket manager not available"
+                "error": "WebSocket manager not available",
+                "status": "error"
             }, status_code=503)
         
         # Statistiques de base
-        active_count = _ws_manager.get_connection_count()
+        active_count = ws_manager.get_connection_count()
         
         # Statistiques détaillées si disponible
         detailed_stats = {}
-        if hasattr(_ws_manager, 'connection_data') and _ws_manager.connection_data:
+        if hasattr(ws_manager, 'connection_data') and ws_manager.connection_data:
             connections = []
             total_msg_in = 0
             total_msg_out = 0
             total_bytes_in = 0
             total_bytes_out = 0
             
-            for websocket, conn_data in _ws_manager.connection_data.items():
+            for websocket, conn_data in ws_manager.connection_data.items():
                 conn_info = {
                     "connection_id": conn_data.get('connection_id'),
                     "connected_at": conn_data.get('connected_at'),
@@ -72,14 +80,14 @@ async def get_websocket_stats():
         
         # Statistiques des rooms si disponible
         rooms_stats = {}
-        if hasattr(_ws_manager, 'rooms') and _ws_manager.rooms:
-            for room_name, room_connections in _ws_manager.rooms.items():
+        if hasattr(ws_manager, 'rooms') and ws_manager.rooms:
+            for room_name, room_connections in ws_manager.rooms.items():
                 rooms_stats[room_name] = len(room_connections)
         
         # Commandes WebSocket enregistrées
         registered_commands = []
-        if hasattr(_ws_manager, 'get_registered_commands'):
-            registered_commands = _ws_manager.get_registered_commands()
+        if hasattr(ws_manager, 'get_registered_commands'):
+            registered_commands = ws_manager.get_registered_commands()
         
         return JSONResponse({
             "active_connections": active_count,

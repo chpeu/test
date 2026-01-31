@@ -54,6 +54,11 @@ export class BidirectionalWebSocket {
     private clientPingIdCounter: number = 0;
     public connected: boolean = false;
     private connectionTimeoutId: number | null = null;
+    private baseUrls: string[] = [];
+    private baseUrlIndex: number = 0;
+    private hasEverConnected: boolean = false;
+    private lastConnectedAt: number | null = null;
+    private skipCloseRotation: boolean = false;
 
     constructor(url: string = '') {
         if (typeof window !== 'undefined') {
@@ -74,28 +79,114 @@ export class BidirectionalWebSocket {
             }
         }
 
-        if (!url) {
-            if (typeof window !== 'undefined' && window.location) {
-                // Par défaut, utiliser la même origine (permet le proxy Vite /ws en dev)
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                url = `${protocol}//${host}`;
-                console.log('🔧 Connexion WebSocket via origin/proxy:', url);
-            } else {
-                // Fallback (SSR ou environnement sans window)
-                url = 'ws://localhost:5000';
+        const candidates = this.buildBaseUrlCandidates(url);
+        this.baseUrls = candidates.length > 0 ? candidates : ['ws://localhost:5000', 'ws://localhost:5001'];
+        this.baseUrlIndex = 0;
+        console.log('🔧 WebSocket candidates:', this.baseUrls);
+        this.setActiveBaseUrl(0);
+    }
+
+    private normalizeBaseUrl(raw: string): string {
+        return raw.trim().replace(/^http/, 'ws').replace(/\/ws\/?$/, '').replace(/\/$/, '');
+    }
+
+    private addCandidate(list: string[], raw?: string | null): void {
+        if (!raw) return;
+        const normalized = this.normalizeBaseUrl(raw);
+        if (!normalized) return;
+        if (!list.includes(normalized)) {
+            list.push(normalized);
+        }
+    }
+
+    private resolveRuntimeOverride(): string | null {
+        if (typeof window === 'undefined') return null;
+        try {
+            const params = new URLSearchParams(window.location?.search || '');
+            const paramUrl = params.get('ws_url') || params.get('wsUrl') || params.get('ws');
+            if (paramUrl) return paramUrl;
+            const paramPort = params.get('ws_port') || params.get('wsPort');
+            if (paramPort) {
+                const protocol = window.location?.protocol === 'https:' ? 'wss:' : 'ws:';
+                const hostname = window.location?.hostname;
+                const host = (!hostname || hostname === '0.0.0.0' || hostname === '::') ? 'localhost' : hostname;
+                return `${protocol}//${host}:${paramPort}`;
+            }
+            const stored = window.localStorage?.getItem('ws_base_url') || window.localStorage?.getItem('ws_url');
+            if (stored) return stored;
+            const globalOverride = (window as any).__WS_URL__ || (window as any).__WS_BASE_URL__;
+            if (globalOverride) return globalOverride;
+        } catch (err) {
+            console.warn('⚠️ [WEBSOCKET-CLIENT] Unable to resolve runtime WS override:', err);
+        }
+        return null;
+    }
+
+    private buildBaseUrlCandidates(initialUrl?: string): string[] {
+        const candidates: string[] = [];
+        this.addCandidate(candidates, initialUrl);
+
+        const runtimeOverride = this.resolveRuntimeOverride();
+        this.addCandidate(candidates, runtimeOverride);
+
+        const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env)
+            ? ((import.meta as any).env.VITE_WS_URL || (import.meta as any).env.VITE_BACKEND_URL)
+            : '';
+        this.addCandidate(candidates, envUrl);
+
+        if (typeof window !== 'undefined' && window.location) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const hostname = window.location.hostname;
+            const port = window.location.port ? `:${window.location.port}` : '';
+            const isInvalidHost = !hostname || hostname === '0.0.0.0' || hostname === '::';
+            const host = isInvalidHost ? `localhost${port}` : window.location.host;
+            if (isInvalidHost) {
+                console.warn('⚠️ WebSocket host invalide détecté, fallback localhost:', hostname);
+            }
+            this.addCandidate(candidates, `${protocol}//${host}`);
+
+            const isLocalHost = ['localhost', '127.0.0.1'].includes(hostname) || isInvalidHost;
+            const isDevPort = ['3000', '5173', '4173'].includes(window.location.port);
+            if (isLocalHost || isDevPort) {
+                this.addCandidate(candidates, 'ws://localhost:5000');
+                this.addCandidate(candidates, 'ws://localhost:5001');
+                this.addCandidate(candidates, 'ws://127.0.0.1:5000');
+                this.addCandidate(candidates, 'ws://127.0.0.1:5001');
             }
         }
-        
-        // Convertir http:// en ws:// ou https:// en wss:// si nécessaire
-        this.baseUrl = url.replace(/^http/, 'ws');
-        this.url = this.baseUrl + '/ws';
-        
-        console.log('🎯 WebSocket URL finale construite:', this.url);
+
+        if (candidates.length === 0) {
+            this.addCandidate(candidates, 'ws://localhost:5000');
+            this.addCandidate(candidates, 'ws://localhost:5001');
+        }
+
+        return candidates;
+    }
+
+    private setActiveBaseUrl(index: number, reason?: string): void {
+        if (!this.baseUrls.length) return;
+        const safeIndex = Math.max(0, Math.min(index, this.baseUrls.length - 1));
+        this.baseUrlIndex = safeIndex;
+        this.baseUrl = this.baseUrls[safeIndex];
+        this.url = `${this.baseUrl}/ws`;
+        if (reason) {
+            console.warn(`🔁 [WEBSOCKET-CLIENT] Switch WS base URL (${reason}):`, this.url);
+        } else {
+            console.log('🎯 WebSocket URL finale construite:', this.url);
+        }
+    }
+
+    private rotateBaseUrl(reason: string): boolean {
+        if (this.baseUrls.length <= 1) return false;
+        const nextIndex = (this.baseUrlIndex + 1) % this.baseUrls.length;
+        if (nextIndex === this.baseUrlIndex) return false;
+        this.setActiveBaseUrl(nextIndex, reason);
+        return true;
     }
 
     connect(): void {
         try {
+            this.skipCloseRotation = false;
             console.log('🔄 Connexion WebSocket:', this.url);
             this.serverConnectionId = null;
             this.lastPongAt = null;
@@ -107,6 +198,9 @@ export class BidirectionalWebSocket {
             this.connectionTimeoutId = window.setTimeout(() => {
                 if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
                     console.warn('⚠️ Timeout handshake WebSocket - serveur surchargé?');
+                    if (this.rotateBaseUrl('handshake-timeout')) {
+                        this.skipCloseRotation = true;
+                    }
                     this.ws.close();
                 }
             }, 30000); // 30s pour handshake
@@ -128,6 +222,8 @@ export class BidirectionalWebSocket {
                  this.connectionTimeoutId = null;
              }
              this.connected = true;
+             this.hasEverConnected = true;
+             this.lastConnectedAt = Date.now();
              this.reconnectAttempts = 0;
              this.lastPing = Date.now();
              this.lastPongAt = null;
@@ -203,6 +299,7 @@ export class BidirectionalWebSocket {
             const now = Date.now();
             const timeSinceLastActivityMs = now - this.lastPing;
             const timeSinceLastPongMs = this.lastPongAt ? (now - this.lastPongAt) : null;
+            const timeSinceLastConnectedMs = this.lastConnectedAt ? (now - this.lastConnectedAt) : null;
             const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
             const visibility = typeof document !== 'undefined' ? document.visibilityState : null;
             console.warn('⚠️ WebSocket déconnecté:', {
@@ -220,6 +317,16 @@ export class BidirectionalWebSocket {
                 online,
                 visibility,
             });
+            if (this.skipCloseRotation) {
+                this.skipCloseRotation = false;
+            } else {
+                const closeCode = event.code;
+                const isRetryableClose = closeCode === 1001 || closeCode === 1005 || closeCode === 1006 || closeCode === 1011;
+                const isFastFail = timeSinceLastConnectedMs !== null && timeSinceLastConnectedMs < 5000;
+                if ((isFastFail || !this.hasEverConnected || isRetryableClose) && closeCode !== 1000) {
+                    this.rotateBaseUrl(`close-${closeCode || 'unknown'}`);
+                }
+            }
             this.stopHeartbeat();
             // 🔥 FIX: Mettre à jour le store de connexion
             import('$lib/stores/connection')
@@ -252,6 +359,12 @@ export class BidirectionalWebSocket {
         this.ws.onerror = (error) => {
             console.error('❌ Erreur WebSocket:', error);
             this.emit('error', error); // Émettre un événement d'erreur
+            if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+                const rotated = this.rotateBaseUrl('error');
+                if (rotated) {
+                    this.skipCloseRotation = true;
+                }
+            }
             if (this.ws && this.ws.readyState === WebSocket.CLOSED) {
                 this.scheduleReconnect();
             }

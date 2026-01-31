@@ -26,6 +26,7 @@ async def init_instances() -> None:
     start_total = time.time()
     state = get_state_manager()
     
+    print(f"🚀 [DEBUG] init_instances() démarrée - {datetime.now()}")
     logger.info("🚀 Début de init_instances (async)...")
     
     # --- PHASE 1: CRITICAL STARTUP (Fast) ---
@@ -45,19 +46,22 @@ async def init_instances() -> None:
     try:
         from utils.logger import WebSocketLogHandler
         root_logger = logging.getLogger()
+        # 🔥 FIX: Changer le niveau du root logger pour INFO pour permettre les logs INFO
+        root_logger.setLevel(logging.INFO)
         has_ws_handler = any(isinstance(h, WebSocketLogHandler) for h in root_logger.handlers)
         ws_mgr = state.get_ws_manager()
-        logger.info(f"🔍 WebSocket handler check: has_ws_handler={has_ws_handler}, ws_mgr={ws_mgr is not None}")
+        print(f"🔍 [DEBUG] WebSocket handler check: has_ws_handler={has_ws_handler}, ws_mgr={ws_mgr is not None}")
         if not has_ws_handler and ws_mgr:
             ws_handler = WebSocketLogHandler()
             ws_handler.set_ws_manager(ws_mgr)
             ws_handler.setLevel(logging.INFO)
             ws_handler.setFormatter(logging.Formatter('%(message)s'))
             root_logger.addHandler(ws_handler)
-            logger.info(f"✅ WebSocket log handler configured ({time.time()-start:.3f}s)")
+            print(f"✅ [DEBUG] WebSocket log handler configured ({time.time()-start:.3f}s)")
         else:
-            logger.warning(f"⚠️ WebSocket log handler NOT configured: has_ws_handler={has_ws_handler}, ws_mgr={ws_mgr is not None}")
+            print(f"⚠️ [DEBUG] WebSocket log handler NOT configured: has_ws_handler={has_ws_handler}, ws_mgr={ws_mgr is not None}")
     except Exception as e:
+        print(f"❌ [DEBUG] Error configuring WebSocket log handler: {e}")
         logger.error(f"❌ Error configuring WebSocket log handler: {e}", exc_info=True)
 
     # 2b. Initialize TradeDatabase (Legacy SQLite)
@@ -444,6 +448,13 @@ async def run_initial_top_pairs_scan() -> None:
                         force=True,
                         trigger="auto"
                     )
+                    try:
+                        status = regime_selector.get_status()
+                        ws_mgr = state.get_ws_manager()
+                        if ws_mgr:
+                            await ws_mgr.emit('regime_changed', status)
+                    except Exception as emit_err:
+                        logger.warning(f"⚠️ [DEBUG-SCAN] Erreur émission regime_changed: {emit_err}")
             except Exception as e:
                 logger.warning(f"⚠️ [DEBUG-SCAN] Erreur initialisation régime: {e}")
 

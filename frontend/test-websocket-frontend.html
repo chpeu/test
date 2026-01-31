@@ -20,68 +20,108 @@
             console.log(message);
         }
         
-        // Simuler la détection d'environnement du frontend
-        const isDev = window.location.hostname === 'localhost';
-        let url;
-        
-        if (isDev) {
-            // Même logique que websocket-impl.ts
-            url = 'ws://localhost:5003';
-            addLog('🔧 Mode DEV: Connexion WebSocket forcée vers backend Python: ' + url);
-        } else {
+        function normalizeBaseUrl(raw) {
+            return raw.trim().replace(/^http/, 'ws').replace(/\/ws\/?$/, '').replace(/\/$/, '');
+        }
+
+        function getCandidates() {
+            const candidates = [];
+            const params = new URLSearchParams(window.location.search || '');
+            const paramUrl = params.get('ws_url') || params.get('wsUrl') || params.get('ws');
+            const paramPort = params.get('ws_port') || params.get('wsPort');
+            if (paramUrl) candidates.push(normalizeBaseUrl(paramUrl));
+            if (paramPort) {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const hostname = window.location.hostname || 'localhost';
+                candidates.push(normalizeBaseUrl(`${protocol}//${hostname}:${paramPort}`));
+            }
+
+            const stored = window.localStorage.getItem('ws_base_url') || window.localStorage.getItem('ws_url');
+            if (stored) candidates.push(normalizeBaseUrl(stored));
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            url = `${protocol}//${host}`;
-            addLog('🔧 Mode PROD: Connexion WebSocket via proxy: ' + url);
+            const host = window.location.host || 'localhost';
+            candidates.push(normalizeBaseUrl(`${protocol}//${host}`));
+
+            const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+            const isDevPort = ['3000', '5173', '4173'].includes(window.location.port);
+            if (isLocalHost || isDevPort) {
+                candidates.push('ws://localhost:5000');
+                candidates.push('ws://localhost:5001');
+                candidates.push('ws://127.0.0.1:5000');
+                candidates.push('ws://127.0.0.1:5001');
+            }
+
+            return [...new Set(candidates.filter(Boolean))];
         }
-        
-        const wsUrl = url + '/ws';
-        addLog('🎯 WebSocket URL finale construite: ' + wsUrl);
-        
-        // Test de connexion
-        try {
-            const ws = new WebSocket(wsUrl);
-            
-            ws.onopen = function() {
-                addLog('✅ WebSocket connecté avec succès !');
-                status.textContent = 'Connecté ✅';
-                
-                // Test envoi de message
-                const testMsg = {
-                    type: 'request',
-                    id: 'frontend_test',
-                    request_type: 'state'
+
+        const candidates = getCandidates();
+        addLog('🔧 WebSocket candidates: ' + candidates.join(', '));
+
+        let ws = null;
+        let candidateIndex = 0;
+
+        function tryConnect() {
+            if (candidateIndex >= candidates.length) {
+                addLog('❌ Aucun candidat WebSocket disponible.');
+                status.textContent = 'Échec ❌';
+                return;
+            }
+            const baseUrl = candidates[candidateIndex];
+            const wsUrl = baseUrl + '/ws';
+            addLog('🎯 Tentative WS: ' + wsUrl);
+            candidateIndex += 1;
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = function() {
+                    addLog('✅ WebSocket connecté avec succès !');
+                    status.textContent = 'Connecté ✅';
+                    
+                    // Test envoi de message
+                    const testMsg = {
+                        type: 'request',
+                        id: 'frontend_test',
+                        request_type: 'state'
+                    };
+                    ws.send(JSON.stringify(testMsg));
+                    addLog('📤 Message test envoyé');
                 };
-                ws.send(JSON.stringify(testMsg));
-                addLog('📤 Message test envoyé');
-            };
-            
-            ws.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                addLog('📥 Réponse reçue: ' + data.type + (data.event ? ' (' + data.event + ')' : ''));
-                
-                if (data.type === 'request_response' && data.id === 'frontend_test') {
-                    addLog('🎯 Réponse au test reçue avec succès !');
-                    if (data.data && data.data.success) {
-                        addLog('✅ Backend opérationnel, données d\'état reçues');
+
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    addLog('📥 Réponse reçue: ' + data.type + (data.event ? ' (' + data.event + ')' : ''));
+                    
+                    if (data.type === 'request_response' && data.id === 'frontend_test') {
+                        addLog('🎯 Réponse au test reçue avec succès !');
+                        if (data.data && data.data.success) {
+                            addLog('✅ Backend opérationnel, données d\'état reçues');
+                        }
                     }
-                }
-            };
-            
-            ws.onclose = function(event) {
-                addLog('⚠️ WebSocket déconnecté: ' + event.code + ' ' + event.reason);
-                status.textContent = 'Déconnecté ❌';
-            };
-            
-            ws.onerror = function(error) {
-                addLog('❌ Erreur WebSocket: ' + error);
-                status.textContent = 'Erreur ❌';
-            };
-            
-        } catch (error) {
-            addLog('❌ Erreur création WebSocket: ' + error);
-            status.textContent = 'Erreur création ❌';
+                };
+                
+                ws.onclose = function(event) {
+                    addLog('⚠️ WebSocket déconnecté: ' + event.code + ' ' + event.reason);
+                    status.textContent = 'Déconnecté ❌';
+                    if (!event.wasClean && ws?.readyState !== WebSocket.OPEN) {
+                        addLog('🔁 Tentative sur un autre backend...');
+                        tryConnect();
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    addLog('❌ Erreur WebSocket: ' + error);
+                    status.textContent = 'Erreur ❌';
+                };
+            } catch (error) {
+                addLog('❌ Erreur création WebSocket: ' + error);
+                status.textContent = 'Erreur création ❌';
+                tryConnect();
+            }
         }
+
+        tryConnect();
     </script>
 </body>
 </html>

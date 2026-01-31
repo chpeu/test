@@ -258,13 +258,17 @@
 
 	// Fetch initial state on mount
 	onMount(async () => {
+		console.log('🚀 [DEBUG] onMount exécuté');
+		
 		// 🔥 FIX: Initialiser le système de tooltips de debug
 		const { initDebugTooltips } = await import('$lib/utils/debugTooltip');
 		initDebugTooltips();
 		
 		// 🔥 MIGRATION COMPLÈTE: Initialiser WebSocket natif
 		try {
+			console.log('🔄 [DEBUG] Appel initWebSocket()');
 			const ws = initWebSocket();
+			console.log('✅ [DEBUG] initWebSocket() retourné:', ws, 'connected:', ws?.connected);
 			
 			// Vérifier que l'instance est correcte
 			if (!ws) {

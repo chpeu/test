@@ -37,6 +37,7 @@
 	let refreshInterval: ReturnType<typeof setInterval>;
 	let unsubscribeRegimeChange: (() => void) | null = null;
 	let unsubscribeWsConnect: (() => void) | null = null;
+	let ws: ReturnType<typeof initWebSocket> | null = null;
 
 	// Couleurs par régime
 	const REGIME_COLORS: Record<string, { bg: string; border: string; icon: string; text: string }> = {
@@ -57,12 +58,9 @@
 
 	onMount(async () => {
 		await loadRegimeStatus();
-		
-		// 🔥 FIX: Désactiver le polling HTTP - WebSocket gère les mises à jour temps réel
-		// refreshInterval = setInterval(loadRegimeStatus, 60000);
-		
+
 		// WebSocket listener pour changements temps réel
-		const ws = initWebSocket();
+		ws = initWebSocket();
 		if (ws) {
 			unsubscribeRegimeChange = ws.on('regime_changed', handleRegimeChange);
 			unsubscribeWsConnect = ws.on('connect', () => {
@@ -71,6 +69,13 @@
 				});
 			});
 		}
+
+		// Boucle de verification: fallback HTTP si WebSocket non connecte
+		refreshInterval = setInterval(() => {
+			if (!ws?.connected) {
+				void loadRegimeStatus();
+			}
+		}, 60000);
 	});
 
 	onDestroy(() => {
@@ -176,7 +181,8 @@
 <div 
 	class="regime-widget" 
 	class:disabled={!regimeData.enabled}
-	style="background: {colors.bg}; border-color: {colors.border}"
+	style:background={colors.bg}
+	style:border-color={colors.border}
 >
 	<div class="regime-header">
 		<span class="regime-icon">{colors.icon}</span>
@@ -190,7 +196,7 @@
 	
 	{#if regimeData.enabled}
 		<div class="regime-main">
-			<span class="regime-name" style="color: {colors.text}">{regimeData.current_regime}</span>
+			<span class="regime-name" style:color={colors.text}>{regimeData.current_regime}</span>
 			{#if regimeData.regime_since}
 				<span class="regime-since">depuis {formatDuration(regimeData.regime_since)}</span>
 			{/if}
