@@ -259,16 +259,12 @@ class WebSocketManager:
                 await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
             logger.info(f"📤 [WS-DEBUG] Message envoyé via send_text: {message_json}")
         except asyncio.TimeoutError:
-            # Timeout ponctuel: ne pas couper immédiatement la connexion
             conn_data = self.connection_data.get(websocket)
             if conn_data is not None:
                 conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
                 conn_data['last_message_type'] = 'out:timeout'
-                if conn_data['send_timeout_count'] >= 3:
-                    logger.warning("⚠️ WebSocket timeout répété (>=3) - fermeture de la connexion")
-                    await self.disconnect(websocket)
-            else:
-                logger.warning("⚠️ Timeout envoi message WebSocket (connexion non suivie)")
+            logger.warning("⚠️ Timeout envoi message WebSocket - fermeture de la connexion")
+            await self.disconnect(websocket)
         except (WebSocketDisconnect, ConnectionError, RuntimeError):
             await self.disconnect(websocket)
         except Exception as e:

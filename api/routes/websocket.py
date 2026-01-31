@@ -24,14 +24,18 @@ def set_websocket_manager(wm):
 
 def _resolve_ws_manager(state):
     global _ws_manager
-    ws_mgr = _ws_manager or state.get_ws_manager()
+    get_ws_manager = getattr(state, 'get_ws_manager', None)
+    set_ws_manager = getattr(state, 'set_ws_manager', None)
+    ws_mgr = _ws_manager or (get_ws_manager() if callable(get_ws_manager) else None)
     if ws_mgr is None:
         from core.websocket_manager import get_websocket_manager
         ws_mgr = get_websocket_manager()
-        state.set_ws_manager(ws_mgr)
-    state_ws = state.get_ws_manager()
+        if callable(set_ws_manager):
+            set_ws_manager(ws_mgr)
+    state_ws = get_ws_manager() if callable(get_ws_manager) else None
     if state_ws is None:
-        state.set_ws_manager(ws_mgr)
+        if callable(set_ws_manager):
+            set_ws_manager(ws_mgr)
     elif state_ws is not ws_mgr:
         logger.warning(
             "⚠️ [WS-DIAGNOSTIC] ws_manager mismatch: route=%s state=%s - alignement sur state",

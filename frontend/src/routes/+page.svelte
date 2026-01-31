@@ -416,9 +416,9 @@
 		
 		// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de position
 		ws.on('position_update', async (data: any) => {
-			const { updatePosition } = await import('$lib/stores/position');
+			const { updatePositionSmooth } = await import('$lib/stores/position');
 			if (data) {
-				updatePosition(data);
+				updatePositionSmooth(data);
 			}
 		});
 		
