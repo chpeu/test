@@ -327,8 +327,8 @@ class TestReliabilityManager:
 
         # Mock qui échoue 2 fois puis réussit
         mock_func = AsyncMock(side_effect=[
-            Exception("Error 1"),
-            Exception("Error 2"),
+            ConnectionError("Error 1"),
+            ConnectionError("Error 2"),
             {'data': 'success'}
         ])
 

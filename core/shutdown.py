@@ -25,8 +25,16 @@ await shutdown_manager.shutdown()
 import asyncio
 import signal
 import logging
+import os
+import threading
+import traceback
 from typing import Dict, Callable, Optional, Any, Coroutine
 from dataclasses import dataclass
+
+try:
+    from config import DEBUG_ENABLED
+except Exception:
+    DEBUG_ENABLED = False
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +157,23 @@ class GracefulShutdown:
         Raises:
             Aucune exception propagée (toutes catchées et loggées)
         """
+        if DEBUG_ENABLED:
+            loop_id = None
+            try:
+                loop_id = id(asyncio.get_running_loop())
+            except RuntimeError:
+                loop_id = None
+            logger.debug(
+                "🧭 Shutdown requested (pid=%s thread=%s loop=%s resources=%s)",
+                os.getpid(),
+                threading.current_thread().name,
+                loop_id,
+                len(self.resources),
+            )
+            logger.debug(
+                "🧭 Shutdown stack trace (limit=12):\n%s",
+                "".join(traceback.format_stack(limit=12)),
+            )
         if self.is_shutting_down:
             logger.warning("⚠️ Shutdown déjà en cours, skip")
             return
@@ -226,18 +251,30 @@ class GracefulShutdown:
             sig_name = signal.Signals(sig).name
             logger.info(f"🚨 Signal reçu: {sig_name}, déclenchement shutdown gracieux...")
 
+            if DEBUG_ENABLED:
+                logger.debug(
+                    "🧭 Signal handler invoked (pid=%s thread=%s signal=%s)",
+                    os.getpid(),
+                    threading.current_thread().name,
+                    sig_name,
+                )
+                logger.debug(
+                    "🧭 Signal stack trace (limit=8):\n%s",
+                    "".join(traceback.format_stack(limit=8)),
+                )
+
             if not self.is_shutting_down:
                 # Créer task shutdown dans la loop
                 asyncio.create_task(self.shutdown())
 
         # SIGINT (CTRL+C)
         loop.add_signal_handler(signal.SIGINT, lambda: signal_handler(signal.SIGINT))
-        logger.info("✅ Handler SIGINT installé")
+        logger.info("✅ Handler SIGINT installé (pid=%s)", os.getpid())
 
         # SIGTERM (kill)
         try:
             loop.add_signal_handler(signal.SIGTERM, lambda: signal_handler(signal.SIGTERM))
-            logger.info("✅ Handler SIGTERM installé")
+            logger.info("✅ Handler SIGTERM installé (pid=%s)", os.getpid())
         except (AttributeError, NotImplementedError):
             # SIGTERM non supporté sur Windows
             logger.warning("⚠️ SIGTERM non supporté sur cette plateforme (Windows?)")

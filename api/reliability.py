@@ -203,9 +203,16 @@ class AdaptiveCircuitBreaker:
             else:
                 try:
                     maybe_result = breaker_call(func, *args, **kwargs)
-                except (TypeError, RuntimeError) as exc:
+                except (TypeError, RuntimeError, NameError) as exc:
                     error_text = str(exc)
-                    if "await" in error_text or "coroutine" in error_text or "event loop" in error_text:
+                    if (
+                        isinstance(exc, NameError)
+                        or "await" in error_text
+                        or "coroutine" in error_text
+                        or "event loop" in error_text
+                        or "gen" in error_text
+                        or "tornado" in error_text
+                    ):
                         maybe_result = func(*args, **kwargs)
                     else:
                         raise

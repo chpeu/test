@@ -9,11 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import sys
+import atexit
 import asyncio
 import logging
 import json
 import os
 import time
+import threading
+import traceback
 import uvicorn
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple, Callable
@@ -123,6 +126,74 @@ try:
     logger.info("✅ ErrorLoggerHandler ajouté - Les erreurs seront loggées vers scan_errors")
 except Exception as e:
     logger.warning(f"⚠️ Impossible d'ajouter ErrorLoggerHandler: {e}")
+
+logger.info(
+    "🧭 Process info: pid=%s ppid=%s argv=%s",
+    os.getpid(),
+    os.getppid(),
+    sys.argv,
+)
+reboot_reason = os.getenv("BACKEND_REBOOT_REASON")
+if reboot_reason:
+    logger.warning("♻️ Backend redémarré (reason=%s)", reboot_reason)
+
+
+def _log_uncaught_exception(exc_type, exc, tb):
+    logger.critical(
+        "💥 Exception non gérée (pid=%s)",
+        os.getpid(),
+        exc_info=(exc_type, exc, tb),
+    )
+    try:
+        state_snapshot = get_state_manager()
+        logger.critical(
+            "💥 Etat backend au crash: reboot_in_progress=%s session_id=%s",
+            state_snapshot.backend_reboot_in_progress,
+            state_snapshot.session_id,
+        )
+    except Exception:
+        pass
+
+
+sys.excepthook = _log_uncaught_exception
+
+
+def _log_process_exit():
+    reboot_flag = None
+    session_id = None
+    try:
+        state_snapshot = get_state_manager()
+        reboot_flag = state_snapshot.backend_reboot_in_progress
+        session_id = state_snapshot.session_id
+    except Exception:
+        pass
+    logger.warning(
+        "⚠️ Backend process exiting (pid=%s reboot_in_progress=%s session_id=%s)",
+        os.getpid(),
+        reboot_flag,
+        session_id,
+    )
+
+
+atexit.register(_log_process_exit)
+
+_asyncio_exception_handler_installed = False
+_prev_asyncio_exception_handler = None
+
+
+def _asyncio_exception_handler(loop, context):
+    message = context.get("message")
+    exception = context.get("exception")
+    if exception:
+        logger.error("❌ Asyncio exception: %s", message, exc_info=exception)
+    else:
+        logger.error("❌ Asyncio exception: %s context=%s", message, context)
+
+    if _prev_asyncio_exception_handler and _prev_asyncio_exception_handler is not _asyncio_exception_handler:
+        try:
+            _prev_asyncio_exception_handler(loop, context)
+        except Exception as handler_err:
+            logger.debug("Asyncio exception handler chain failed: %s", handler_err)
 
 # 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
@@ -317,6 +388,16 @@ async def lifespan(app: FastAPI):
     
     # 🔥 SPRINT 2.1: StateManager for centralized state management
     state = get_state_manager()
+    global _asyncio_exception_handler_installed, _prev_asyncio_exception_handler
+    try:
+        loop = asyncio.get_running_loop()
+        if not _asyncio_exception_handler_installed:
+            _prev_asyncio_exception_handler = loop.get_exception_handler()
+            loop.set_exception_handler(_asyncio_exception_handler)
+            _asyncio_exception_handler_installed = True
+            logger.info("✅ Asyncio exception handler installé")
+    except Exception as e:
+        logger.debug(f"⚠️ Installation exception handler asyncio échouée: {e}")
 
     status_task = None
 
@@ -530,6 +611,11 @@ async def lifespan(app: FastAPI):
         logger.info("🟢 LIFESPAN YIELD: Execution principale terminée, début du shutdown")
 
     finally:
+        logger.warning(
+            "🟡 LIFESPAN shutdown start (pid=%s reboot_in_progress=%s)",
+            os.getpid(),
+            getattr(state, "backend_reboot_in_progress", None),
+        )
         if status_task:
             status_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -812,6 +898,7 @@ if __name__ == '__main__':
         # 🔥 MIGRATION COMPLÈTE: Lancer FastAPI avec WebSocket natif uniquement
         # L'initialisation se fera via le lifespan (init_instances)
         uvicorn.run(app, host='0.0.0.0', port=port, log_level="info", lifespan="on")
+        logger.warning("⚠️ uvicorn.run terminé (pid=%s)", os.getpid())
     except OSError as e:
         logger.error(f"❌ Erreur binding port {port}: {e}")
         sys.exit(1)
