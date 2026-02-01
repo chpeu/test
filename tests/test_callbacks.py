@@ -555,7 +555,7 @@ class TestScannerLoop:
 
         # Mock analyzer qui lève une exception
         mock_analyzer = AsyncMock()
-        mock_analyzer.calculate_trend_data = AsyncMock(side_effect=Exception("API error"))
+        mock_analyzer.analyze_pair = AsyncMock(side_effect=Exception("API error"))
 
         scanner_loop._analyzer = mock_analyzer
 

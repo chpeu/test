@@ -900,7 +900,7 @@ class TestCallbacksAsync:
     async def test_scan_pair_for_setup_error(self):
         """Test scan pair avec erreur"""
         mock_analyzer = Mock()
-        mock_analyzer.calculate_trend_data = AsyncMock(side_effect=Exception("Error"))
+        mock_analyzer.analyze_pair = AsyncMock(side_effect=Exception("Error"))
 
         set_analyzer(mock_analyzer)
 

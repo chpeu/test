@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769942292.549277,
+  "timestamp": 1769944295.672562,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -260,6 +260,16 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "TIA_USDT": {
+      "symbol": "TIA_USDT",
+      "min_vol": 1.0,
+      "max_vol": 550000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.0001,
+      "price_precision": 4,
+      "vol_precision": 1,
+      "contract_size": 1.0
     }
   }
 }
