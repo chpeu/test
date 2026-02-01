@@ -93,14 +93,6 @@ def _extract_numeric_value(value: Any) -> Optional[float]:
     return None
 
 
-def _derive_ml_threshold_type(reject_category: Optional[str]) -> Optional[str]:
-    """
-    Déduire le type de seuil ML à partir de la catégorie de rejet.
-    """
-    if not reject_category:
-        return None
-
-
 def _safe_float(value: Any, default: float = 0.0) -> float:
     """
     🔥 FIX: Convertir une valeur en float de manière sécurisée.
@@ -624,52 +616,25 @@ class PostgreSQLDataLogger:
             scalability_data = scan_data.get('scalability_data', {})
             if isinstance(scalability_data, dict):
                 price = get_preferred_price(scalability_data, None)
-        
+
         # 5. Essayer current_price si disponible
         if price is None:
             current_price = scan_data.get('current_price')
             if current_price is not None:
                 price = get_preferred_price(current_price, None)
-        
-        # 6. En dernier recours, essayer price_provider si symbol fourni
-        if price is None:
-            try:
-                from core.state_manager import StateManager
-                from api.price_provider import get_price_provider
-                import asyncio
-                
-                state = StateManager()
-                price_prov = state.get_price_provider()
-                if not price_prov:
-                    price_prov = get_price_provider()
-                
-                if price_prov:
-                    # Créer une nouvelle boucle ou utiliser l'existante
-                    try:
-                        loop = asyncio.get_running_loop()
-                        # Si dans une boucle existante, utiliser run_in_executor
-                        import concurrent.futures
-                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                            future = executor.submit(asyncio.run, price_prov.get_price(symbol))
-                            price_data = future.result(timeout=2.0)
-                            if price_data:
-                                price = get_preferred_price(price_data, None)
-                    except RuntimeError:
-                        # Pas de boucle en cours, utiliser asyncio.run directement
-                        price_data = asyncio.run(price_prov.get_price(symbol))
-                        if price_data:
-                            price = get_preferred_price(price_data, None)
-            except Exception:
-                # Ignorer les erreurs du price_provider
-                pass
+
+        # 6. En dernier recours, éviter les I/O réseau ici (logger sync).
+        # Le fallback price=0 est appliqué plus bas.
 
         # Si le prix est toujours None, utiliser 0 comme fallback et logger warning
         if price is None or price == 0:
             if price is None:
                 price = 0.0
-                logger.warning(f"⚠️ Prix manquant pour {symbol} dans log_scan (batch), utilisation price=0")
+                logger.warning(
+                    f"⚠️ Prix manquant pour {symbol} dans log_scan (batch), utilisation price=0"
+                )
             # Continuer le logging avec price=0 pour ne pas bloquer l'analyse ML
-        
+
         # 🔥 PHASE 3: Utiliser batch insert si activé
         if use_batch:
             with self.buffer_lock:
