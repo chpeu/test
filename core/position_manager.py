@@ -1103,8 +1103,11 @@ class PositionManager:
         gb_ml_prediction = None
         gb_ml_features = None
         gb_ml_confidence = None
+        precomputed_ml = ml_confidence is not None
+        if not precomputed_ml and isinstance(setup_data, dict) and setup_data.get('ml_features'):
+            precomputed_ml = True
 
-        if gb_enabled:
+        if gb_enabled and not precomputed_ml:
             logger.warning(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
 
             try:
@@ -1396,13 +1399,16 @@ class PositionManager:
 
             except Exception as e:
                 logger.warning(f"⚠️ Erreur filtre GradientBoosting: {e} - Trade autorisé par défaut")
+        elif gb_enabled and precomputed_ml:
+            logger.info(f"🌳 Filtre GradientBoosting ignoré (ML déjà calculé) pour {symbol}")
         else:
             logger.warning(f"💤 Filtre GradientBoosting désactivé pour {symbol}")
 
+        effective_ml_confidence = ml_confidence if ml_confidence is not None else gb_ml_confidence
         ml_confidence_pct = None
-        if ml_confidence is not None:
+        if effective_ml_confidence is not None:
             try:
-                ml_confidence_pct = float(ml_confidence)
+                ml_confidence_pct = float(effective_ml_confidence)
                 if ml_confidence_pct <= 1:
                     ml_confidence_pct = ml_confidence_pct * 100
             except Exception:

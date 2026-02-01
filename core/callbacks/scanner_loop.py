@@ -590,6 +590,7 @@ async def _scan_top_pairs():
                         )
                         
                         if features:
+                            best_setup['ml_features'] = features
                             predictor = get_predictor()
                             if predictor.is_loaded:
                                 gb_min_confidence = TRADING_CONFIG.get('gb_min_confidence', 0.55)
@@ -599,6 +600,7 @@ async def _scan_top_pairs():
                                 
                                 # 🔥 FIX CRITIQUE: Stocker ml_confidence comme décimal (0.0-1.0), pas pourcentage
                                 best_setup['ml_confidence'] = round(confidence, 4)  # Décimal arrondi
+                                best_setup['ml_prediction'] = 'win' if confidence >= 0.5 else 'loss'
                                 
                                 try:
                                     pg_logger = get_pg_datalogger()
@@ -634,9 +636,12 @@ async def _scan_top_pairs():
                 # 🤖 FILTRE ML XGBoost V1 (ancien système)
                 logger.info(f"🔍 ML_CONFIG state: enabled={ML_CONFIG.get('enabled', False)}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}, mode={ML_CONFIG.get('mode', 'STRICT')}")
 
-                if ML_CONFIG.get('enabled', False):
+                if ML_CONFIG.get('enabled', False) and not gb_enabled:
                     logger.info(f"🤖 Filtre ML activé - Vérification prédiction pour {symbol}...")
+                elif ML_CONFIG.get('enabled', False) and gb_enabled:
+                    logger.info(f"🤖 Filtre ML legacy ignoré (GB actif) pour {symbol}")
 
+                if ML_CONFIG.get('enabled', False) and not gb_enabled:
                     try:
                         # Récupérer klines depuis best_setup ou les refetch si nécessaire
                         klines_1m = best_setup.get('klines_1m')
