@@ -3574,15 +3574,34 @@ class PositionManager:
         # Utiliser le prix de sortie réel (paper ou live)
         exit_price = actual_exit_price
 
-        # 🔥 FIX: Calculer PnL réalisé avec les vrais frais configurés
-        # (Ne pas forcer à 0.0% sauf si explicitement configuré ainsi)
+        # ✅ Déterminer si on dispose de données réelles d'exchange (prix rempli + fees réels)
+        actual_entry_fee = getattr(self.active_position, 'entry_fee_usdt', None)
+        actual_exit_fee = getattr(self.active_position, 'exit_fee_usdt', None)
+        actual_fees_usdt = None
+        if actual_entry_fee is not None or actual_exit_fee is not None:
+            actual_fees_usdt = (actual_entry_fee or 0.0) + (actual_exit_fee or 0.0)
+
+        has_exchange_fill = getattr(self.active_position, 'exit_fill_price', None) is not None
+
+        # 🔥 FIX: Calculer PnL réalisé avec les frais configurés
+        # (Si fees réels disponibles, ne pas ré-estimer)
         fees_pct = (get_effective_value('fee_per_trade') or 0.0004) * 100  # 0.04% par défaut
+        if actual_fees_usdt is not None:
+            fees_pct = 0.0
 
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
             position=self.active_position.to_dict(),
             exit_price=exit_price,
             fees_percent=fees_pct
         )
+
+        # ✅ Si frais réels connus, écraser les fees et net_pnl calculés
+        if actual_fees_usdt is not None:
+            pnl_data['fees'] = round(actual_fees_usdt, 4)
+            net_pnl_actual = pnl_data['pnl_usdt_gross'] - actual_fees_usdt
+            pnl_data['net_pnl'] = round(net_pnl_actual, 4)
+            if self.active_position.size > 0:
+                pnl_data['net_pnl_pct'] = round((net_pnl_actual / self.active_position.size) * 100, 6)
 
         # Calculer slippage si applicable
         # 🔥 FIX: _estimate_slippage retourne un pourcentage (%)
@@ -3615,6 +3634,9 @@ class PositionManager:
 
         # 🔥 FIX: Convertir slippage_pct en USDT pour les calculs
         slippage_usdt = (slippage_pct / 100) * self.active_position.size if self.active_position.size > 0 else 0.0
+        # ✅ Si on a un prix d'exécution réel, ne pas appliquer un coût de slippage
+        if has_exchange_fill:
+            slippage_usdt = 0.0
 
         # Calculer coûts totaux (fees en USDT + slippage en USDT)
         total_costs = pnl_data['fees'] + slippage_usdt
@@ -3659,12 +3681,11 @@ class PositionManager:
                     f"Différence: {pnl_divergence:.4f} USDT | "
                     f"Exit price bot: {exit_price:.8f} | Fill price MEXC: {self.active_position.exit_fill_price}"
                 )
-                # 🔥 FIX: Utiliser le PnL MEXC réel si disponible (source de vérité)
-                if abs(mexc_pnl_usdt) > 0.001:  # MEXC a retourné un PnL valide
-                    logger.info(f"📊 Utilisation PnL MEXC réel au lieu du calculé: {mexc_pnl_usdt:.4f} USDT")
-                    net_pnl_usdt = mexc_pnl_usdt
-                    if size_for_pct > 0:
-                        net_pnl_pct = (net_pnl_usdt / size_for_pct) * 100
+            # 🔥 FIX: Utiliser le PnL MEXC réel si disponible (source de vérité)
+            logger.info(f"📊 Utilisation PnL MEXC réel au lieu du calculé: {mexc_pnl_usdt:.4f} USDT")
+            net_pnl_usdt = mexc_pnl_usdt
+            if size_for_pct > 0:
+                net_pnl_pct = (net_pnl_usdt / size_for_pct) * 100
 
         # 🔥 DEBUG PNL CRITIQUE
         logger.info(

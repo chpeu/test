@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769960031.5017707,
+  "timestamp": 1769967342.7967262,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -290,6 +290,16 @@
       "price_precision": 2,
       "vol_precision": 1,
       "contract_size": 0.01
+    },
+    "POL_USDT": {
+      "symbol": "POL_USDT",
+      "min_vol": 1.0,
+      "max_vol": 138000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 10.0
     }
   }
 }
