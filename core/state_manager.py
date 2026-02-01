@@ -77,6 +77,8 @@ class ApplicationState:
 
     # Quiet mode (réduction verbosité logs)
     quiet_mode: bool = False
+    # Log mode (logs | quiet | debug)
+    log_mode: str = "logs"
 
     # Trade history
     trade_history: List[Dict[str, Any]] = field(default_factory=list)
@@ -377,7 +379,24 @@ class StateManager:
     def set_quiet_mode(self, value: bool) -> None:
         """Set quiet mode flag (thread-safe)"""
         with self._thread_lock:
-            self._app_state.quiet_mode = bool(value)
+            enabled = bool(value)
+            self._app_state.quiet_mode = enabled
+            self._app_state.log_mode = "quiet" if enabled else "logs"
+
+    @property
+    def log_mode(self) -> str:
+        """Get log mode value"""
+        with self._thread_lock:
+            return self._app_state.log_mode
+
+    def set_log_mode(self, mode: str) -> None:
+        """Set log mode value (thread-safe)"""
+        normalized = (mode or "").strip().lower()
+        if normalized not in ("logs", "quiet", "debug"):
+            normalized = "logs"
+        with self._thread_lock:
+            self._app_state.log_mode = normalized
+            self._app_state.quiet_mode = normalized == "quiet"
 
     @property
     def session_id(self) -> str:
@@ -590,6 +609,7 @@ class StateManager:
                 "close_failure_count": self._app_state.close_failure_count,
                 "close_failure_symbol": self._app_state.close_failure_symbol,
                 "quiet_mode": self._app_state.quiet_mode,
+                "log_mode": self._app_state.log_mode,
                 "session_id": self._app_state.session_id,
             }
 
@@ -777,6 +797,8 @@ class LegacyAppStateProxy(MutableMapping):
             return self._state.backend_reboot_in_progress
         if key == "quiet_mode":
             return self._state.quiet_mode
+        if key == "log_mode":
+            return self._state.log_mode
         if key == "session_id":
             return self._state.session_id
         
@@ -827,6 +849,9 @@ class LegacyAppStateProxy(MutableMapping):
         if key == "quiet_mode":
             self._state.set_quiet_mode(bool(value))
             return
+        if key == "log_mode":
+            self._state.set_log_mode(value)
+            return
         if key == "session_id":
             self._extras[key] = value
             return
@@ -847,6 +872,7 @@ class LegacyAppStateProxy(MutableMapping):
             "close_failure_symbol",
             "backend_reboot_in_progress",
             "quiet_mode",
+            "log_mode",
             "session_id",
         ]
         seen = set(keys)
@@ -881,6 +907,7 @@ class LegacyAppStateProxy(MutableMapping):
             "close_failure_symbol": self._state.close_failure_symbol,
             "backend_reboot_in_progress": self._state.backend_reboot_in_progress,
             "quiet_mode": self._state.quiet_mode,
+            "log_mode": self._state.log_mode,
             "session_id": self._state.session_id,
         }
         for k, v in self._extras.items():

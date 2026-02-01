@@ -3,7 +3,7 @@
 	import { botPhase, getPhaseMessage } from '$lib/stores/botPhase';
 	import { activePosition } from '$lib/stores/position';
 	import { onMount } from 'svelte';
-	import { quietMode, setQuietMode } from '$lib/stores/quietMode';
+	import { logMode, quietMode, setLogMode } from '$lib/stores/quietMode';
 
 	let loading = false;
 	let rebooting = false;
@@ -122,7 +122,19 @@
 		}
 	}
 
-	async function toggleQuietMode() {
+	const MODE_LABELS = {
+		logs: '🔊 Logs',
+		quiet: '🔕 Quiet',
+		debug: '🐛 Debug'
+	};
+
+	function getNextMode(current) {
+		if (current === 'logs') return 'quiet';
+		if (current === 'quiet') return 'debug';
+		return 'logs';
+	}
+
+	async function toggleLogMode() {
 		if (quietLoading) return;
 		try {
 			quietLoading = true;
@@ -133,16 +145,16 @@
 				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
 
-			const target = !$quietMode;
-			const result = await sendCommandViaWS('set_quiet_mode', { enabled: target });
-			if (result && typeof result.quiet_mode !== 'undefined') {
-				setQuietMode(result.quiet_mode);
+			const targetMode = getNextMode($logMode || 'logs');
+			const result = await sendCommandViaWS('set_log_mode', { mode: targetMode });
+			if (result && result.log_mode) {
+				setLogMode(result.log_mode);
 			} else {
-				setQuietMode(target);
+				setLogMode(targetMode);
 			}
 		} catch (err) {
-			console.error('❌ Error toggling quiet mode:', err);
-			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode quiet'}`);
+			console.error('❌ Error toggling log mode:', err);
+			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode log'}`);
 		} finally {
 			quietLoading = false;
 		}
@@ -164,11 +176,12 @@
 			<button
 				class="btn-quiet"
 				class:active={$quietMode}
-				on:click={toggleQuietMode}
+				class:debug={$logMode === 'debug'}
+				on:click={toggleLogMode}
 				disabled={quietLoading}
 				data-debug-name="botControls.quietModeButton"
 			>
-				{quietLoading ? '⏳ Quiet...' : $quietMode ? '🔕 Quiet' : '🔊 Logs'}
+				{quietLoading ? '⏳ Logs...' : (MODE_LABELS[$logMode] || '🔊 Logs')}
 			</button>
 		</div>
 		<div class="bot-status" class:active={$isScanning} data-debug-name="isScanning">

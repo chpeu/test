@@ -1,5 +1,5 @@
 {
-  "timestamp": 1769967342.7967262,
+  "timestamp": 1769981492.9516032,
   "specs": {
     "ADA_USDT": {
       "symbol": "ADA_USDT",
@@ -300,6 +300,46 @@
       "price_precision": 0,
       "vol_precision": 1,
       "contract_size": 10.0
+    },
+    "GRT_USDT": {
+      "symbol": "GRT_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1300000.0,
+      "vol_unit": 1.0,
+      "price_unit": 1e-05,
+      "price_precision": 0,
+      "vol_precision": 1,
+      "contract_size": 1.0
+    },
+    "AVAX_USDT": {
+      "symbol": "AVAX_USDT",
+      "min_vol": 1.0,
+      "max_vol": 1400000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.001,
+      "price_precision": 3,
+      "vol_precision": 1,
+      "contract_size": 0.1
+    },
+    "BCH_USDT": {
+      "symbol": "BCH_USDT",
+      "min_vol": 1.0,
+      "max_vol": 350000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
+    },
+    "ETH_USDT": {
+      "symbol": "ETH_USDT",
+      "min_vol": 1.0,
+      "max_vol": 70000.0,
+      "vol_unit": 1.0,
+      "price_unit": 0.01,
+      "price_precision": 2,
+      "vol_precision": 1,
+      "contract_size": 0.01
     }
   }
 }

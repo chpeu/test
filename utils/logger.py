@@ -15,7 +15,11 @@ from config import DEBUG_ENABLED
 
 _ws_log_handlers = weakref.WeakSet()
 
-# Quiet mode globals
+# Log mode globals
+LOG_MODE = "logs"  # logs | quiet | debug
+LOG_MODE_VALUES = ("logs", "quiet", "debug")
+
+# Quiet mode globals (compat)
 QUIET_MODE = False
 QUIET_MODE_LOGGERS = (
     "api.routes.websocket",
@@ -32,7 +36,94 @@ QUIET_MODE_TAGS = (
     "[WEBSOCKET-FIX]",
     "[WEBSOCKET-MONITOR]",
 )
+QUIET_MODE_EVENT_KEYWORDS = (
+    "pnl",
+    "profit",
+    "loss",
+    "gain",
+    "entrée",
+    "sortie",
+    "entry",
+    "exit",
+    "fermeture",
+    "fermée",
+    "fermé",
+    "ouverte",
+    "ouvert",
+    "ouverture",
+    "closed",
+    "close",
+    "opened",
+    "open",
+    " tp ",
+    " tp:",
+    " tp=",
+    " sl ",
+    " sl:",
+    " sl=",
+    "stop loss",
+    "take profit",
+    "break-even",
+    "break even",
+    "trailing",
+    "order",
+    "filled",
+    "exécut",
+    "execution",
+    "liquidat",
+    "signal",
+    "setup",
+    "opportun",
+    "config",
+    "connecté",
+    "déconnect",
+    "disconnect",
+    "connected",
+    "reboot",
+    "redémarr",
+    "restart",
+    "circuit breaker",
+    "pause trading",
+    "resume trading",
+)
+QUIET_MODE_SCANNER_KEYWORDS = ("scanner", "scan")
+QUIET_MODE_SCANNER_ACTIONS = (
+    "start",
+    "stop",
+    "démarr",
+    "arrêt",
+    "pause",
+    "resume",
+    "lancé",
+    "lancement",
+    "stopp",
+    "initial",
+)
+QUIET_MODE_NOISE_KEYWORDS = (
+    "ping",
+    "pong",
+    "health",
+    "heartbeat",
+    "requête entrante",
+    "réponse:",
+    "response:",
+    "request",
+    "diagnostic",
+    "[status-broadcast]",
+    "websocket",
+    "ws-",
+    "status broadcast",
+    "scalability refresh",
+    "refresh loop",
+    "loop tick",
+    "initialis",
+    "initialized",
+    "bootstrap",
+    "startup",
+)
 _quiet_mode_prev_levels = {}
+_log_mode_prev_levels = {}
+_log_mode_prev_handler_levels = {}
 
 
 class QuietModeFilter(logging.Filter):
@@ -44,14 +135,21 @@ class QuietModeFilter(logging.Filter):
         if record.levelno >= logging.WARNING:
             return True
         try:
-            message = record.getMessage()
+            message = record.getMessage() or ""
         except Exception:
             message = ""
-        if message and any(tag in message for tag in QUIET_MODE_TAGS):
+        lower_message = message.lower()
+        if message and any(tag.lower() in lower_message for tag in QUIET_MODE_TAGS):
             return False
+
+        if _is_quiet_event_message(lower_message):
+            return True
+
         if any(record.name.startswith(prefix) for prefix in QUIET_MODE_LOGGERS):
             return False
-        return True
+        if _has_quiet_noise(lower_message):
+            return False
+        return False
 
 
 _quiet_mode_filter = QuietModeFilter()
@@ -75,6 +173,49 @@ def _apply_quiet_logger_levels(enabled: bool) -> None:
         else:
             if logger_name in _quiet_mode_prev_levels:
                 target.setLevel(_quiet_mode_prev_levels.pop(logger_name))
+
+
+def _is_quiet_event_message(message: str) -> bool:
+    if not message:
+        return False
+    if any(keyword in message for keyword in QUIET_MODE_EVENT_KEYWORDS):
+        return True
+    if any(keyword in message for keyword in QUIET_MODE_SCANNER_KEYWORDS):
+        return any(action in message for action in QUIET_MODE_SCANNER_ACTIONS)
+    return False
+
+
+def _has_quiet_noise(message: str) -> bool:
+    if not message:
+        return False
+    return any(keyword in message for keyword in QUIET_MODE_NOISE_KEYWORDS)
+
+
+def _apply_log_mode_levels(mode: str) -> None:
+    target_loggers = [logging.getLogger(), logging.getLogger("TradeCursor")]
+    if mode == "debug":
+        for target in target_loggers:
+            if target not in _log_mode_prev_levels:
+                _log_mode_prev_levels[target] = target.level
+            target.setLevel(logging.DEBUG)
+            for handler in target.handlers:
+                if handler not in _log_mode_prev_handler_levels:
+                    _log_mode_prev_handler_levels[handler] = handler.level
+                handler.setLevel(logging.DEBUG)
+        return
+
+    for target, level in list(_log_mode_prev_levels.items()):
+        try:
+            target.setLevel(level)
+        except Exception:
+            pass
+    _log_mode_prev_levels.clear()
+    for handler, level in list(_log_mode_prev_handler_levels.items()):
+        try:
+            handler.setLevel(level)
+        except Exception:
+            pass
+    _log_mode_prev_handler_levels.clear()
 
 
 class SafeRotatingFileHandler(RotatingFileHandler):
@@ -439,13 +580,28 @@ def get_logger() -> logging.Logger:
     return _logger
 
 
-def apply_quiet_mode(enabled: bool) -> None:
-    """Activer/désactiver le quiet mode pour les logs."""
-    global QUIET_MODE
-    QUIET_MODE = bool(enabled)
+def set_log_mode(mode: str) -> str:
+    """Définir le mode de log (logs | quiet | debug)."""
+    global LOG_MODE, QUIET_MODE
+    normalized = (mode or "").strip().lower()
+    if normalized not in LOG_MODE_VALUES:
+        normalized = "logs"
+    LOG_MODE = normalized
+    QUIET_MODE = normalized == "quiet"
     _install_quiet_mode_filter(logging.getLogger())
     _install_quiet_mode_filter(logging.getLogger("TradeCursor"))
     _apply_quiet_logger_levels(QUIET_MODE)
+    _apply_log_mode_levels(LOG_MODE)
+    return LOG_MODE
+
+
+def get_log_mode() -> str:
+    return LOG_MODE
+
+
+def apply_quiet_mode(enabled: bool) -> None:
+    """Activer/désactiver le quiet mode pour les logs."""
+    set_log_mode("quiet" if enabled else "logs")
 
 
 def is_quiet_mode() -> bool:

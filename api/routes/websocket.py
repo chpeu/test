@@ -614,16 +614,17 @@ async def handle_client_command(command: str, params: dict):
         return {'status': 'logged', 'key': config_key, 'change': config_change}
 
     elif command == 'set_quiet_mode':
-        from utils.logger import apply_quiet_mode, is_quiet_mode
+        from utils.logger import set_log_mode, is_quiet_mode
         enabled = params.get('enabled')
         if enabled is None:
             enabled = not is_quiet_mode()
         enabled = bool(enabled)
-        apply_quiet_mode(enabled)
-        state.set_quiet_mode(enabled)
+        mode = set_log_mode("quiet" if enabled else "logs")
+        state.set_log_mode(mode)
         if _app_state is not None:
             try:
                 _app_state['quiet_mode'] = enabled
+                _app_state['log_mode'] = mode
             except Exception:
                 pass
         await add_log('INFO', 'Quiet mode', 'Activé' if enabled else 'Désactivé')
@@ -633,7 +634,46 @@ async def handle_client_command(command: str, params: dict):
                 'enabled': enabled,
                 'timestamp': time.time()
             })
-        return {'status': 'success', 'quiet_mode': enabled}
+            await ws_mgr.emit('log_mode', {
+                'mode': mode,
+                'quiet_mode': enabled,
+                'timestamp': time.time()
+            })
+        return {'status': 'success', 'quiet_mode': enabled, 'log_mode': mode}
+
+    elif command == 'set_log_mode':
+        from utils.logger import set_log_mode, get_log_mode
+        requested = params.get('mode') or params.get('value')
+        current_mode = get_log_mode()
+        if not requested:
+            cycle = {
+                'logs': 'quiet',
+                'quiet': 'debug',
+                'debug': 'logs'
+            }
+            requested = cycle.get(current_mode, 'logs')
+        mode = set_log_mode(requested)
+        state.set_log_mode(mode)
+        quiet_enabled = mode == 'quiet'
+        if _app_state is not None:
+            try:
+                _app_state['quiet_mode'] = quiet_enabled
+                _app_state['log_mode'] = mode
+            except Exception:
+                pass
+        await add_log('INFO', 'Log mode', mode.upper())
+        ws_mgr = _ws_manager or state.get_ws_manager()
+        if ws_mgr:
+            await ws_mgr.emit('log_mode', {
+                'mode': mode,
+                'quiet_mode': quiet_enabled,
+                'timestamp': time.time()
+            })
+            await ws_mgr.emit('quiet_mode', {
+                'enabled': quiet_enabled,
+                'timestamp': time.time()
+            })
+        return {'status': 'success', 'log_mode': mode, 'quiet_mode': quiet_enabled}
     
     # Vérifier si la commande est enregistrée dynamiquement
     ws_mgr = _ws_manager or state.get_ws_manager()

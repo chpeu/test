@@ -31,7 +31,7 @@
 	import { derived } from 'svelte/store';
 	import { debugMode } from '$lib/stores/debug';
 	import { activePosition, clearPosition, updatePosition } from '$lib/stores/position';
-	import { setQuietMode } from '$lib/stores/quietMode';
+	import { setLogMode, setQuietMode } from '$lib/stores/quietMode';
 
 	// 🔥 FIX: Popup d'erreur global (affiché sur toutes les pages)
 	let showErrorPopup = false;
@@ -298,6 +298,15 @@
 		ws.on('quiet_mode', (data: any) => {
 			if (data && typeof data.enabled !== 'undefined') {
 				setQuietMode(Boolean(data.enabled));
+			}
+		});
+
+		// 🔊 Log mode: sync runtime toggle
+		ws.on('log_mode', (data: any) => {
+			if (data && typeof data.mode === 'string') {
+				setLogMode(data.mode);
+			} else if (data && typeof data.quiet_mode !== 'undefined') {
+				setQuietMode(Boolean(data.quiet_mode));
 			}
 		});
 			
@@ -628,7 +637,9 @@
 			updateTopPairs(topPairs);
 		}
 
-		if (data.quiet_mode !== undefined) {
+		if (data.log_mode !== undefined) {
+			setLogMode(data.log_mode);
+		} else if (data.quiet_mode !== undefined) {
 			setQuietMode(Boolean(data.quiet_mode));
 		}
 	}

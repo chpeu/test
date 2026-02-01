@@ -149,6 +149,8 @@ async def get_complete_state():
             'success': False,
             'error': 'App state not available',
             'session_id': f"live_{int(time.time())}",
+            'quiet_mode': False,
+            'log_mode': 'logs',
             'config': {},
             'scanner': {'is_scanning': False, 'top_pairs': []},
             'position': {'active': False, 'data': None},
@@ -179,6 +181,8 @@ async def get_complete_state():
         return JSONResponse({
             'success': True,
             'session_id': _app_state.get('session_id'),
+            'quiet_mode': _app_state.get('quiet_mode', False),
+            'log_mode': _app_state.get('log_mode', 'logs'),
             'config': {
                 'snr_threshold': effective_cfg.get('snr_threshold', 0.25),
                 'break_even_trigger': effective_cfg.get('break_even_trigger', 0.3),
