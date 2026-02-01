@@ -6,6 +6,7 @@ Logging des scans, opportunités et trades vers PostgreSQL pour ML
 
 import logging
 import os
+import time
 from typing import Dict, Any, Optional, List, Sequence
 from datetime import datetime, timezone, date
 from decimal import Decimal
@@ -291,6 +292,22 @@ class PostgreSQLDataLogger:
         self.buffer_lock = threading.Lock()
         # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
         self.last_flush_time = datetime.now(timezone.utc)
+        self._checked_partitions: set[str] = set()
+        self._partition_lock = threading.Lock()
+        self._maintenance_thread: Optional[threading.Thread] = None
+        self._maintenance_stop_event: Optional[threading.Event] = None
+        self._partition_maintenance_hours = float(
+            os.getenv('POSTGRES_PARTITION_MAINTENANCE_HOURS', '24')
+        )
+        self._partition_maintenance_enabled = (
+            os.getenv('POSTGRES_PARTITION_MAINTENANCE_ENABLED', 'true').lower() == 'true'
+        )
+        if self._partition_maintenance_enabled:
+            try:
+                self._ensure_current_and_next_month_partitions()
+                self._start_partition_maintenance()
+            except Exception as e:
+                logger.warning(f"⚠️ Maintenance partitions non démarrée: {e}")
     
     def _get_connection(self):
         """Obtenir une connexion du pool"""
@@ -309,6 +326,106 @@ class PostgreSQLDataLogger:
                 self.pool.putconn(conn)
             except Exception as e:
                 logger.error(f"❌ Erreur retour connexion: {e}")
+
+    def _ensure_scan_logs_partition(
+        self,
+        timestamp: Optional[datetime] = None,
+        cursor=None
+    ) -> None:
+        if not self.enabled:
+            return
+
+        ts = timestamp or datetime.now().astimezone()
+        month_key = ts.strftime('%Y_%m')
+        with self._partition_lock:
+            if month_key in self._checked_partitions:
+                return
+            self._checked_partitions.add(month_key)
+        start_date = date(ts.year, ts.month, 1)
+        if ts.month == 12:
+            end_date = date(ts.year + 1, 1, 1)
+        else:
+            end_date = date(ts.year, ts.month + 1, 1)
+
+        try:
+            if cursor:
+                cursor.execute(
+                    "SELECT create_monthly_partition('scan_logs', %s::date)",
+                    (start_date,)
+                )
+                logger.info(f"🗂️ Partition scan_logs vérifiée: {start_date:%Y_%m}")
+                return
+
+            result = self._execute_query(
+                "SELECT create_monthly_partition('scan_logs', %s::date)",
+                (start_date,),
+                fetch=True
+            )
+            if result is not None:
+                logger.info(f"🗂️ Partition scan_logs vérifiée: {start_date:%Y_%m}")
+                return
+        except Exception as e:
+            logger.warning(f"⚠️ create_monthly_partition indisponible: {e}")
+
+        partition_name = f"scan_logs_{start_date:%Y_%m}"
+        create_sql = (
+            f"CREATE TABLE IF NOT EXISTS {partition_name} "
+            "PARTITION OF scan_logs FOR VALUES FROM (%s) TO (%s)"
+        )
+        if cursor:
+            cursor.execute(create_sql, (start_date, end_date))
+        else:
+            self._execute_query(create_sql, (start_date, end_date))
+        logger.info(f"🗂️ Partition scan_logs créée: {partition_name}")
+
+    def _ensure_current_and_next_month_partitions(
+        self,
+        timestamp: Optional[datetime] = None,
+        cursor=None
+    ) -> None:
+        ts = timestamp or datetime.now(timezone.utc)
+        self._ensure_scan_logs_partition(ts, cursor=cursor)
+        tzinfo = ts.tzinfo or timezone.utc
+        if ts.month == 12:
+            next_month_ts = datetime(ts.year + 1, 1, 1, tzinfo=tzinfo)
+        else:
+            next_month_ts = datetime(ts.year, ts.month + 1, 1, tzinfo=tzinfo)
+        self._ensure_scan_logs_partition(next_month_ts, cursor=cursor)
+
+    def _start_partition_maintenance(self) -> None:
+        if self._maintenance_thread and self._maintenance_thread.is_alive():
+            return
+        if self._partition_maintenance_hours <= 0:
+            return
+
+        interval_seconds = self._partition_maintenance_hours * 3600
+        self._maintenance_stop_event = threading.Event()
+
+        def _worker() -> None:
+            while not self._maintenance_stop_event.wait(interval_seconds):
+                try:
+                    self._ensure_current_and_next_month_partitions()
+                except Exception as e:
+                    logger.warning(f"⚠️ Erreur maintenance partitions: {e}")
+
+        self._maintenance_thread = threading.Thread(
+            target=_worker,
+            name="pg-partition-maintenance",
+            daemon=True
+        )
+        self._maintenance_thread.start()
+        logger.info(
+            "🗂️ Maintenance partitions PostgreSQL démarrée (intervalle=%.1fh)",
+            self._partition_maintenance_hours
+        )
+
+    def _stop_partition_maintenance(self) -> None:
+        if self._maintenance_stop_event:
+            self._maintenance_stop_event.set()
+        if self._maintenance_thread and self._maintenance_thread.is_alive():
+            self._maintenance_thread.join(timeout=5)
+        self._maintenance_thread = None
+        self._maintenance_stop_event = None
     
     def _execute_query(self, query: str, params: tuple = None, fetch: bool = False, cursor_factory=None):
         """
@@ -2970,6 +3087,7 @@ class PostgreSQLDataLogger:
                 self.opportunity_buffer.clear()
 
             if scan_items:
+                self._ensure_scan_logs_partition(now, cursor=cursor)
                 self._batch_insert_scans(cursor, scan_items)
 
             # Opportunités : pour l'instant, utiliser log_opportunity en mode direct
@@ -3373,6 +3491,9 @@ class PostgreSQLDataLogger:
         try:
             # Flush les buffers avant de fermer
             self._flush_buffers()
+
+            # Stop maintenance thread
+            self._stop_partition_maintenance()
 
             # Fermer toutes les connexions du pool
             self.pool.closeall()

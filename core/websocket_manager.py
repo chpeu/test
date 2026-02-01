@@ -239,6 +239,16 @@ class WebSocketManager:
     
     async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 10.0):
         """Envoyer un message à un WebSocket spécifique"""
+        message_json = None
+        if isinstance(message, dict):
+            out_type = (
+                message.get('type')
+                or message.get('request_type')
+                or message.get('event')
+                or 'unknown'
+            )
+        else:
+            out_type = type(message).__name__
         try:
             # 🔥 PROTECTION: Vérifier que la connexion est active avant envoi
             if websocket not in self.active_connections:
@@ -275,15 +285,67 @@ class WebSocketManager:
             logger.debug(f"📤 [WS-DEBUG] Message envoyé via send_text: {message_json}")
         except asyncio.TimeoutError:
             conn_data = self.connection_data.get(websocket)
+            connection_id = conn_data.get('connection_id') if conn_data else None
+            client = (conn_data.get('client') if conn_data else None) or getattr(websocket, 'client', None)
+            client_state = getattr(websocket, 'client_state', None)
+            app_state = getattr(websocket, 'application_state', None)
+            close_code = getattr(websocket, 'close_code', None)
+            last_message_ts = (conn_data or {}).get('last_message_ts')
+            last_message_age_s = None
+            if isinstance(last_message_ts, (int, float)):
+                last_message_age_s = round(time.time() - last_message_ts, 3)
             if conn_data is not None:
                 conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
                 conn_data['last_message_type'] = 'out:timeout'
-            logger.warning("⚠️ Timeout envoi message WebSocket - fermeture de la connexion")
+            logger.warning(
+                "WS send timeout: id=%s client=%s type=%s size=%s state=%s/%s close_code=%s last_msg=%s last_age_s=%s",
+                connection_id,
+                client,
+                out_type,
+                len(message_json) if message_json else None,
+                client_state,
+                app_state,
+                close_code,
+                (conn_data or {}).get('last_message_type'),
+                last_message_age_s,
+            )
             await self.disconnect(websocket)
-        except (WebSocketDisconnect, ConnectionError, RuntimeError):
+        except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
+            conn_data = self.connection_data.get(websocket)
+            connection_id = conn_data.get('connection_id') if conn_data else None
+            client = (conn_data.get('client') if conn_data else None) or getattr(websocket, 'client', None)
+            logger.debug(
+                "WS send disconnect: id=%s client=%s type=%s err=%s",
+                connection_id,
+                client,
+                out_type,
+                type(e).__name__,
+            )
             await self.disconnect(websocket)
         except Exception as e:
-            logger.error(f"❌ Erreur envoi message WebSocket: {e}")
+            conn_data = self.connection_data.get(websocket)
+            connection_id = conn_data.get('connection_id') if conn_data else None
+            client = (conn_data.get('client') if conn_data else None) or getattr(websocket, 'client', None)
+            client_state = getattr(websocket, 'client_state', None)
+            app_state = getattr(websocket, 'application_state', None)
+            close_code = getattr(websocket, 'close_code', None)
+            last_message_ts = (conn_data or {}).get('last_message_ts')
+            last_message_age_s = None
+            if isinstance(last_message_ts, (int, float)):
+                last_message_age_s = round(time.time() - last_message_ts, 3)
+            logger.error(
+                "WS send error: id=%s client=%s type=%s size=%s state=%s/%s close_code=%s last_msg=%s last_age_s=%s err=%s",
+                connection_id,
+                client,
+                out_type,
+                len(message_json) if message_json else None,
+                client_state,
+                app_state,
+                close_code,
+                (conn_data or {}).get('last_message_type'),
+                last_message_age_s,
+                repr(e),
+            )
             await self.disconnect(websocket)
     
     async def broadcast(self, message: dict):

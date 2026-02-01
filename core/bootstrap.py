@@ -265,7 +265,8 @@ async def init_instances() -> None:
                 set_scanner as set_inst_scanner_scal,
                 set_position_manager as set_inst_pos_scal,
                 set_price_provider as set_inst_price_scal,
-                set_app_state as set_inst_state_scal
+                set_app_state as set_inst_state_scal,
+                set_scanner_lock as set_lock_scanner_scal
             )
 
             if ws_mgr:
@@ -292,6 +293,7 @@ async def init_instances() -> None:
             if state.get_position_manager(): set_inst_pos_scal(state.get_position_manager())
             if state.get_price_provider(): set_inst_price_scal(state.get_price_provider())
             set_inst_state_scal(state.get_legacy_proxy())
+            set_lock_scanner_scal(state.lock("scanner"))
 
         except (ImportError, AttributeError) as e:
             logger.warning(f"⚠️ Error injecting dependencies into loops: {e}")

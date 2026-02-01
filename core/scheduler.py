@@ -8,6 +8,7 @@ Scheduler pour les boucles automatiques
 
 import asyncio
 import logging
+import time
 from typing import Optional, Callable
 from datetime import datetime
 
@@ -64,7 +65,11 @@ class Scheduler:
             try:
                 if self.scanner_callback:
                     logger.info("🔍 Exécution du callback scanner...")
+                    start_ts = time.monotonic()
                     await self.scanner_callback()
+                    duration_s = time.monotonic() - start_ts
+                    if duration_s > 5.0:
+                        logger.warning("⚠️ Scanner callback lent: %.2fs", duration_s)
                 
                 # Attendre 45 secondes
                 await asyncio.sleep(45)
@@ -97,7 +102,11 @@ class Scheduler:
             try:
                 if self.scalability_refresh_callback:
                     logger.info("📊 Exécution du callback scalability refresh...")
+                    start_ts = time.monotonic()
                     await self.scalability_refresh_callback()
+                    duration_s = time.monotonic() - start_ts
+                    if duration_s > 5.0:
+                        logger.warning("⚠️ Scalability refresh lent: %.2fs", duration_s)
                 
                 # Attendre l'intervalle défini (adaptatif basé sur volatilité)
                 try:

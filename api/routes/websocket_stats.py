@@ -2,6 +2,7 @@
 API routes pour les statistiques WebSocket
 """
 import logging
+import time
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from typing import Dict, Any
@@ -108,6 +109,7 @@ async def get_websocket_stats():
 @router.get("/api/health")
 async def health_check():
     """Point de contrôle de santé du backend"""
+    start_ts = time.monotonic()
     try:
         from core.state_manager import get_state_manager
         state = get_state_manager()
@@ -129,6 +131,16 @@ async def health_check():
         if _ws_manager:
             ws_connections = _ws_manager.get_connection_count()
         
+        duration_s = time.monotonic() - start_ts
+        if duration_s > 1.0:
+            logger.warning(
+                "⚠️ /api/health lent: %.2fs status=%s components=%s ws=%s",
+                duration_s,
+                status,
+                components,
+                ws_connections,
+            )
+
         return JSONResponse({
             "status": status,
             "timestamp": __import__('time').time(),
@@ -141,7 +153,8 @@ async def health_check():
         })
         
     except Exception as e:
-        logger.error(f"❌ Erreur health check: {e}")
+        duration_s = time.monotonic() - start_ts
+        logger.error(f"❌ Erreur health check (after {duration_s:.2f}s): {e}")
         return JSONResponse({
             "status": "unhealthy",
             "error": str(e),
