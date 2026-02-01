@@ -3,13 +3,15 @@
 Backend Watchdog - Surveille et redémarre automatiquement le backend bloqué
 """
 import asyncio
+import http.client
 import json
-import subprocess
-import time
 import os
 import signal
-import urllib.request
+import socket
+import subprocess
+import time
 import urllib.error
+import urllib.request
 from datetime import datetime
 
 try:
@@ -64,19 +66,40 @@ class BackendWatchdog:
                 pass
         
     def _fetch_health(self):
-        with urllib.request.urlopen(self.health_url, timeout=self.timeout) as response:
-            status_code = getattr(response, "status", None) or response.getcode()
-            payload = response.read()
-            data = {}
-            if payload:
-                try:
-                    data = json.loads(payload.decode("utf-8", errors="replace"))
-                except Exception:
+        request = urllib.request.Request(
+            self.health_url,
+            headers={"Connection": "close", "User-Agent": "BackendWatchdog/1.0"}
+        )
+        last_error = None
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    status_code = getattr(response, "status", None) or response.getcode()
+                    payload = response.read()
                     data = {}
-            status = data.get("status")
-            if status_code == 200 and status in ("healthy", "degraded"):
-                return True, None
-            return False, f"status={status_code} body_status={status}"
+                    if payload:
+                        try:
+                            data = json.loads(payload.decode("utf-8", errors="replace"))
+                        except Exception:
+                            data = {}
+                    status = data.get("status")
+                    if status_code == 200 and status in ("healthy", "degraded"):
+                        return True, None
+                    return False, f"status={status_code} body_status={status}"
+            except (
+                http.client.RemoteDisconnected,
+                ConnectionResetError,
+                ConnectionAbortedError,
+                socket.timeout,
+                urllib.error.URLError,
+            ) as exc:
+                last_error = exc
+                if attempt == 0:
+                    time.sleep(0.25)
+                    continue
+                raise
+        if last_error:
+            raise last_error
 
     async def check_backend_health(self):
         """Test si le backend répond via /api/health"""
