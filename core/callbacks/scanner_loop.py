@@ -1066,22 +1066,36 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
         use_confluence = TRADING_CONFIG.get('use_confluence', False)
         volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
-        trend_timeframe = TRADING_CONFIG.get('trend_timeframe', '15m')
-
-        # Calculer trend_data
-        trend_data = await _analyzer.calculate_trend_data(symbol, trend_timeframe)
+        trend_timeframe = get_effective_value('trend_timeframe') or TRADING_CONFIG.get('trend_timeframe', '15m')
+        scan_timeout_s = float(TRADING_CONFIG.get('scan_pair_timeout_s', 12))
 
         # Analyser la paire
         logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): AVANT analyze_pair")
-        analysis = await _analyzer.analyze_pair(
+        analysis_coro = _analyzer.analyze_pair(
             symbol,
-            trend_data=trend_data,
+            trend_data=None,
             volume_multiplier=volume_multiplier,
             use_confluence=use_confluence,
             return_reason=True,
             active_positions=[],
             position_manager=_position_manager
         )
+        try:
+            if scan_timeout_s > 0:
+                analysis = await asyncio.wait_for(analysis_coro, timeout=scan_timeout_s)
+            else:
+                analysis = await analysis_coro
+        except asyncio.TimeoutError:
+            logger.warning(
+                "⏱️ scan_pair_for_setup(%s): timeout après %.1fs",
+                symbol,
+                scan_timeout_s
+            )
+            return {
+                'symbol': symbol,
+                'reason': f"Timeout analyse ({scan_timeout_s:.1f}s)",
+                'reject_category': 'analysis_timeout'
+            }
         logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): APRÈS analyze_pair, analysis: {analysis is not None}, type: {type(analysis)}")
 
         # 🔥 DEBUG: Vérifier ce que contient analysis
@@ -1099,11 +1113,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
 
         # 🔥 FIX: Ajouter indicators_1m et indicators_5m à analysis IMMÉDIATEMENT après analyze_pair
         # pour qu'ils soient disponibles dans _last_setup
+        trend_data = None
         if analysis and isinstance(analysis, dict):
             # Extraire les indicateurs depuis analysis si disponibles
             # Les indicateurs peuvent être dans analysis directement ou dans des sous-dictionnaires
             indicators_1m = analysis.get('indicators_1m', {})
             indicators_5m = analysis.get('indicators_5m', {})
+            trend_data = analysis.get('trend_data') if isinstance(analysis.get('trend_data'), dict) else None
             
             logger.debug(f"🔍 DEBUG scan_pair_for_setup({symbol}): indicators_1m présent: {bool(indicators_1m)}, indicators_5m présent: {bool(indicators_5m)}")
             

@@ -257,8 +257,8 @@ class TestPostgreSQLDataLogger:
         trade_id = logger.log_trade(trade_data)
 
         assert trade_id is not None
-        # 🔥 FIX: 4 appels attendus (1 session check + 1 insert trade + 1 insert atr_metrics + 1 ml_confidence normalization check)
-        assert cursor.execute.call_count == 4
+        # 🔥 FIX: 6 appels attendus (1 session insert + 2 resolve trade_id + 1 insert trade + 2 atr_metrics upsert/insert)
+        assert cursor.execute.call_count == 6
 
     @patch('core.postgresql_datalogger.PSYCOPG2_AVAILABLE', True)
     @patch('core.postgresql_datalogger.ThreadedConnectionPool')
