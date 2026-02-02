@@ -3585,8 +3585,9 @@ class PositionManager:
 
         # 🔥 FIX: Calculer PnL réalisé avec les frais configurés
         # (Si fees réels disponibles, ne pas ré-estimer)
+        mexc_pnl_usdt = getattr(self.active_position, 'mexc_actual_pnl_usdt', None)
         fees_pct = (get_effective_value('fee_per_trade') or 0.0004) * 100  # 0.04% par défaut
-        if actual_fees_usdt is not None:
+        if actual_fees_usdt is not None or mexc_pnl_usdt is not None:
             fees_pct = 0.0
 
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
@@ -3671,7 +3672,6 @@ class PositionManager:
             net_pnl_pct = gross_pnl_pct - total_costs_pct
 
         # 🔥 FIX 19/12/2025: Comparer PnL calculé avec PnL MEXC réel et alerter si divergence
-        mexc_pnl_usdt = getattr(self.active_position, 'mexc_actual_pnl_usdt', None)
         if mexc_pnl_usdt is not None:
             partial_profit_usdt = 0.0
             if getattr(self.active_position, 'partial_tp_sold', False):
