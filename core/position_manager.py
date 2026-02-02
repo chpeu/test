@@ -3673,17 +3673,30 @@ class PositionManager:
         # 🔥 FIX 19/12/2025: Comparer PnL calculé avec PnL MEXC réel et alerter si divergence
         mexc_pnl_usdt = getattr(self.active_position, 'mexc_actual_pnl_usdt', None)
         if mexc_pnl_usdt is not None:
-            pnl_divergence = abs(net_pnl_usdt - mexc_pnl_usdt)
+            partial_profit_usdt = 0.0
+            if getattr(self.active_position, 'partial_tp_sold', False):
+                partial_profit_usdt = float(getattr(self.active_position, 'partial_profit_usdt', 0.0) or 0.0)
+
+            mexc_gross_pnl_usdt = mexc_pnl_usdt + partial_profit_usdt
+            pnl_divergence = abs(pnl_data['pnl_usdt_gross'] - mexc_gross_pnl_usdt)
             if pnl_divergence > 0.05:  # Divergence > 0.05 USDT
                 logger.warning(
                     f"🔴 PNL DIVERGENCE DÉTECTÉE: {self.active_position.symbol} | "
-                    f"Bot calculé: {net_pnl_usdt:.4f} USDT | MEXC réel: {mexc_pnl_usdt:.4f} USDT | "
+                    f"Bot calculé: {pnl_data['pnl_usdt_gross']:.4f} USDT | MEXC réel: {mexc_gross_pnl_usdt:.4f} USDT | "
                     f"Différence: {pnl_divergence:.4f} USDT | "
                     f"Exit price bot: {exit_price:.8f} | Fill price MEXC: {self.active_position.exit_fill_price}"
                 )
+
             # 🔥 FIX: Utiliser le PnL MEXC réel si disponible (source de vérité)
-            logger.info(f"📊 Utilisation PnL MEXC réel au lieu du calculé: {mexc_pnl_usdt:.4f} USDT")
-            net_pnl_usdt = mexc_pnl_usdt
+            logger.info(
+                f"📊 Utilisation PnL MEXC réel (incl. TP partiel) au lieu du calculé: "
+                f"{mexc_gross_pnl_usdt:.4f} USDT"
+            )
+            pnl_data['pnl_usdt_gross'] = round(mexc_gross_pnl_usdt, 4)
+            if size_for_pct > 0:
+                pnl_data['pnl_pct'] = round((mexc_gross_pnl_usdt / size_for_pct) * 100, 6)
+
+            net_pnl_usdt = pnl_data['pnl_usdt_gross'] - total_costs
             if size_for_pct > 0:
                 net_pnl_pct = (net_pnl_usdt / size_for_pct) * 100
 

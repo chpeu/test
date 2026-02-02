@@ -1604,12 +1604,20 @@ class LiveOrderManagerFutures:
             order_type = 'market'
 
             # Ajuster quantité fermée selon précision
+            ccxt_contract_size = 1.0
             if self.exchange:
                 try:
                     futures_symbol = self._convert_symbol_to_futures(symbol)
                     if not getattr(self.exchange, 'markets', None):
                         self.exchange.load_markets()
                     market = self.exchange.market(futures_symbol)
+                    ccxt_contract_size = float(
+                        (market or {}).get('contractSize')
+                        or (market or {}).get('info', {}).get('contractSize')
+                        or 1.0
+                    )
+                    if ccxt_contract_size <= 0:
+                        ccxt_contract_size = 1.0
                     amount = float(self.exchange.amount_to_precision(futures_symbol, amount))
 
                     limits = (market or {}).get('limits', {}) if market else {}
@@ -1637,10 +1645,11 @@ class LiveOrderManagerFutures:
                 latency_ms = (time.time() - start_time) * 1000
 
                 # Calculer PnL
+                real_filled_amount = amount * ccxt_contract_size
                 if direction == 'LONG':
-                    pnl_usdt = (current_price - entry_price) * amount
+                    pnl_usdt = (current_price - entry_price) * real_filled_amount
                 else:  # SHORT
-                    pnl_usdt = (entry_price - current_price) * amount
+                    pnl_usdt = (entry_price - current_price) * real_filled_amount
 
                 self.stats['total_pnl_usdt'] += pnl_usdt
 
@@ -1655,12 +1664,13 @@ class LiveOrderManagerFutures:
                     order_id=f"dry_run_close_futures_{int(time.time())}",
                     filled_price=current_price,
                     filled_amount=amount,
-                    filled_size_usdt=amount * current_price,
+                    filled_size_usdt=real_filled_amount * current_price,
                     actual_pnl_usdt=pnl_usdt,
                     actual_fees_usdt=0.0,
                     actual_slippage_pct=0.0,
                     latency_ms=latency_ms,
-                    executed_at=datetime.now(timezone.utc).isoformat()
+                    executed_at=datetime.now(timezone.utc).isoformat(),
+                    contract_size=ccxt_contract_size
                 )
 
             # LIVE: Fermer position réelle
@@ -2086,12 +2096,11 @@ class LiveOrderManagerFutures:
             fees = fee_info.get('cost', 0.0) or 0.0
 
             # Calculer PnL réel
+            real_filled_amount = filled_amount * ccxt_contract_size
             if direction == 'LONG':
-                pnl_usdt = (filled_price - entry_price) * filled_amount
+                pnl_usdt = (filled_price - entry_price) * real_filled_amount
             else:
-                pnl_usdt = (entry_price - filled_price) * filled_amount
-
-            pnl_usdt -= fees  # Soustraire fees
+                pnl_usdt = (entry_price - filled_price) * real_filled_amount
 
             # Slippage (avec protection division par zéro)
             if filled_price and current_price and current_price > 0:
@@ -2128,14 +2137,15 @@ class LiveOrderManagerFutures:
                 order_id=order_id,
                 filled_price=filled_price,
                 filled_amount=filled_amount,
-                filled_size_usdt=filled_amount * filled_price,
+                filled_size_usdt=real_filled_amount * filled_price,
                 actual_pnl_usdt=pnl_usdt,
                 actual_fees_usdt=fees,
                 actual_slippage_pct=slippage_pct,
                 latency_ms=latency_ms,
                 executed_at=datetime.now(timezone.utc).isoformat(),
                 funding_rate=funding_rate,
-                raw_api_response=order
+                raw_api_response=order,
+                contract_size=ccxt_contract_size
             )
 
         except Exception as e:
