@@ -46,11 +46,22 @@ def normalize_symbol(symbol: str) -> str:
     s = re.sub(r"\s+", "", s)
     if ":" in s:
         s = s.split(":", 1)[0]
+    paren_match = re.search(r"\(([^)]+)\)", s)
+    if paren_match:
+        inner = paren_match.group(1)
+        remainder = s.replace(paren_match.group(0), "")
+        if remainder.endswith("USDT"):
+            s = f"{inner}USDT"
+        else:
+            s = s.replace(paren_match.group(0), inner)
     s = s.replace("/", "_").replace("-", "_")
     if s.endswith("USDT") and not s.endswith("_USDT"):
         s = s[:-4] + "_USDT"
     s = re.sub(r"_+", "_", s)
-    return s
+    alias_map = {
+        "TRUMP_USDT": "TRUMPOFFICIAL_USDT",
+    }
+    return alias_map.get(s, s)
 
 
 def parse_amount(value: Optional[str]) -> Optional[float]:
