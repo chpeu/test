@@ -206,10 +206,10 @@ ngrok http 5000
 # 3. Copier l'URL HTTPS (ex: https://abc123.ngrok.io)
 
 # 4. Configurer le webhook
-curl -X POST "https://api.telegram.org/bot8595258034:AAG1EUKLY3wuQPuRhkg5ttJ90e7f9zya2A8/setWebhook?url=https://abc123.ngrok.io/api/telegram/webhook"
+curl -X POST "https://api.telegram.org/bot__TELEGRAM_BOT_TOKEN__/setWebhook?url=https://abc123.ngrok.io/api/telegram/webhook"
 
 # 5. Vérifier
-curl "https://api.telegram.org/bot8595258034:AAG1EUKLY3wuQPuRhkg5ttJ90e7f9zya2A8/getWebhookInfo"
+curl "https://api.telegram.org/bot__TELEGRAM_BOT_TOKEN__/getWebhookInfo"
 
 # 6. Tester dans Telegram
 # Envoyer /help au bot
