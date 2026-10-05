@@ -46,7 +46,7 @@ def calculate_weighted_score(condition_types: List[str]) -> float:
 def get_min_score_required(
     adx_value: float,
     use_weighted: bool = True,
-    symbol: str = None
+    symbol: Optional[str] = None
 ) -> tuple:
     """
     Calcule le score minimum requis selon ADX (tolérance dynamique)
@@ -238,7 +238,7 @@ def evaluate_setup_score(
     short_condition_types: List[str],
     adx: Dict,
     trend_data: Optional[Dict] = None,
-    symbol: str = None
+    symbol: Optional[str] = None
 ) -> Dict:
     """
     Évalue les scores LONG et SHORT et détermine la direction

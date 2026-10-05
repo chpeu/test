@@ -484,7 +484,7 @@ class AnalyticsDatabase:
     
     # ==================== SETUPS REJECTED ====================
     
-    def insert_rejected_setup(self, setup: Dict) -> int:
+    def insert_rejected_setup(self, setup: Dict) -> int | None:
         """
         Insérer un setup rejeté
         
@@ -494,6 +494,9 @@ class AnalyticsDatabase:
         Returns:
             ID du setup inséré
         """
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return None
         cursor = self.conn.cursor()
         
         # Calculer config hash si config fournie
@@ -583,6 +586,9 @@ class AnalyticsDatabase:
         limit: int = 100
     ) -> List[Dict]:
         """Récupérer setups rejetés avec filtres"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         query = "SELECT * FROM setups_rejected WHERE 1=1"
@@ -609,6 +615,9 @@ class AnalyticsDatabase:
     
     def get_rejection_summary(self) -> Dict:
         """Statistiques globales rejets"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return {}
         cursor = self.conn.cursor()
         
         # Total par catégorie
@@ -650,6 +659,9 @@ class AnalyticsDatabase:
     
     def insert_validated_setup(self, setup: Dict) -> int:
         """Insérer un setup validé"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return None
         cursor = self.conn.cursor()
         
         config_hash = None
@@ -737,6 +749,9 @@ class AnalyticsDatabase:
     
     def insert_trade(self, trade: Dict) -> int:
         """Insérer un trade (extension table existante + LIVE TRADING)"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         config_hash = None
@@ -925,6 +940,9 @@ class AnalyticsDatabase:
         limit: int = 100
     ) -> List[Dict]:
         """Récupérer trades avec filtres"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         query = "SELECT * FROM trades WHERE 1=1"
@@ -961,6 +979,9 @@ class AnalyticsDatabase:
     
     def clear_all_trades(self):
         """Vider tous les trades de la base de données (pour réinitialiser les stats au démarrage)"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return None
         cursor = self.conn.cursor()
         try:
             # Supprimer tous les trades
@@ -980,6 +1001,9 @@ class AnalyticsDatabase:
     
     def insert_trade_behavior(self, behavior: Dict) -> int:
         """Insérer snapshot comportement trade"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return None
         cursor = self.conn.cursor()
         
         metadata_json = json.dumps(behavior.get('metadata', {}))
@@ -1016,6 +1040,9 @@ class AnalyticsDatabase:
     
     def get_trade_behavior(self, trade_id: int) -> List[Dict]:
         """Récupérer tous les snapshots d'un trade"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         cursor.execute('''
@@ -1051,6 +1078,9 @@ class AnalyticsDatabase:
     
     def get_global_stats(self) -> Dict:
         """Statistiques globales toutes tables"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return {}
         cursor = self.conn.cursor()
         
         # Count par table

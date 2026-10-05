@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 def check_whipsaw_filter(
     klines: List[List],
     symbol: str,
-    lookback: int = None,
-    threshold_pct: float = None,
-    max_alternations: int = None
+    lookback: Optional[int] = None,
+    threshold_pct: Optional[float] = None,
+    max_alternations: Optional[int] = None
 ) -> Optional[Dict]:
     """
     🔥 OPT #15: Détecter les marchés en whipsaw (zigzag rapide)
@@ -370,7 +370,7 @@ def check_momentum_continuity(
     klines: List[List],
     direction: str,
     symbol: str,
-    lookback: int = None
+    lookback: Optional[int] = None
 ) -> Optional[Dict]:
     """
     🔥 OPT #19: Vérifier que le momentum est croissant sur N bougies

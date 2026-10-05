@@ -92,8 +92,11 @@ class TradeDatabase:
         self.conn.commit()
         logger.info(f"✅ Base de données initialisée: {self.db_path}")
     
-    def insert_trade(self, trade: Dict) -> int:
+    def insert_trade(self, trade: Dict) -> int | None:
         """Insérer un trade"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return None
         cursor = self.conn.cursor()
         
         condition_types_json = json.dumps(trade.get('condition_types', []))
@@ -132,6 +135,9 @@ class TradeDatabase:
     
     def get_all_trades(self, limit: Optional[int] = None, offset: int = 0) -> List[Dict]:
         """Récupérer tous les trades"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         query = 'SELECT * FROM trades ORDER BY timestamp DESC'
@@ -152,6 +158,9 @@ class TradeDatabase:
     
     def get_trades_by_date_range(self, start_date: str, end_date: str) -> List[Dict]:
         """Récupérer trades par plage de dates"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         cursor.execute('''
@@ -173,6 +182,9 @@ class TradeDatabase:
     
     def get_trades_by_symbol(self, symbol: str, limit: int = 100) -> List[Dict]:
         """Récupérer trades par symbole"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return []
         cursor = self.conn.cursor()
         
         cursor.execute('''
@@ -195,6 +207,9 @@ class TradeDatabase:
     
     def get_statistics(self) -> Dict:
         """Calculer statistiques globales"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return {}
         cursor = self.conn.cursor()
         
         cursor.execute('''
@@ -215,6 +230,9 @@ class TradeDatabase:
     
     def clear_all_trades(self):
         """Vider tous les trades de la base de données (pour réinitialiser les stats au démarrage)"""
+        if self.conn is None:
+            logger.error("Database not initialized")
+            return
         cursor = self.conn.cursor()
         try:
             cursor.execute('DELETE FROM trades')

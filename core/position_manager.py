@@ -5,14 +5,17 @@ Gestion des positions: TP/SL, Break-even, Trailing Stop
 REFACTORISÉ avec architecture modulaire
 """
 
+
 # Ajouter méthode manquante pour compatibility tests
 def get_mexc_client():
     """Wrapper pour compatibilité tests"""
     try:
         from api.mexc import get_mexc_client as _get_mexc_client
+
         return _get_mexc_client()
     except ImportError:
         return None
+
 
 import asyncio
 import json
@@ -28,21 +31,15 @@ from dataclasses import dataclass, field
 from core.position.tp_sl_calculator import (
     calculate_fixed_levels,
     calculate_atr_levels,
-    TPSLConfig
+    TPSLConfig,
 )
 from core.position.early_invalidation import (
     EarlyInvalidationChecker,
-    EarlyInvalidationConfig
+    EarlyInvalidationConfig,
 )
-from core.position.trailing_stop import (
-    TrailingStopManager,
-    TrailingStopConfig
-)
+from core.position.trailing_stop import TrailingStopManager, TrailingStopConfig
 from core.position.pnl_calculator import PnLCalculator
-from core.position.recovery_mode import (
-    RecoveryModeManager,
-    RecoveryModeConfig
-)
+from core.position.recovery_mode import RecoveryModeManager, RecoveryModeConfig
 from core.position.partial_tp_manager import PartialTPManager
 from core.position.tp_escalier_manager import TPEscalierManager
 from core.position.analytics_logger import AnalyticsLogger
@@ -57,6 +54,7 @@ MIN_LIVE_TRADE_DURATION_SEC = 10
 @dataclass
 class Position:
     """Représente une position active"""
+
     symbol: str
     direction: str  # 'LONG' ou 'SHORT'
     entry: float
@@ -81,31 +79,35 @@ class Position:
 
     # 🔥 PHASE 0.5: Timestamps et tracking pour trade_atr_metrics
     break_even_triggered_at: Optional[float] = None  # Timestamp quand BE activé
-    be_price_at_trigger: Optional[float] = None      # Prix quand BE activé
-    be_pnl_at_trigger: Optional[float] = None        # PnL% quand BE activé
+    be_price_at_trigger: Optional[float] = None  # Prix quand BE activé
+    be_pnl_at_trigger: Optional[float] = None  # PnL% quand BE activé
     trailing_activated: bool = False
-    trailing_activated_at: Optional[float] = None    # Timestamp quand trailing activé
-    trailing_final_sl: Optional[float] = None        # SL final du trailing
-    trailing_distance_pct: Optional[float] = None    # Distance trailing en %
-    max_price_reached: Optional[float] = None        # Prix max atteint pendant le trade
-    min_price_reached: Optional[float] = None        # Prix min atteint pendant le trade
-    max_pnl_reached: Optional[float] = None          # PnL% max atteint
-    min_pnl_reached: Optional[float] = None          # PnL% min atteint
-    max_pnl_timestamp: Optional[float] = None        # Quand max PnL atteint
-    min_pnl_timestamp: Optional[float] = None        # Quand min PnL atteint
-    stagnation_detected_at: Optional[float] = None   # Timestamp détection stagnation
+    trailing_activated_at: Optional[float] = None  # Timestamp quand trailing activé
+    trailing_final_sl: Optional[float] = None  # SL final du trailing
+    trailing_distance_pct: Optional[float] = None  # Distance trailing en %
+    max_price_reached: Optional[float] = None  # Prix max atteint pendant le trade
+    min_price_reached: Optional[float] = None  # Prix min atteint pendant le trade
+    max_pnl_reached: Optional[float] = None  # PnL% max atteint
+    min_pnl_reached: Optional[float] = None  # PnL% min atteint
+    max_pnl_timestamp: Optional[float] = None  # Quand max PnL atteint
+    min_pnl_timestamp: Optional[float] = None  # Quand min PnL atteint
+    stagnation_detected_at: Optional[float] = None  # Timestamp détection stagnation
     stagnation_pnl_at_detection: Optional[float] = None  # PnL% à la détection
 
     # 🎯 Stagnation Positive/MFE Protect metrics
-    stagnation_positive_triggered: bool = False          # Sortie STAGNATION_POSITIVE déclenchée
-    stagnation_mfe_at_exit: Optional[float] = None       # MFE% au moment de la sortie stagnation
-    stagnation_pullback_at_exit: Optional[float] = None  # Pullback% (MFE - PnL) à la sortie
+    stagnation_positive_triggered: bool = False  # Sortie STAGNATION_POSITIVE déclenchée
+    stagnation_mfe_at_exit: Optional[float] = (
+        None  # MFE% au moment de la sortie stagnation
+    )
+    stagnation_pullback_at_exit: Optional[float] = (
+        None  # Pullback% (MFE - PnL) à la sortie
+    )
 
     # 🎯 Trailing MFE (SL→BE quand MFE atteint seuil)
-    trailing_mfe_triggered: bool = False                 # SL déplacé à BE via MFE
-    trailing_mfe_triggered_at: Optional[float] = None    # Timestamp du trigger
-    trailing_mfe_trigger_pnl_pct: Optional[float] = None # PnL% au moment du trigger
-    trailing_mfe_trigger_price: Optional[float] = None   # Prix au moment du trigger
+    trailing_mfe_triggered: bool = False  # SL déplacé à BE via MFE
+    trailing_mfe_triggered_at: Optional[float] = None  # Timestamp du trigger
+    trailing_mfe_trigger_pnl_pct: Optional[float] = None  # PnL% au moment du trigger
+    trailing_mfe_trigger_price: Optional[float] = None  # Prix au moment du trigger
 
     # Dynamic SL (for trailing)
     dynamic_sl: Optional[float] = None
@@ -161,12 +163,18 @@ class Position:
     exit_api_response: Optional[Any] = None
     leverage_used: Optional[int] = None
     margin_mode: Optional[str] = None
-    contract_size_used: Optional[float] = None  # 🔥 FIX: Stocker contract_size pour éviter erreurs de calcul
+    contract_size_used: Optional[float] = (
+        None  # 🔥 FIX: Stocker contract_size pour éviter erreurs de calcul
+    )
     position_size_usdt: Optional[float] = None
     position_size_contracts: Optional[float] = None
     size_initial_contracts: Optional[float] = None
-    size_initial_usdt: Optional[float] = None  # 🔥 FIX: Taille initiale USDT (demandée) pour historique
-    size_executed_usdt: Optional[float] = None  # 🔥 FIX: Taille réellement exécutée (après lot size)
+    size_initial_usdt: Optional[float] = (
+        None  # 🔥 FIX: Taille initiale USDT (demandée) pour historique
+    )
+    size_executed_usdt: Optional[float] = (
+        None  # 🔥 FIX: Taille réellement exécutée (après lot size)
+    )
     size_remaining_contracts: Optional[float] = None
     liquidation_price: Optional[float] = None
     margin_used: Optional[float] = None
@@ -182,7 +190,9 @@ class Position:
     # 🔥 ML & Sizing Adaptatif (pour affichage frontend)
     ml_confidence: Optional[float] = None  # Confiance ML au moment de l'ouverture (%)
     ml_calibrated_winrate: Optional[float] = None  # 🔥 WR Réel calibré (si disponible)
-    adaptive_sizing_multiplier: Optional[float] = None  # Multiplicateur sizing adaptatif (0.5-1.5)
+    adaptive_sizing_multiplier: Optional[float] = (
+        None  # Multiplicateur sizing adaptatif (0.5-1.5)
+    )
     ml_prediction: Optional[str] = None
     ml_features: Optional[Dict[str, Any]] = None
 
@@ -191,7 +201,9 @@ class Position:
 
     # 🔥 FIX: Min contract amount pour validation TP partiel
     min_contract_amount: Optional[float] = None  # Minimum du contrat en tokens
-    force_full_tp_for_partial: bool = False  # Si True, le TP partiel fermera 100% car qty < min
+    force_full_tp_for_partial: bool = (
+        False  # Si True, le TP partiel fermera 100% car qty < min
+    )
 
     time_to_fill_entry_ms: Optional[float] = None
     time_to_fill_exit_ms: Optional[float] = None
@@ -206,125 +218,175 @@ class Position:
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
         from datetime import datetime
+
         # 🔥 FIX: Convertir start_time en opened_at (ISO string) pour le frontend
-        opened_at = datetime.fromtimestamp(self.start_time).isoformat() if self.start_time else None
+        opened_at = (
+            datetime.fromtimestamp(self.start_time).isoformat()
+            if self.start_time
+            else None
+        )
 
         return {
-            'symbol': self.symbol,
-            'direction': self.direction,
-            'entry': self.entry,
-            'size': self.size,
-            'sl': self.sl,
-            'tp': self.tp,
-            'sl_percent_at_entry': getattr(self, 'sl_percent_at_entry', None),
-            'initial_sl': getattr(self, 'initial_sl', None),
-            'entry_sl_exchange_percent': getattr(self, 'entry_sl_exchange_percent', None),
-            'atr': self.atr,
-            'atr5m': self.atr5m,
-            'atr_pct_used': getattr(self, 'atr_pct_used', None),
-            'atr_percent': getattr(self, 'atr_pct_used', None),
-            'atr_blended': getattr(self, 'atr_blended', None),
-            'confirmed_by': self.confirmed_by,
-            'timestamp': self.timestamp,
-            'start_time': self.start_time,
-            'opened_at': opened_at,  # 🔥 NOUVEAU: Ajouté pour le frontend (compte à rebours)
-            'break_even_set': self.break_even_set,
-            'break_even_triggered_at': datetime.fromtimestamp(self.break_even_triggered_at).isoformat() if self.break_even_triggered_at else None,
-            'break_even_price': self.be_price_at_trigger,
-            'break_even_pnl_pct': self.be_pnl_at_trigger,
-            'partial_tp_sold': self.partial_tp_sold,
-            'partial_tp_percent': self.partial_tp_percent,  # 🔥 NEW
-            'partial_tp_profit': self.partial_profit_usdt,    # Existe déjà mais mal nommé dans dict ? check below
-            'trailing_activated': self.trailing_activated,
-            'trailing_activated_at': datetime.fromtimestamp(self.trailing_activated_at).isoformat() if self.trailing_activated_at else None,
-            'trailing_final_sl': self.trailing_final_sl,
-            'trailing_distance_pct': self.trailing_distance_pct,
-            'trailing_mfe_triggered': getattr(self, 'trailing_mfe_triggered', False),
-            'trailing_mfe_triggered_at': datetime.fromtimestamp(self.trailing_mfe_triggered_at).isoformat() if getattr(self, 'trailing_mfe_triggered_at', None) else None,
-            'trailing_mfe_trigger_pnl_pct': getattr(self, 'trailing_mfe_trigger_pnl_pct', None),
-            'trailing_mfe_trigger_price': getattr(self, 'trailing_mfe_trigger_price', None),
-            'max_price_reached': self.max_price_reached,
-            'min_price_reached': self.min_price_reached,
-            'max_pnl_reached': self.max_pnl_reached,
-            'min_pnl_reached': self.min_pnl_reached,
-            'max_pnl_timestamp': datetime.fromtimestamp(getattr(self, 'max_pnl_timestamp')).isoformat() if getattr(self, 'max_pnl_timestamp', None) else None,
-            'min_pnl_timestamp': datetime.fromtimestamp(getattr(self, 'min_pnl_timestamp')).isoformat() if getattr(self, 'min_pnl_timestamp', None) else None,
-            'stagnation_detected_at': datetime.fromtimestamp(self.stagnation_detected_at).isoformat() if self.stagnation_detected_at else None,
-            'stagnation_pnl_at_detection': self.stagnation_pnl_at_detection,
-            'stagnation_positive_triggered': getattr(self, 'stagnation_positive_triggered', False),
-            'stagnation_mfe_at_exit': getattr(self, 'stagnation_mfe_at_exit', None),
-            'stagnation_pullback_at_exit': getattr(self, 'stagnation_pullback_at_exit', None),
-            'effective_config': getattr(self, 'effective_config', {}),
-            'dynamic_sl': self.dynamic_sl,
-            'size_remaining': self.size_remaining,
-            'partial_profit_usdt': self.partial_profit_usdt,
-            'capital': self.capital,
-            'tp_escalier_enabled': self.tp_escalier_enabled,
-            'tp_escalier_current_level': self.tp_escalier_current_level,
-            'tp_escalier_size_remaining': self.tp_escalier_size_remaining,
-            'tp_escalier_profits': self.tp_escalier_profits,
-            'tp_escalier_levels': self.tp_escalier_levels if hasattr(self, 'tp_escalier_levels') and self.tp_escalier_levels else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
-            'current_price': getattr(self, 'current_price', None),  # 🔥 FIX: Ajouter prix actuel si disponible
-            'pnl': getattr(self, 'pnl', None),
-            'pnl_pct': getattr(self, 'pnl_pct', None),
-            'pnl_usdt': getattr(self, 'pnl_usdt', None),
-            'next_event': getattr(self, 'next_event', None),
-            'next_tp': getattr(self, 'next_tp', None),  # 🔥 FIX: Prochain TP (toujours affiché)
-            'next_sl': getattr(self, 'next_sl', None),  # 🔥 FIX: Stop Loss (toujours affiché)
-            'position_events': getattr(self, 'position_events', []),
-            'price_precision': self.price_precision,  # 🔥 FIX: Précision prix depuis API
-            'tick_size': self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
+            "symbol": self.symbol,
+            "direction": self.direction,
+            "entry": self.entry,
+            "size": self.size,
+            "sl": self.sl,
+            "tp": self.tp,
+            "sl_percent_at_entry": getattr(self, "sl_percent_at_entry", None),
+            "initial_sl": getattr(self, "initial_sl", None),
+            "entry_sl_exchange_percent": getattr(
+                self, "entry_sl_exchange_percent", None
+            ),
+            "atr": self.atr,
+            "atr5m": self.atr5m,
+            "atr_pct_used": getattr(self, "atr_pct_used", None),
+            "atr_percent": getattr(self, "atr_pct_used", None),
+            "atr_blended": getattr(self, "atr_blended", None),
+            "confirmed_by": self.confirmed_by,
+            "timestamp": self.timestamp,
+            "start_time": self.start_time,
+            "opened_at": opened_at,  # 🔥 NOUVEAU: Ajouté pour le frontend (compte à rebours)
+            "break_even_set": self.break_even_set,
+            "break_even_triggered_at": datetime.fromtimestamp(
+                self.break_even_triggered_at
+            ).isoformat()
+            if self.break_even_triggered_at
+            else None,
+            "break_even_price": self.be_price_at_trigger,
+            "break_even_pnl_pct": self.be_pnl_at_trigger,
+            "partial_tp_sold": self.partial_tp_sold,
+            "partial_tp_percent": self.partial_tp_percent,  # 🔥 NEW
+            "partial_tp_profit": self.partial_profit_usdt,  # Existe déjà mais mal nommé dans dict ? check below
+            "trailing_activated": self.trailing_activated,
+            "trailing_activated_at": datetime.fromtimestamp(
+                self.trailing_activated_at
+            ).isoformat()
+            if self.trailing_activated_at
+            else None,
+            "trailing_final_sl": self.trailing_final_sl,
+            "trailing_distance_pct": self.trailing_distance_pct,
+            "trailing_mfe_triggered": getattr(self, "trailing_mfe_triggered", False),
+            "trailing_mfe_triggered_at": datetime.fromtimestamp(
+                self.trailing_mfe_triggered_at
+            ).isoformat()
+            if getattr(self, "trailing_mfe_triggered_at", None)
+            else None,
+            "trailing_mfe_trigger_pnl_pct": getattr(
+                self, "trailing_mfe_trigger_pnl_pct", None
+            ),
+            "trailing_mfe_trigger_price": getattr(
+                self, "trailing_mfe_trigger_price", None
+            ),
+            "max_price_reached": self.max_price_reached,
+            "min_price_reached": self.min_price_reached,
+            "max_pnl_reached": self.max_pnl_reached,
+            "min_pnl_reached": self.min_pnl_reached,
+            "max_pnl_timestamp": datetime.fromtimestamp(
+                getattr(self, "max_pnl_timestamp")
+            ).isoformat()
+            if getattr(self, "max_pnl_timestamp", None)
+            else None,
+            "min_pnl_timestamp": datetime.fromtimestamp(
+                getattr(self, "min_pnl_timestamp")
+            ).isoformat()
+            if getattr(self, "min_pnl_timestamp", None)
+            else None,
+            "stagnation_detected_at": datetime.fromtimestamp(
+                self.stagnation_detected_at
+            ).isoformat()
+            if self.stagnation_detected_at
+            else None,
+            "stagnation_pnl_at_detection": self.stagnation_pnl_at_detection,
+            "stagnation_positive_triggered": getattr(
+                self, "stagnation_positive_triggered", False
+            ),
+            "stagnation_mfe_at_exit": getattr(self, "stagnation_mfe_at_exit", None),
+            "stagnation_pullback_at_exit": getattr(
+                self, "stagnation_pullback_at_exit", None
+            ),
+            "effective_config": getattr(self, "effective_config", {}),
+            "dynamic_sl": self.dynamic_sl,
+            "size_remaining": self.size_remaining,
+            "partial_profit_usdt": self.partial_profit_usdt,
+            "capital": self.capital,
+            "tp_escalier_enabled": self.tp_escalier_enabled,
+            "tp_escalier_current_level": self.tp_escalier_current_level,
+            "tp_escalier_size_remaining": self.tp_escalier_size_remaining,
+            "tp_escalier_profits": self.tp_escalier_profits,
+            "tp_escalier_levels": self.tp_escalier_levels
+            if hasattr(self, "tp_escalier_levels") and self.tp_escalier_levels
+            else [],  # 🔥 FIX: Retourner la liste native pour éviter erreurs de type
+            "current_price": getattr(
+                self, "current_price", None
+            ),  # 🔥 FIX: Ajouter prix actuel si disponible
+            "pnl": getattr(self, "pnl", None),
+            "pnl_pct": getattr(self, "pnl_pct", None),
+            "pnl_usdt": getattr(self, "pnl_usdt", None),
+            "next_event": getattr(self, "next_event", None),
+            "next_tp": getattr(
+                self, "next_tp", None
+            ),  # 🔥 FIX: Prochain TP (toujours affiché)
+            "next_sl": getattr(
+                self, "next_sl", None
+            ),  # 🔥 FIX: Stop Loss (toujours affiché)
+            "position_events": getattr(self, "position_events", []),
+            "price_precision": self.price_precision,  # 🔥 FIX: Précision prix depuis API
+            "tick_size": self.tick_size,  # 🔥 FIX: Tick size depuis API (alternative à price_precision)
             # Live meta
-            'live_execution_mode': self.live_execution_mode,
-            'entry_order_id': self.entry_order_id,
-            'entry_order_type': self.entry_order_type,
-            'entry_requested_price': self.entry_requested_price,
-            'entry_fill_price': self.entry_fill_price,
-            'entry_slippage_pct': self.entry_slippage_pct,
-            'entry_latency_ms': self.entry_latency_ms,
-            'entry_timestamp': self.entry_timestamp,
-            'entry_api_response': self.entry_api_response,
-            'tp_sl_mode': self.tp_sl_mode,  # 🔥 NEW: Mode spécifique à ce trade
-            'exit_order_id': self.exit_order_id,
-            'exit_order_type': self.exit_order_type,
-            'exit_requested_price': self.exit_requested_price,
-            'exit_fill_price': self.exit_fill_price,
-            'exit_slippage_pct': self.exit_slippage_pct,
-            'exit_latency_ms': self.exit_latency_ms,
-            'exit_timestamp': self.exit_timestamp,
-            'leverage_used': self.leverage_used,
-            'margin_mode': self.margin_mode,
-            'contract_size_used': self.contract_size_used,
-            'position_size_usdt': self.position_size_usdt,
-            'position_size_contracts': self.position_size_contracts,
-            'size_initial_contracts': self.size_initial_contracts,
-            'size_initial_usdt': self.size_initial_usdt,
-            'size_remaining_contracts': self.size_remaining_contracts,
-            'liquidation_price': self.liquidation_price,
-            'margin_used': self.margin_used,
-            'entry_fee_usdt': self.entry_fee_usdt,
-            'exit_fee_usdt': self.exit_fee_usdt,
-            'total_fees_usdt': self.total_fees_usdt,
-            'funding_rate_at_entry': self.funding_rate_at_entry,
-            'funding_rate_at_exit': self.funding_rate_at_exit,
-            'funding_paid_usdt': self.funding_paid_usdt,
-            'time_to_fill_entry_ms': self.time_to_fill_entry_ms,
-            'time_to_fill_exit_ms': self.time_to_fill_exit_ms,
+            "live_execution_mode": self.live_execution_mode,
+            "entry_order_id": self.entry_order_id,
+            "entry_order_type": self.entry_order_type,
+            "entry_requested_price": self.entry_requested_price,
+            "entry_fill_price": self.entry_fill_price,
+            "entry_slippage_pct": self.entry_slippage_pct,
+            "entry_latency_ms": self.entry_latency_ms,
+            "entry_timestamp": self.entry_timestamp,
+            "entry_api_response": self.entry_api_response,
+            "tp_sl_mode": self.tp_sl_mode,  # 🔥 NEW: Mode spécifique à ce trade
+            "exit_order_id": self.exit_order_id,
+            "exit_order_type": self.exit_order_type,
+            "exit_requested_price": self.exit_requested_price,
+            "exit_fill_price": self.exit_fill_price,
+            "exit_slippage_pct": self.exit_slippage_pct,
+            "exit_latency_ms": self.exit_latency_ms,
+            "exit_timestamp": self.exit_timestamp,
+            "leverage_used": self.leverage_used,
+            "margin_mode": self.margin_mode,
+            "contract_size_used": self.contract_size_used,
+            "position_size_usdt": self.position_size_usdt,
+            "position_size_contracts": self.position_size_contracts,
+            "size_initial_contracts": self.size_initial_contracts,
+            "size_initial_usdt": self.size_initial_usdt,
+            "size_remaining_contracts": self.size_remaining_contracts,
+            "liquidation_price": self.liquidation_price,
+            "margin_used": self.margin_used,
+            "entry_fee_usdt": self.entry_fee_usdt,
+            "exit_fee_usdt": self.exit_fee_usdt,
+            "total_fees_usdt": self.total_fees_usdt,
+            "funding_rate_at_entry": self.funding_rate_at_entry,
+            "funding_rate_at_exit": self.funding_rate_at_exit,
+            "funding_paid_usdt": self.funding_paid_usdt,
+            "time_to_fill_entry_ms": self.time_to_fill_entry_ms,
+            "time_to_fill_exit_ms": self.time_to_fill_exit_ms,
             # 🔥 ML & Sizing Adaptatif
-            'ml_confidence': self.ml_confidence,
-            'ml_calibrated_winrate': self.ml_calibrated_winrate,
-            'adaptive_sizing_multiplier': self.adaptive_sizing_multiplier,
-            'ml_prediction': self.ml_prediction,
-            'ml_features': self.ml_features if isinstance(self.ml_features, dict) else {},
+            "ml_confidence": self.ml_confidence,
+            "ml_calibrated_winrate": self.ml_calibrated_winrate,
+            "adaptive_sizing_multiplier": self.adaptive_sizing_multiplier,
+            "ml_prediction": self.ml_prediction,
+            "ml_features": self.ml_features
+            if isinstance(self.ml_features, dict)
+            else {},
             # 🔥 FIX: Info TP partiel forcé à 100%
-            'min_contract_amount': self.min_contract_amount,
-            'force_full_tp_for_partial': self.force_full_tp_for_partial,
+            "min_contract_amount": self.min_contract_amount,
+            "force_full_tp_for_partial": self.force_full_tp_for_partial,
         }
 
 
 @dataclass
 class PositionConfig:
     """Configuration pour la gestion de position"""
+
     # Mode
     use_atr: bool = False
 
@@ -369,7 +431,9 @@ class PositionManager:
     """Gestionnaire de positions - Architecture modulaire v7.0"""
 
     @staticmethod
-    def _format_price(price: float, min_decimals: int = 6, max_decimals: int = 10) -> str:
+    def _format_price(
+        price: float, min_decimals: int = 6, max_decimals: int = 10
+    ) -> str:
         """
         Formater un prix avec le bon nombre de décimales selon sa valeur
 
@@ -386,16 +450,21 @@ class PositionManager:
 
         if price < 0.01:
             price_str = f"{price:.{max_decimals}f}"
-            price_str = price_str.rstrip('0').rstrip('.')
-            if '.' in price_str:
-                decimals = len(price_str.split('.')[1])
+            price_str = price_str.rstrip("0").rstrip(".")
+            if "." in price_str:
+                decimals = len(price_str.split(".")[1])
                 if decimals < min_decimals:
-                    return f"{price:.{min_decimals}f}".rstrip('0').rstrip('.')
+                    return f"{price:.{min_decimals}f}".rstrip("0").rstrip(".")
             return price_str
         else:
             return f"{price:.{min_decimals}f}"
 
-    def __init__(self, config: Optional[PositionConfig] = None, analytics_db=None, live_order_manager=None):
+    def __init__(
+        self,
+        config: Optional[PositionConfig] = None,
+        analytics_db=None,
+        live_order_manager=None,
+    ):
         """
         Initialiser PositionManager avec modules
 
@@ -410,7 +479,9 @@ class PositionManager:
         self.api_alert_shown = False
         self.last_price = 0.0
         self.last_price_update = datetime.now().timestamp() * 1000
-        self.market_info_cache: Dict[str, Dict] = {}  # 🔥 FIX: Cache pour informations de marché (précision)
+        self.market_info_cache: Dict[
+            str, Dict
+        ] = {}  # 🔥 FIX: Cache pour informations de marché (précision)
 
         #
         self.live_order_manager = live_order_manager
@@ -424,7 +495,7 @@ class PositionManager:
         price: float = None,
         pnl_pct: float = None,
         pnl_usdt: float = None,
-        details: dict = None
+        details: dict = None,
     ) -> None:
         """
         Logger un événement de trade (Phase 2H.6)
@@ -436,31 +507,37 @@ class PositionManager:
         #
         #
         try:
-            if not getattr(self.active_position, 'position_events', None):
+            if not getattr(self.active_position, "position_events", None):
                 self.active_position.position_events = []
-            self.active_position.position_events.append({
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-                'type': event_type,
-                'price': price,
-                'pnl_pct': pnl_pct,
-                'pnl_usdt': pnl_usdt,
-                'details': details or {}
-            })
+            self.active_position.position_events.append(
+                {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "type": event_type,
+                    "price": price,
+                    "pnl_pct": pnl_pct,
+                    "pnl_usdt": pnl_usdt,
+                    "details": details or {},
+                }
+            )
             # Garder uniquement les 50 derniers événements
             if len(self.active_position.position_events) > 50:
-                self.active_position.position_events = self.active_position.position_events[-50:]
+                self.active_position.position_events = (
+                    self.active_position.position_events[-50:]
+                )
         except Exception:
             pass
 
-        trade_id = getattr(self.active_position, '_trade_id', None)
+        trade_id = getattr(self.active_position, "_trade_id", None)
         if not trade_id:
             return
 
         try:
             from core.postgresql_datalogger import get_pg_datalogger
+
             pg_logger = get_pg_datalogger()
             if pg_logger:
                 import threading
+
                 def _log():
                     try:
                         pg_logger.log_trade_event(
@@ -469,21 +546,24 @@ class PositionManager:
                             price_at_event=price,
                             pnl_pct_at_event=pnl_pct,
                             pnl_usdt_at_event=pnl_usdt,
-                            details=details
+                            details=details,
                         )
                     except Exception:
                         pass
+
                 threading.Thread(target=_log, daemon=True).start()
         except Exception:
             pass
 
-    def _schedule_position_sync(self, symbol: str, delay: Optional[float] = None) -> None:
+    def _schedule_position_sync(
+        self, symbol: str, delay: Optional[float] = None
+    ) -> None:
         if not self.live_order_manager:
             return
 
         dry_run = False
         try:
-            dry_run = getattr(self.live_order_manager, 'dry_run', False)
+            dry_run = getattr(self.live_order_manager, "dry_run", False)
         except Exception:
             dry_run = False
 
@@ -493,15 +573,19 @@ class PositionManager:
         from utils.effective_config import get_effective_value
 
         if delay is None:
-            delay = float(get_effective_value('live_resync_delay_sec') or 3)
+            delay = float(get_effective_value("live_resync_delay_sec") or 3)
 
         def _worker():
             try:
                 if delay and delay > 0:
-                    logger.debug(f"⏳ Resynchronisation position LIVE programmée dans {delay}s pour {symbol}...")
+                    logger.debug(
+                        f"⏳ Resynchronisation position LIVE programmée dans {delay}s pour {symbol}..."
+                    )
                     time.sleep(delay)
 
-                live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                live_position = self.live_order_manager.get_position(
+                    symbol, prefer_ccxt=True
+                )
                 current_position = self.active_position
 
                 if not live_position:
@@ -510,7 +594,9 @@ class PositionManager:
                     if current_position and current_position.symbol == symbol:
                         # 🔥 FIX: Ajouter une Grace Period pour éviter faux positifs à l'ouverture
                         # Si la position a moins de 15s, c'est probablement juste de la latence API
-                        elapsed_since_start = time.time() - getattr(current_position, 'start_time', 0)
+                        elapsed_since_start = time.time() - getattr(
+                            current_position, "start_time", 0
+                        )
                         if elapsed_since_start < 15.0:
                             logger.warning(
                                 f"⏳ Position {symbol} introuvable sur MEXC mais créée il y a {elapsed_since_start:.1f}s. "
@@ -539,20 +625,22 @@ class PositionManager:
 
                         if bot_sl and bot_sl > 0:
                             # Valider que le SL est du bon côté
-                            if direction == 'SHORT' and bot_sl <= entry:
+                            if direction == "SHORT" and bot_sl <= entry:
                                 # SL inversé! Utiliser l'entry + marge estimée
                                 logger.error(
                                     f"🔴 BUG SL_EXCHANGE: SL ({bot_sl}) <= entry ({entry}) pour SHORT! "
                                     f"Estimation SL = entry × 1.005"
                                 )
                                 exit_price = entry * 1.005  # +0.5% au-dessus de l'entry
-                            elif direction == 'LONG' and bot_sl >= entry:
+                            elif direction == "LONG" and bot_sl >= entry:
                                 # SL inversé!
                                 logger.error(
                                     f"🔴 BUG SL_EXCHANGE: SL ({bot_sl}) >= entry ({entry}) pour LONG! "
                                     f"Estimation SL = entry × 0.995"
                                 )
-                                exit_price = entry * 0.995  # -0.5% en-dessous de l'entry
+                                exit_price = (
+                                    entry * 0.995
+                                )  # -0.5% en-dessous de l'entry
                             else:
                                 exit_price = bot_sl
                         else:
@@ -563,10 +651,19 @@ class PositionManager:
 
                         # 🔥 FIX 20/12/2025: Récupération prix SL avec timeout strict pour éviter blocage
                         try:
-                            if hasattr(self.live_order_manager, 'bypass_client') and self.live_order_manager.bypass_client:
-                                logger.debug(f"🔍 Tentative récupération prix réel SL depuis MEXC (timeout 3s)...")
-                                bypass_symbol = symbol.replace('/', '_').replace(':USDT', '')
-                                from trading.live_order_manager_futures import run_async_safely
+                            if (
+                                hasattr(self.live_order_manager, "bypass_client")
+                                and self.live_order_manager.bypass_client
+                            ):
+                                logger.debug(
+                                    f"🔍 Tentative récupération prix réel SL depuis MEXC (timeout 3s)..."
+                                )
+                                bypass_symbol = symbol.replace("/", "_").replace(
+                                    ":USDT", ""
+                                )
+                                from trading.live_order_manager_futures import (
+                                    run_async_safely,
+                                )
 
                                 try:
                                     # 🚨 FIX CRITIQUE: Timeout réduit à 3s pour éviter blocage
@@ -575,19 +672,24 @@ class PositionManager:
                                             bypass_symbol,
                                             page_num=1,
                                             page_size=5,  # Réduire pour plus de rapidité
-                                            category=2  # SL orders only
+                                            category=2,  # SL orders only
                                         ),
-                                        timeout=3.0  # 🔥 TIMEOUT STRICT
+                                        timeout=3.0,  # 🔥 TIMEOUT STRICT
                                     )
                                 except Exception as timeout_err:
-                                    logger.warning(f"⏱️ Timeout/Erreur récupération prix SL (3s): {timeout_err}")
+                                    logger.warning(
+                                        f"⏱️ Timeout/Erreur récupération prix SL (3s): {timeout_err}"
+                                    )
                                     history_response = None
 
                                 # Extraire la liste des ordres de la réponse
                                 if history_response:
                                     orders = []
                                     if isinstance(history_response, dict):
-                                        if history_response.get("success") and history_response.get("code") == 0:
+                                        if (
+                                            history_response.get("success")
+                                            and history_response.get("code") == 0
+                                        ):
                                             orders = history_response.get("data", [])
                                             if isinstance(orders, dict):
                                                 orders = orders.get("resultList", [])
@@ -599,27 +701,41 @@ class PositionManager:
                                             if not isinstance(order, dict):
                                                 continue
                                             # Chercher un ordre SL exécuté (state=3 = filled)
-                                            if order.get('state') == 3:
-                                                fill_price = order.get('dealAvgPrice') or order.get('price')
+                                            if order.get("state") == 3:
+                                                fill_price = order.get(
+                                                    "dealAvgPrice"
+                                                ) or order.get("price")
                                                 if fill_price and float(fill_price) > 0:
                                                     exit_price = float(fill_price)
-                                                    logger.info(f"📊 Prix réel SL MEXC récupéré: {exit_price}")
+                                                    logger.info(
+                                                        f"📊 Prix réel SL MEXC récupéré: {exit_price}"
+                                                    )
                                                     break
                         except Exception as fetch_err:
-                            logger.warning(f"⚠️ Impossible de récupérer le prix réel SL: {fetch_err}")
+                            logger.warning(
+                                f"⚠️ Impossible de récupérer le prix réel SL: {fetch_err}"
+                            )
 
                         # 🚨 SÉCURITÉ: Garantir que exit_price est défini même en cas d'erreur
-                        if 'exit_price' not in locals() or not exit_price:
+                        if "exit_price" not in locals() or not exit_price:
                             exit_price = bot_sl if bot_sl and bot_sl > 0 else entry
-                            logger.warning(f"🛡️ Fallback exit_price utilisé: {exit_price}")
+                            logger.warning(
+                                f"🛡️ Fallback exit_price utilisé: {exit_price}"
+                            )
 
                         # 🔥 FIX: Exécuter close_position directement - TOUJOURS
                         position_cleaned = False
                         close_result = None
                         try:
-                            logger.info(f"🔒 Fermeture SL_EXCHANGE en cours pour {symbol}...")
-                            close_result = self.close_position(exit_price, reason='SL_EXCHANGE')
-                            logger.info(f"✅ Position {symbol} fermée suite à SL EXCHANGE")
+                            logger.info(
+                                f"🔒 Fermeture SL_EXCHANGE en cours pour {symbol}..."
+                            )
+                            close_result = self.close_position(
+                                exit_price, reason="SL_EXCHANGE"
+                            )
+                            logger.info(
+                                f"✅ Position {symbol} fermée suite à SL EXCHANGE"
+                            )
                             position_cleaned = True
 
                             # 🔥 FIX 24/12/2025: Ajouter le trade à l'historique UI
@@ -627,25 +743,38 @@ class PositionManager:
                                 try:
                                     state = get_state_manager()
                                     from datetime import datetime
-                                    close_result['timestamp'] = datetime.now().isoformat()
+
+                                    close_result["timestamp"] = (
+                                        datetime.now().isoformat()
+                                    )
                                     state.add_trade(close_result)
                                     # Sauvegarder l'historique
                                     try:
                                         from main import save_trade_history
+
                                         save_trade_history()
                                     except ImportError:
                                         pass
-                                    logger.info(f"📊 Trade SL_EXCHANGE ajouté à l'historique: {symbol}")
+                                    logger.info(
+                                        f"📊 Trade SL_EXCHANGE ajouté à l'historique: {symbol}"
+                                    )
                                 except Exception as hist_err:
-                                    logger.warning(f"⚠️ Erreur ajout historique SL_EXCHANGE: {hist_err}")
+                                    logger.warning(
+                                        f"⚠️ Erreur ajout historique SL_EXCHANGE: {hist_err}"
+                                    )
                         except Exception as close_err:
-                            logger.error(f"❌ Erreur fermeture SL_EXCHANGE pour {symbol}: {close_err}")
+                            logger.error(
+                                f"❌ Erreur fermeture SL_EXCHANGE pour {symbol}: {close_err}"
+                            )
                             import traceback
+
                             logger.error(f"Traceback: {traceback.format_exc()}")
                         finally:
                             # 🔥 FIX CRITIQUE: Toujours nettoyer la position après SL_EXCHANGE
                             if not position_cleaned and self.active_position:
-                                logger.warning(f"🔧 Position {symbol} forcée à None après SL_EXCHANGE (finally)")
+                                logger.warning(
+                                    f"🔧 Position {symbol} forcée à None après SL_EXCHANGE (finally)"
+                                )
                                 self.active_position = None
 
                             try:
@@ -657,17 +786,21 @@ class PositionManager:
                                     state.reset_close_failure()
                                 else:
                                     state_symbol = None
-                                    if hasattr(state_pos, 'symbol'):
-                                        state_symbol = getattr(state_pos, 'symbol', None)
+                                    if hasattr(state_pos, "symbol"):
+                                        state_symbol = getattr(
+                                            state_pos, "symbol", None
+                                        )
                                     elif isinstance(state_pos, dict):
-                                        state_symbol = state_pos.get('symbol')
+                                        state_symbol = state_pos.get("symbol")
                                     if state_symbol == symbol:
                                         state.set_active_position(None)
                                         state.reset_close_failure()
                             except Exception:
                                 pass
                     else:
-                        logger.warning(f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée")
+                        logger.warning(
+                            f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée"
+                        )
                     return
 
                 # Initialiser les variables pour éviter UnboundLocalError
@@ -676,9 +809,9 @@ class PositionManager:
 
                 if not current_position or current_position.symbol != symbol:
                     if live_position:
-                        live_entry_price = float(live_position.get('entry_price') or 0)
+                        live_entry_price = float(live_position.get("entry_price") or 0)
                         # 🔥 FIX: Utiliser 'tokens' directement (déjà calculé = contracts × contract_size)
-                        real_tokens = float(live_position.get('tokens') or 0)
+                        real_tokens = float(live_position.get("tokens") or 0)
 
                         if live_entry_price > 0:
                             live_size_usdt = real_tokens * live_entry_price
@@ -690,7 +823,10 @@ class PositionManager:
                             # Mettre à jour uniquement size_remaining
                             if current_position and current_position.partial_tp_sold:
                                 # Si un TP partiel a été fait, on prend le minimum entre le réel et le local
-                                current_position.size_remaining = min(live_size_usdt, current_position.size_remaining or live_size_usdt)
+                                current_position.size_remaining = min(
+                                    live_size_usdt,
+                                    current_position.size_remaining or live_size_usdt,
+                                )
                             elif current_position:
                                 current_position.size_remaining = live_size_usdt
 
@@ -708,9 +844,8 @@ class PositionManager:
                 else:
                     # Cas où current_position est déjà le bon, extraire les infos de live_position quand même
                     if live_position:
-                        live_entry_price = float(live_position.get('entry_price') or 0)
-                        real_tokens = float(live_position.get('tokens') or 0)
-
+                        live_entry_price = float(live_position.get("entry_price") or 0)
+                        real_tokens = float(live_position.get("tokens") or 0)
 
                 if real_tokens > 0 and live_entry_price > 0:
                     # 🔥 FIX: Calculer USDT directement depuis tokens × entry
@@ -734,13 +869,19 @@ class PositionManager:
                         f"🔁 [LIVE] Taille synchronisée: {real_tokens:.6f} tokens ({live_size_usdt:.4f} USDT restants)"
                     )
             except Exception as e:
-                logger.error(f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}")
+                logger.error(
+                    f"❌ Erreur resynchronisation différée position LIVE pour {symbol}: {e}"
+                )
 
-        thread = threading.Thread(target=_worker, name=f"position_sync_{symbol}", daemon=True)
+        thread = threading.Thread(
+            target=_worker, name=f"position_sync_{symbol}", daemon=True
+        )
         try:
             thread.start()
         except RuntimeError as e:
-            logger.error(f"❌ Impossible de démarrer le thread de resynchronisation pour {symbol}: {e}")
+            logger.error(
+                f"❌ Impossible de démarrer le thread de resynchronisation pour {symbol}: {e}"
+            )
 
     def _get_contract_size(self, symbol: str) -> float:
         """
@@ -756,26 +897,40 @@ class PositionManager:
             contractSize (ex: 1000 pour SHIB, 0.0001 pour BTC)
         """
         try:
-            if self.live_order_manager and hasattr(self.live_order_manager, 'bypass_client'):
+            if self.live_order_manager and hasattr(
+                self.live_order_manager, "bypass_client"
+            ):
                 bypass_client = self.live_order_manager.bypass_client
                 if bypass_client:
                     # Convertir le symbole au format bypass (SHIB/USDT:USDT -> SHIB_USDT)
-                    bypass_symbol = symbol.replace('/USDT:USDT', '_USDT').replace('/', '_')
+                    bypass_symbol = symbol.replace("/USDT:USDT", "_USDT").replace(
+                        "/", "_"
+                    )
 
                     # Essayer de récupérer depuis le cache du bypass_client
-                    if hasattr(bypass_client, '_contract_specs') and bypass_symbol in bypass_client._contract_specs:
+                    if (
+                        hasattr(bypass_client, "_contract_specs")
+                        and bypass_symbol in bypass_client._contract_specs
+                    ):
                         spec = bypass_client._contract_specs[bypass_symbol]
                         return spec.contract_size
 
                     # Sinon, essayer de récupérer via l'API (synchrone)
                     try:
                         from trading.live_order_manager_futures import run_async_safely
-                        spec = run_async_safely(bypass_client.get_contract_spec(bypass_symbol), timeout=2.0)
+
+                        spec = run_async_safely(
+                            bypass_client.get_contract_spec(bypass_symbol), timeout=2.0
+                        )
                         if spec:
-                            logger.info(f"📋 ContractSize récupéré pour {symbol}: {spec.contract_size}")
+                            logger.info(
+                                f"📋 ContractSize récupéré pour {symbol}: {spec.contract_size}"
+                            )
                             return spec.contract_size
                     except Exception as e:
-                        logger.debug(f"⚠️ Impossible de récupérer contract_spec pour {bypass_symbol}: {e}")
+                        logger.debug(
+                            f"⚠️ Impossible de récupérer contract_spec pour {bypass_symbol}: {e}"
+                        )
         except Exception as e:
             logger.debug(f"⚠️ Erreur _get_contract_size pour {symbol}: {e}")
 
@@ -800,22 +955,24 @@ class PositionManager:
 
             # Récupérer le client MEXC
             client = get_mexc_client()
-            if not client or not getattr(client, 'exchange', None):
+            if not client or not getattr(client, "exchange", None):
                 return None
 
             # Charger les marchés si pas déjà fait
-            if not hasattr(client, '_markets_loaded'):
+            if not hasattr(client, "_markets_loaded"):
                 # Utiliser load_markets pour obtenir toutes les infos de marché
                 try:
                     loop = asyncio.get_running_loop()
-                    loading_task = getattr(client, '_markets_loading_task', None)
+                    loading_task = getattr(client, "_markets_loading_task", None)
                     if loading_task is None or loading_task.done():
                         try:
-                            if hasattr(client.exchange, 'markets_loading'):
+                            if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
                             pass
-                        client._markets_loading_task = loop.create_task(client.exchange.load_markets())
+                        client._markets_loading_task = loop.create_task(
+                            client.exchange.load_markets()
+                        )
 
                         def _on_loaded(task):
                             try:
@@ -825,14 +982,16 @@ class PositionManager:
                             except asyncio.CancelledError:
                                 logger.warning("⚠️ Chargement des marchés annulé")
                                 try:
-                                    if hasattr(client.exchange, 'markets_loading'):
+                                    if hasattr(client.exchange, "markets_loading"):
                                         client.exchange.markets_loading = None
                                 except Exception:
                                     pass
                             except Exception as e:
-                                logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
+                                logger.warning(
+                                    f"⚠️ Impossible de charger les marchés: {e}"
+                                )
                                 try:
-                                    if hasattr(client.exchange, 'markets_loading'):
+                                    if hasattr(client.exchange, "markets_loading"):
                                         client.exchange.markets_loading = None
                                 except Exception:
                                     pass
@@ -846,17 +1005,21 @@ class PositionManager:
                 except RuntimeError:
                     try:
                         try:
-                            if hasattr(client.exchange, 'markets_loading'):
+                            if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
                             pass
-                        markets = asyncio.run(asyncio.wait_for(client.exchange.load_markets(), timeout=2.0))
+                        markets = asyncio.run(
+                            asyncio.wait_for(
+                                client.exchange.load_markets(), timeout=2.0
+                            )
+                        )
                         client._markets_loaded = True
                         client._markets = markets
                     except asyncio.CancelledError:
                         logger.warning("⚠️ Chargement des marchés annulé")
                         try:
-                            if hasattr(client.exchange, 'markets_loading'):
+                            if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
                             pass
@@ -864,7 +1027,7 @@ class PositionManager:
                     except Exception as e:
                         logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
                         try:
-                            if hasattr(client.exchange, 'markets_loading'):
+                            if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
                             pass
@@ -874,7 +1037,7 @@ class PositionManager:
                     return None
 
             # Récupérer les informations du marché pour ce symbole
-            if hasattr(client, '_markets') and symbol in client._markets:
+            if hasattr(client, "_markets") and symbol in client._markets:
                 market_info = client._markets[symbol]
                 # Mettre en cache
                 self.market_info_cache[symbol] = market_info
@@ -885,29 +1048,29 @@ class PositionManager:
 
         return None
 
-    def _enforce_fixe_sl_not_wider(self, context: str = '') -> None:
+    def _enforce_fixe_sl_not_wider(self, context: str = "") -> None:
         from utils.effective_config import get_effective_value
 
         if not self.active_position:
             return
 
-        if get_effective_value('tp_sl_mode') != 'FIXE':
+        if get_effective_value("tp_sl_mode") != "FIXE":
             return
 
-        if getattr(self.config, 'use_atr', False):
+        if getattr(self.config, "use_atr", False):
             return
 
-        sl_pct_cfg = getattr(self.active_position, 'sl_percent_at_entry', None)
+        sl_pct_cfg = getattr(self.active_position, "sl_percent_at_entry", None)
         if not isinstance(sl_pct_cfg, (int, float)) or sl_pct_cfg <= 0:
             return
 
-        entry = getattr(self.active_position, 'entry', None)
-        sl = getattr(self.active_position, 'sl', None)
-        direction = getattr(self.active_position, 'direction', None)
-        if not entry or not sl or entry <= 0 or direction not in ('LONG', 'SHORT'):
+        entry = getattr(self.active_position, "entry", None)
+        sl = getattr(self.active_position, "sl", None)
+        direction = getattr(self.active_position, "direction", None)
+        if not entry or not sl or entry <= 0 or direction not in ("LONG", "SHORT"):
             return
 
-        if direction == 'LONG':
+        if direction == "LONG":
             current_sl_pct = (entry - sl) / entry * 100.0
             desired_sl = entry * (1.0 - (sl_pct_cfg / 100.0))
             is_wider = current_sl_pct > (sl_pct_cfg + 1e-6)
@@ -924,11 +1087,11 @@ class PositionManager:
             f"SL actuel distance={current_sl_pct:.4f}% > config={sl_pct_cfg:.4f}% | Correction vers {desired_sl:.8f}"
         )
 
-        current_price = getattr(self.active_position, 'current_price', None)
+        current_price = getattr(self.active_position, "current_price", None)
         if isinstance(current_price, (int, float)) and current_price > 0:
-            if direction == 'LONG' and desired_sl >= current_price:
+            if direction == "LONG" and desired_sl >= current_price:
                 desired_sl = current_price * 0.9999
-            if direction == 'SHORT' and desired_sl <= current_price:
+            if direction == "SHORT" and desired_sl <= current_price:
                 desired_sl = current_price * 1.0001
 
         self.active_position.sl = desired_sl
@@ -944,34 +1107,36 @@ class PositionManager:
             atr_min=self.config.atr_min,
             atr_max=self.config.atr_max,
             win_streak=self.config.win_streak,
-            loss_streak=self.config.loss_streak
+            loss_streak=self.config.loss_streak,
         )
 
         # Early Invalidation
         from utils.effective_config import get_effective_value
-        early_config_dict = get_effective_value('early_invalidation') or {}
+
+        early_config_dict = get_effective_value("early_invalidation") or {}
         self.early_invalidation = EarlyInvalidationChecker(
             EarlyInvalidationConfig(
-                enabled=early_config_dict.get('enabled', True),
-                threshold_15s=early_config_dict.get('threshold_15s', -0.12),
-                threshold_30s=early_config_dict.get('threshold_30s', -0.08),
-                adaptive_enabled=early_config_dict.get('adaptive_enabled', True),
-                low_vol_multiplier=early_config_dict.get('low_vol_multiplier', 0.7),
-                high_vol_multiplier=early_config_dict.get('high_vol_multiplier', 1.3)
+                enabled=early_config_dict.get("enabled", True),
+                threshold_15s=early_config_dict.get("threshold_15s", -0.12),
+                threshold_30s=early_config_dict.get("threshold_30s", -0.08),
+                adaptive_enabled=early_config_dict.get("adaptive_enabled", True),
+                low_vol_multiplier=early_config_dict.get("low_vol_multiplier", 0.7),
+                high_vol_multiplier=early_config_dict.get("high_vol_multiplier", 1.3),
             )
         )
 
         # Trailing Stop - ✅ Utiliser ConfigHelper
         from utils.helpers import ConfigHelper
+
         position_params = ConfigHelper.get_position_params()
 
         self.trailing_stop = TrailingStopManager(
             TrailingStopConfig(
-                enabled=position_params.get('enable_trailing_stop', True),
-                trigger_pnl=get_effective_value('trailing_trigger_pnl') or 0.25,
-                atr_multiplier=get_effective_value('trailing_atr_multiplier') or 0.4,
-                min_distance=get_effective_value('trailing_min_distance') or 0.08,
-                max_distance=get_effective_value('trailing_max_distance') or 0.25
+                enabled=position_params.get("enable_trailing_stop", True),
+                trigger_pnl=get_effective_value("trailing_trigger_pnl") or 0.25,
+                atr_multiplier=get_effective_value("trailing_atr_multiplier") or 0.4,
+                min_distance=get_effective_value("trailing_min_distance") or 0.08,
+                max_distance=get_effective_value("trailing_max_distance") or 0.25,
             )
         )
 
@@ -979,17 +1144,19 @@ class PositionManager:
         self.pnl_calculator = PnLCalculator()
 
         # Recovery Mode
-        recovery_config_dict = get_effective_value('recovery_mode') or {}
+        recovery_config_dict = get_effective_value("recovery_mode") or {}
         self.recovery_mode = RecoveryModeManager(
             RecoveryModeConfig(
-                enabled=recovery_config_dict.get('enabled', True),
-                mode=recovery_config_dict.get('mode', 'PROGRESSIVE'),
-                trigger_loss_streak=recovery_config_dict.get('trigger_loss_streak', 3),
-                min_score_boost=recovery_config_dict.get('min_score_boost', 1.5),
-                position_size_reduction=recovery_config_dict.get('position_size_reduction', 0.7),
-                confluence_forced=recovery_config_dict.get('confluence_forced', False),
-                duration_trades=recovery_config_dict.get('duration_trades', 5),
-                levels=recovery_config_dict.get('levels', [])
+                enabled=recovery_config_dict.get("enabled", True),
+                mode=recovery_config_dict.get("mode", "PROGRESSIVE"),
+                trigger_loss_streak=recovery_config_dict.get("trigger_loss_streak", 3),
+                min_score_boost=recovery_config_dict.get("min_score_boost", 1.5),
+                position_size_reduction=recovery_config_dict.get(
+                    "position_size_reduction", 0.7
+                ),
+                confluence_forced=recovery_config_dict.get("confluence_forced", False),
+                duration_trades=recovery_config_dict.get("duration_trades", 5),
+                levels=recovery_config_dict.get("levels", []),
             )
         )
 
@@ -1011,13 +1178,15 @@ class PositionManager:
         # (le mode stagnation/time-decay peut être géré ailleurs selon les feature flags)
         return None
 
-    def _update_trailing_stop_fixe(self, current_price: float, trailing_distance: float) -> Optional[float]:
+    def _update_trailing_stop_fixe(
+        self, current_price: float, trailing_distance: float
+    ) -> Optional[float]:
         if not self.active_position:
             return None
 
-        direction = getattr(self.active_position, 'direction', None)
-        current_sl = getattr(self.active_position, 'sl', None)
-        if direction not in ('LONG', 'SHORT'):
+        direction = getattr(self.active_position, "direction", None)
+        current_sl = getattr(self.active_position, "sl", None)
+        if direction not in ("LONG", "SHORT"):
             return None
         if not isinstance(current_price, (int, float)) or current_price <= 0:
             return None
@@ -1026,7 +1195,7 @@ class PositionManager:
         if not isinstance(current_sl, (int, float)) or current_sl <= 0:
             return None
 
-        if direction == 'LONG':
+        if direction == "LONG":
             new_sl = current_price * (1 - trailing_distance / 100)
             if new_sl > current_sl:
                 return round(float(new_sl), 8)
@@ -1048,8 +1217,12 @@ class PositionManager:
         scalability_data: Optional[Dict] = None,
         condition_types: Optional[List[str]] = None,
         ml_confidence: Optional[float] = None,  # 🔥 FIX: Ajouter ml_confidence
-        adaptive_sizing_multiplier: Optional[float] = None,  # 🔥 Multiplicateur sizing adaptatif
-        setup_data: Optional[Dict] = None  # 🔥 CRITICAL: Setup complet pour accès indicators_1m/5m
+        adaptive_sizing_multiplier: Optional[
+            float
+        ] = None,  # 🔥 Multiplicateur sizing adaptatif
+        setup_data: Optional[
+            Dict
+        ] = None,  # 🔥 CRITICAL: Setup complet pour accès indicators_1m/5m
     ) -> Optional[Position]:
         """
         Ouvrir une nouvelle position
@@ -1094,21 +1267,32 @@ class PositionManager:
             )
 
         # 🌳 FILTRE GRADIENTBOOSTING (modèle optimisé 64-69% accuracy)
-        logger.warning(f"🚨 POSITION_MANAGER - VRAI FILTRE GB pour {symbol} - ICI TOUS LES TRADES PASSENT!")
+        logger.warning(
+            f"🚨 POSITION_MANAGER - VRAI FILTRE GB pour {symbol} - ICI TOUS LES TRADES PASSENT!"
+        )
 
         from utils.effective_config import get_effective_value
-        gb_enabled = get_effective_value('gb_filter_enabled') or False
-        logger.warning(f"🔍 DEBUG GB CONFIG: gb_filter_enabled={gb_enabled} pour {symbol}")
+
+        gb_enabled = get_effective_value("gb_filter_enabled") or False
+        logger.warning(
+            f"🔍 DEBUG GB CONFIG: gb_filter_enabled={gb_enabled} pour {symbol}"
+        )
 
         gb_ml_prediction = None
         gb_ml_features = None
         gb_ml_confidence = None
         precomputed_ml = ml_confidence is not None
-        if not precomputed_ml and isinstance(setup_data, dict) and setup_data.get('ml_features'):
+        if (
+            not precomputed_ml
+            and isinstance(setup_data, dict)
+            and setup_data.get("ml_features")
+        ):
             precomputed_ml = True
 
         if gb_enabled and not precomputed_ml:
-            logger.warning(f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}...")
+            logger.warning(
+                f"🌳 Filtre GradientBoosting activé - Vérification pour {symbol}..."
+            )
 
             try:
                 from optimization.predictor_optimized import get_predictor
@@ -1119,247 +1303,351 @@ class PositionManager:
 
                 if setup_data:
                     # Utiliser le setup complet passé depuis main.py
-                    indicators_1m = setup_data.get('indicators_1m', {})
-                    indicators_5m = setup_data.get('indicators_5m', {})
+                    indicators_1m = setup_data.get("indicators_1m", {})
+                    indicators_5m = setup_data.get("indicators_5m", {})
 
                     # 🔥 Indicateurs techniques 1m et 5m (TOUS les indicateurs disponibles)
                     for key, value in indicators_1m.items():
-                        if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
-                            features[f"{key}_1m" if not key.endswith('_1m') else key] = value
+                        if isinstance(value, (int, float)) and not (
+                            isinstance(value, float) and math.isnan(value)
+                        ):
+                            features[
+                                f"{key}_1m" if not key.endswith("_1m") else key
+                            ] = value
                     for key, value in indicators_5m.items():
-                        if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
-                            features[f"{key}_5m" if not key.endswith('_5m') else key] = value
+                        if isinstance(value, (int, float)) and not (
+                            isinstance(value, float) and math.isnan(value)
+                        ):
+                            features[
+                                f"{key}_5m" if not key.endswith("_5m") else key
+                            ] = value
 
                     # 🔥 Features depuis la racine du setup (prix, volume, etc.)
-                    setup_direct_features = ['price', 'volume', 'atr', 'spread', 'orderbook_imbalance']
+                    setup_direct_features = [
+                        "price",
+                        "volume",
+                        "atr",
+                        "spread",
+                        "orderbook_imbalance",
+                    ]
                     for feat in setup_direct_features:
-                        if feat in setup_data and isinstance(setup_data[feat], (int, float)) and not math.isnan(setup_data[feat]):
+                        if (
+                            feat in setup_data
+                            and isinstance(setup_data[feat], (int, float))
+                            and not math.isnan(setup_data[feat])
+                        ):
                             features[feat] = setup_data[feat]
 
                     # 🔥 Direction (LONG=1, SHORT=0)
-                    features['direction'] = 1 if direction.upper() == 'LONG' else 0
+                    features["direction"] = 1 if direction.upper() == "LONG" else 0
 
                     # 🔥 Setup metrics
-                    features['totalScore'] = setup_data.get('totalScore', 0)
-                    features['conditions'] = setup_data.get('conditions', 0)
+                    features["totalScore"] = setup_data.get("totalScore", 0)
+                    features["conditions"] = setup_data.get("conditions", 0)
 
                     # 🔥 Features dérivées calculées à la volée (Bollinger, EMA, etc.)
                     if indicators_1m and indicators_5m:
                         # BB Position (feature TOP importance)
-                        bb_lower_1m = indicators_1m.get('bb_lower', 0)
-                        bb_upper_1m = indicators_1m.get('bb_upper', 0)
-                        bb_lower_5m = indicators_5m.get('bb_lower', 0)
-                        bb_upper_5m = indicators_5m.get('bb_upper', 0)
+                        bb_lower_1m = indicators_1m.get("bb_lower", 0)
+                        bb_upper_1m = indicators_1m.get("bb_upper", 0)
+                        bb_lower_5m = indicators_5m.get("bb_lower", 0)
+                        bb_upper_5m = indicators_5m.get("bb_upper", 0)
 
-                        if bb_upper_1m != bb_lower_1m and 'price' in setup_data:
+                        if bb_upper_1m != bb_lower_1m and "price" in setup_data:
                             bb_width_1m = bb_upper_1m - bb_lower_1m
                             if bb_width_1m > 0:
-                                price = setup_data['price']
-                                features['bb_position_1m'] = (price - bb_lower_1m) / bb_width_1m
-                                features['bb_width_1m'] = bb_width_1m / price * 100  # En %
-                                features['bb_distance_to_upper_1m'] = max(0, bb_upper_1m - price)
-                                features['bb_distance_to_lower_1m'] = max(0, price - bb_lower_1m)
+                                price = setup_data["price"]
+                                features["bb_position_1m"] = (
+                                    price - bb_lower_1m
+                                ) / bb_width_1m
+                                features["bb_width_1m"] = (
+                                    bb_width_1m / price * 100
+                                )  # En %
+                                features["bb_distance_to_upper_1m"] = max(
+                                    0, bb_upper_1m - price
+                                )
+                                features["bb_distance_to_lower_1m"] = max(
+                                    0, price - bb_lower_1m
+                                )
 
-                        if bb_upper_5m != bb_lower_5m and 'price' in setup_data:
-                            price = setup_data['price']
-                            features['bb_distance_to_upper_5m'] = max(0, bb_upper_5m - price)
-                            features['bb_distance_to_lower_5m'] = max(0, price - bb_lower_5m)
-                            features['bb_width_5m'] = bb_upper_5m - bb_lower_5m
+                        if bb_upper_5m != bb_lower_5m and "price" in setup_data:
+                            price = setup_data["price"]
+                            features["bb_distance_to_upper_5m"] = max(
+                                0, bb_upper_5m - price
+                            )
+                            features["bb_distance_to_lower_5m"] = max(
+                                0, price - bb_lower_5m
+                            )
+                            features["bb_width_5m"] = bb_upper_5m - bb_lower_5m
 
                         # EMA divergence 1m/5m
-                        ema_diff_1m = indicators_1m.get('ema_diff_pct', 0)
-                        ema_diff_5m = indicators_5m.get('ema_diff_pct', 0)
+                        ema_diff_1m = indicators_1m.get("ema_diff_pct", 0)
+                        ema_diff_5m = indicators_5m.get("ema_diff_pct", 0)
                         if ema_diff_1m != 0 and ema_diff_5m != 0:
-                            features['ema_divergence'] = abs(ema_diff_1m - ema_diff_5m)
-                            features['ema_aligned'] = 1 if (ema_diff_1m > 0) == (ema_diff_5m > 0) else 0
+                            features["ema_divergence"] = abs(ema_diff_1m - ema_diff_5m)
+                            features["ema_aligned"] = (
+                                1 if (ema_diff_1m > 0) == (ema_diff_5m > 0) else 0
+                            )
 
                         # RSI momentum
-                        rsi_1m = indicators_1m.get('rsi', 50)
-                        rsi_5m = indicators_5m.get('rsi', 50)
-                        features['rsi_divergence'] = abs(rsi_1m - rsi_5m)
-                        features['rsi_distance_50_1m'] = abs(rsi_1m - 50)
+                        rsi_1m = indicators_1m.get("rsi", 50)
+                        rsi_5m = indicators_5m.get("rsi", 50)
+                        features["rsi_divergence"] = abs(rsi_1m - rsi_5m)
+                        features["rsi_distance_50_1m"] = abs(rsi_1m - 50)
 
                         # Volatility ratio
-                        atr_1m = indicators_1m.get('atr_pct', 0)
-                        atr_5m = indicators_5m.get('atr_pct', 0)
+                        atr_1m = indicators_1m.get("atr_pct", 0)
+                        atr_5m = indicators_5m.get("atr_pct", 0)
                         if atr_5m > 0:
-                            features['volatility_ratio'] = atr_1m / atr_5m
+                            features["volatility_ratio"] = atr_1m / atr_5m
 
                         # Volume momentum
-                        vol_ratio_1m = indicators_1m.get('volume_ratio', 1)
-                        vol_ratio_5m = indicators_5m.get('volume_ratio', 1)
-                        features['volume_divergence'] = abs(vol_ratio_1m - vol_ratio_5m)
+                        vol_ratio_1m = indicators_1m.get("volume_ratio", 1)
+                        vol_ratio_5m = indicators_5m.get("volume_ratio", 1)
+                        features["volume_divergence"] = abs(vol_ratio_1m - vol_ratio_5m)
 
                         # 🔥 NOUVELLES FEATURES MANQUANTES (8/8) pour 100% disponibilité
                         # RSI précédents
-                        features['rsi_prev_1m'] = indicators_1m.get('rsi_prev', rsi_1m - 1.0)
-                        features['rsi_prev_5m'] = indicators_5m.get('rsi_prev', rsi_5m - 1.0)
+                        features["rsi_prev_1m"] = indicators_1m.get(
+                            "rsi_prev", rsi_1m - 1.0
+                        )
+                        features["rsi_prev_5m"] = indicators_5m.get(
+                            "rsi_prev", rsi_5m - 1.0
+                        )
 
                         # MACD histogram précédent
-                        macd_hist_1m = indicators_1m.get('macd_hist', 0)
-                        features['macd_hist_prev_1m'] = indicators_1m.get('macd_hist_prev', macd_hist_1m - 0.001)
+                        macd_hist_1m = indicators_1m.get("macd_hist", 0)
+                        features["macd_hist_prev_1m"] = indicators_1m.get(
+                            "macd_hist_prev", macd_hist_1m - 0.001
+                        )
 
                         # DI minus 5m
-                        features['di_minus_5m'] = indicators_5m.get('di_minus', 0)
+                        features["di_minus_5m"] = indicators_5m.get("di_minus", 0)
 
                     # 🔥 Timestamp features (session, hour)
                     from datetime import datetime, timezone
+
                     now = datetime.now(timezone.utc)
-                    features['hour_utc'] = now.hour
-                    features['session_europe'] = 1 if 8 <= now.hour < 16 else 0
-                    features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
-                    features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0
+                    features["hour_utc"] = now.hour
+                    features["session_europe"] = 1 if 8 <= now.hour < 16 else 0
+                    features["session_usa"] = 1 if 13 <= now.hour < 21 else 0
+                    features["high_activity_hours"] = 1 if 13 <= now.hour < 17 else 0
 
                 else:
                     # Fallback vers l'ancienne méthode si pas de setup_data
-                    logger.warning(f"⚠️ Pas de setup_data pour {symbol} - utilisation fallback features limitées")
-                    features['direction'] = 1 if direction == 'LONG' else 0
-                    features['entry_price'] = entry
-                    features['position_size'] = size
+                    logger.warning(
+                        f"⚠️ Pas de setup_data pour {symbol} - utilisation fallback features limitées"
+                    )
+                    features["direction"] = 1 if direction == "LONG" else 0
+                    features["entry_price"] = entry
+                    features["position_size"] = size
 
                     # ATR (volatility)
                     if atr:
-                        features['atr_pct_1m'] = atr
+                        features["atr_pct_1m"] = atr
                     if atr5m:
-                        features['atr_pct_5m'] = atr5m
+                        features["atr_pct_5m"] = atr5m
                         if atr:
-                            features['volatility_ratio'] = atr / (atr5m + 1e-6)
+                            features["volatility_ratio"] = atr / (atr5m + 1e-6)
 
                     # ML confidence
                     if ml_confidence:
-                        features['ml_confidence'] = ml_confidence
+                        features["ml_confidence"] = ml_confidence
 
                     # Features depuis scalability_data
                     if scalability_data:
-                        for key in ['spread_pct', 'depth', 'balance', 'volume_ratio', 'price']:
-                            if key in scalability_data and isinstance(scalability_data[key], (int, float)):
-                                if not (isinstance(scalability_data[key], float) and math.isnan(scalability_data[key])):
-                                    features[f"orderbook_{key}" if key in ['depth', 'balance'] else key] = scalability_data[key]
+                        for key in [
+                            "spread_pct",
+                            "depth",
+                            "balance",
+                            "volume_ratio",
+                            "price",
+                        ]:
+                            if key in scalability_data and isinstance(
+                                scalability_data[key], (int, float)
+                            ):
+                                if not (
+                                    isinstance(scalability_data[key], float)
+                                    and math.isnan(scalability_data[key])
+                                ):
+                                    features[
+                                        f"orderbook_{key}"
+                                        if key in ["depth", "balance"]
+                                        else key
+                                    ] = scalability_data[key]
 
                 # Features depuis analysis si disponible (legacy support)
-                if hasattr(self, '_last_analysis') and self._last_analysis and not setup_data:
+                if (
+                    hasattr(self, "_last_analysis")
+                    and self._last_analysis
+                    and not setup_data
+                ):
                     analysis = self._last_analysis
                     # Indicateurs 1m et 5m
-                    for timeframe in ['1m', '5m']:
-                        indicators = analysis.get(f'indicators_{timeframe}', {})
+                    for timeframe in ["1m", "5m"]:
+                        indicators = analysis.get(f"indicators_{timeframe}", {})
                         for key, value in indicators.items():
-                            if isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value)):
+                            if isinstance(value, (int, float)) and not (
+                                isinstance(value, float) and math.isnan(value)
+                            ):
                                 features[f"{key}_{timeframe}"] = value
 
                     # Features dérivées calculées
-                    if f'indicators_1m' in analysis and f'indicators_5m' in analysis:
-                        ind_1m = analysis['indicators_1m']
-                        ind_5m = analysis['indicators_5m']
+                    if f"indicators_1m" in analysis and f"indicators_5m" in analysis:
+                        ind_1m = analysis["indicators_1m"]
+                        ind_5m = analysis["indicators_5m"]
 
                         # RSI divergence
-                        rsi_1m = ind_1m.get('rsi', 50)
-                        rsi_5m = ind_5m.get('rsi', 50)
-                        features['rsi_divergence'] = abs(rsi_1m - rsi_5m)
-                        features['rsi_distance_50_1m'] = abs(rsi_1m - 50)
+                        rsi_1m = ind_1m.get("rsi", 50)
+                        rsi_5m = ind_5m.get("rsi", 50)
+                        features["rsi_divergence"] = abs(rsi_1m - rsi_5m)
+                        features["rsi_distance_50_1m"] = abs(rsi_1m - 50)
 
                         # EMA alignment
-                        ema_diff_1m = ind_1m.get('ema_diff_pct', 0)
-                        ema_diff_5m = ind_5m.get('ema_diff_pct', 0)
+                        ema_diff_1m = ind_1m.get("ema_diff_pct", 0)
+                        ema_diff_5m = ind_5m.get("ema_diff_pct", 0)
                         if ema_diff_1m != 0 and ema_diff_5m != 0:
-                            features['ema_aligned'] = 1 if (ema_diff_1m > 0) == (ema_diff_5m > 0) else 0
+                            features["ema_aligned"] = (
+                                1 if (ema_diff_1m > 0) == (ema_diff_5m > 0) else 0
+                            )
 
                         # BB Position si disponible
-                        bb_lower_1m = ind_1m.get('bb_lower', 0)
-                        bb_upper_1m = ind_1m.get('bb_upper', 0)
-                        bb_lower_5m = ind_5m.get('bb_lower', 0)
-                        bb_upper_5m = ind_5m.get('bb_upper', 0)
+                        bb_lower_1m = ind_1m.get("bb_lower", 0)
+                        bb_upper_1m = ind_1m.get("bb_upper", 0)
+                        bb_lower_5m = ind_5m.get("bb_lower", 0)
+                        bb_upper_5m = ind_5m.get("bb_upper", 0)
 
                         if bb_upper_1m > bb_lower_1m and entry:
-                            features['bb_position_1m'] = (entry - bb_lower_1m) / (bb_upper_1m - bb_lower_1m + 1e-6)
+                            features["bb_position_1m"] = (entry - bb_lower_1m) / (
+                                bb_upper_1m - bb_lower_1m + 1e-6
+                            )
                             # 🔥 BB Distances absolues (features manquantes critiques)
-                            features['bb_distance_to_upper_1m'] = max(0, bb_upper_1m - entry)
-                            features['bb_distance_to_lower_1m'] = max(0, entry - bb_lower_1m)
-                            features['bb_width_1m'] = bb_upper_1m - bb_lower_1m
+                            features["bb_distance_to_upper_1m"] = max(
+                                0, bb_upper_1m - entry
+                            )
+                            features["bb_distance_to_lower_1m"] = max(
+                                0, entry - bb_lower_1m
+                            )
+                            features["bb_width_1m"] = bb_upper_1m - bb_lower_1m
 
                         if bb_upper_5m > bb_lower_5m and entry:
-                            features['bb_distance_to_upper_5m'] = max(0, bb_upper_5m - entry)
-                            features['bb_distance_to_lower_5m'] = max(0, entry - bb_lower_5m)
-                            features['bb_width_5m'] = bb_upper_5m - bb_lower_5m
+                            features["bb_distance_to_upper_5m"] = max(
+                                0, bb_upper_5m - entry
+                            )
+                            features["bb_distance_to_lower_5m"] = max(
+                                0, entry - bb_lower_5m
+                            )
+                            features["bb_width_5m"] = bb_upper_5m - bb_lower_5m
 
                         # 🔥 FEATURES MANQUANTES HISTORIQUES (approximation intelligente)
                         # RSI précédents
-                        features['rsi_prev_1m'] = ind_1m.get('rsi_prev', rsi_1m - 1.0)
-                        features['rsi_prev_5m'] = ind_5m.get('rsi_prev', rsi_5m - 1.0)
+                        features["rsi_prev_1m"] = ind_1m.get("rsi_prev", rsi_1m - 1.0)
+                        features["rsi_prev_5m"] = ind_5m.get("rsi_prev", rsi_5m - 1.0)
 
                         # MACD histogram précédent
-                        macd_hist_1m = ind_1m.get('macd_hist', 0)
-                        features['macd_hist_prev_1m'] = ind_1m.get('macd_hist_prev', macd_hist_1m - 0.001)
+                        macd_hist_1m = ind_1m.get("macd_hist", 0)
+                        features["macd_hist_prev_1m"] = ind_1m.get(
+                            "macd_hist_prev", macd_hist_1m - 0.001
+                        )
 
                         # DI minus 5m
-                        features['di_minus_5m'] = ind_5m.get('di_minus', 0)
+                        features["di_minus_5m"] = ind_5m.get("di_minus", 0)
 
                     # Setup scores
-                    features['totalScore'] = analysis.get('totalScore', 0)
-                    features['conditions'] = analysis.get('conditions', 0)
+                    features["totalScore"] = analysis.get("totalScore", 0)
+                    features["conditions"] = analysis.get("conditions", 0)
 
                 # 🔥 FIX CRITIQUE 20/12/2025: Features temporelles + 5 features manquantes pour GB
                 from datetime import datetime, timezone
+
                 now = datetime.now(timezone.utc)
-                features['hour'] = now.hour  # ← Synchronisé avec main.py (était hour_utc)
-                features['session_europe'] = 1 if 8 <= now.hour < 16 else 0
-                features['session_usa'] = 1 if 13 <= now.hour < 21 else 0
-                features['high_activity_hours'] = 1 if 13 <= now.hour < 17 else 0
+                features["hour"] = (
+                    now.hour
+                )  # ← Synchronisé avec main.py (était hour_utc)
+                features["session_europe"] = 1 if 8 <= now.hour < 16 else 0
+                features["session_usa"] = 1 if 13 <= now.hour < 21 else 0
+                features["high_activity_hours"] = 1 if 13 <= now.hour < 17 else 0
 
                 # 🔥 NETTOYER: Supprimer hour_utc dupliqué (utiliser hour maintenant)
-                if 'hour_utc' in features:
-                    del features['hour_utc']
+                if "hour_utc" in features:
+                    del features["hour_utc"]
 
                 # 🔥 FEATURES CRITIQUES MANQUANTES (comme dans main.py)
-                if setup_data and 'indicators_1m' in setup_data and 'indicators_5m' in setup_data:
-                    ind_1m = setup_data['indicators_1m']
-                    ind_5m = setup_data['indicators_5m']
+                if (
+                    setup_data
+                    and "indicators_1m" in setup_data
+                    and "indicators_5m" in setup_data
+                ):
+                    ind_1m = setup_data["indicators_1m"]
+                    ind_5m = setup_data["indicators_5m"]
 
                     # 1. EMA trend strength (force de tendance EMA)
-                    ema9_1m = ind_1m.get('ema9', 0)
-                    ema21_1m = ind_1m.get('ema21', 0)
+                    ema9_1m = ind_1m.get("ema9", 0)
+                    ema21_1m = ind_1m.get("ema21", 0)
                     if ema21_1m > 0:
-                        features['ema_trend_strength_1m'] = abs(ema9_1m - ema21_1m) / ema21_1m
+                        features["ema_trend_strength_1m"] = (
+                            abs(ema9_1m - ema21_1m) / ema21_1m
+                        )
                     else:
-                        features['ema_trend_strength_1m'] = 0.0
+                        features["ema_trend_strength_1m"] = 0.0
 
-                    ema9_5m = ind_5m.get('ema9', 0)
-                    ema21_5m = ind_5m.get('ema21', 0)
+                    ema9_5m = ind_5m.get("ema9", 0)
+                    ema21_5m = ind_5m.get("ema21", 0)
                     if ema21_5m > 0:
-                        features['ema_trend_strength_5m'] = abs(ema9_5m - ema21_5m) / ema21_5m
+                        features["ema_trend_strength_5m"] = (
+                            abs(ema9_5m - ema21_5m) / ema21_5m
+                        )
                     else:
-                        features['ema_trend_strength_5m'] = 0.0
+                        features["ema_trend_strength_5m"] = 0.0
 
                     # 2. RSI change (variation RSI)
-                    rsi_1m = ind_1m.get('rsi', 50)
-                    rsi_prev_1m = features.get('rsi_prev_1m', rsi_1m - 1.0)
-                    features['rsi_change_1m'] = rsi_1m - rsi_prev_1m
+                    rsi_1m = ind_1m.get("rsi", 50)
+                    rsi_prev_1m = features.get("rsi_prev_1m", rsi_1m - 1.0)
+                    features["rsi_change_1m"] = rsi_1m - rsi_prev_1m
 
                     # 3. Delta volume (différentiel volume 1m vs 5m)
-                    vol_ratio_1m = ind_1m.get('volume_ratio', 1.0)
-                    vol_ratio_5m = ind_5m.get('volume_ratio', 1.0)
-                    features['delta_volume'] = vol_ratio_1m - vol_ratio_5m
+                    vol_ratio_1m = ind_1m.get("volume_ratio", 1.0)
+                    vol_ratio_5m = ind_5m.get("volume_ratio", 1.0)
+                    features["delta_volume"] = vol_ratio_1m - vol_ratio_5m
 
                     # 4. Momentum divergence (approximation MACD/RSI)
-                    macd_1m = ind_1m.get('macd', 0)
-                    macd_5m = ind_5m.get('macd', 0)
-                    rsi_div = abs(rsi_1m - ind_5m.get('rsi', 50))
-                    features['momentum_divergence'] = (abs(macd_1m - macd_5m) * 100) + (rsi_div / 100)
+                    macd_1m = ind_1m.get("macd", 0)
+                    macd_5m = ind_5m.get("macd", 0)
+                    rsi_div = abs(rsi_1m - ind_5m.get("rsi", 50))
+                    features["momentum_divergence"] = (abs(macd_1m - macd_5m) * 100) + (
+                        rsi_div / 100
+                    )
                 else:
                     # Fallback si pas de setup_data
-                    features['ema_trend_strength_1m'] = 0.0
-                    features['ema_trend_strength_5m'] = 0.0
-                    features['rsi_change_1m'] = 0.0
-                    features['delta_volume'] = 0.0
-                    features['momentum_divergence'] = 0.0
+                    features["ema_trend_strength_1m"] = 0.0
+                    features["ema_trend_strength_5m"] = 0.0
+                    features["rsi_change_1m"] = 0.0
+                    features["delta_volume"] = 0.0
+                    features["momentum_divergence"] = 0.0
 
                 # 🔥 FIX CRITIQUE: Filtrer les features selon le modèle GB actuel (20 features)
                 # Features attendues par best_classifier_latest.pkl (HistGradientBoostingClassifier)
                 gb_expected_features = [
-                    'di_minus_1m', 'di_gap_1m', 'bb_distance_to_lower_5m', 'bb_distance_to_upper_5m',
-                    'ema_trend_strength_1m', 'macd_hist_prev_5m', 'ema_trend_strength_5m', 'rsi_change_1m',
-                    'rsi_prev_1m', 'rsi_5m', 'hour', 'volume_spike_5m', 'ema_diff_pct_1m',
-                    'momentum_divergence', 'bb_width_1m', 'delta_volume', 'macd_hist_5m',
-                    'atr_pct_5m', 'di_gap_5m', 'bb_distance_to_lower_1m'
+                    "di_minus_1m",
+                    "di_gap_1m",
+                    "bb_distance_to_lower_5m",
+                    "bb_distance_to_upper_5m",
+                    "ema_trend_strength_1m",
+                    "macd_hist_prev_5m",
+                    "ema_trend_strength_5m",
+                    "rsi_change_1m",
+                    "rsi_prev_1m",
+                    "rsi_5m",
+                    "hour",
+                    "volume_spike_5m",
+                    "ema_diff_pct_1m",
+                    "momentum_divergence",
+                    "bb_width_1m",
+                    "delta_volume",
+                    "macd_hist_5m",
+                    "atr_pct_5m",
+                    "di_gap_5m",
+                    "bb_distance_to_lower_1m",
                 ]
 
                 # Créer dict avec seulement les features attendues par le modèle
@@ -1367,44 +1655,72 @@ class PositionManager:
                 for feature_name in gb_expected_features:
                     gb_features[feature_name] = features.get(feature_name, 0.0)
 
-                logger.warning(f"🌳 Features GB filtrées pour {symbol}: {list(gb_features.keys())}")
-                logger.warning(f"🔍 Total features GB adaptées: {len(gb_features)} features (attendu: 20)")
+                logger.warning(
+                    f"🌳 Features GB filtrées pour {symbol}: {list(gb_features.keys())}"
+                )
+                logger.warning(
+                    f"🔍 Total features GB adaptées: {len(gb_features)} features (attendu: 20)"
+                )
 
                 # Vérifier que toutes les features sont présentes
-                missing_features = [f for f in gb_expected_features if f not in features]
+                missing_features = [
+                    f for f in gb_expected_features if f not in features
+                ]
                 if missing_features:
                     logger.warning(f"⚠️ Features GB manquantes: {missing_features}")
-                    logger.warning(f"⚠️ Features insuffisantes pour filtre GradientBoosting - Trade autorisé par défaut")
+                    logger.warning(
+                        f"⚠️ Features insuffisantes pour filtre GradientBoosting - Trade autorisé par défaut"
+                    )
                 else:
-                    logger.warning(f"✅ SUCCÈS: Toutes les 20 features GB sont disponibles!")
+                    logger.warning(
+                        f"✅ SUCCÈS: Toutes les 20 features GB sont disponibles!"
+                    )
 
                     predictor = get_predictor()
                     if predictor:
-                        gb_min_confidence = get_effective_value('gb_min_confidence') or 0.65
-                        should_trade, confidence = predictor.predict(gb_features, threshold=gb_min_confidence)
+                        gb_min_confidence = (
+                            get_effective_value("gb_min_confidence") or 0.65
+                        )
+                        should_trade, confidence = predictor.predict(
+                            gb_features, threshold=gb_min_confidence
+                        )
 
                         gb_ml_confidence = confidence
-                        gb_ml_prediction = 'win' if confidence >= 0.5 else 'loss'
+                        gb_ml_prediction = "win" if confidence >= 0.5 else "loss"
                         gb_ml_features = gb_features
 
-                        logger.warning(f"🌳 Prédiction GB: should_trade={should_trade}, confidence={confidence:.3f}, seuil={gb_min_confidence}")
+                        logger.warning(
+                            f"🌳 Prédiction GB: should_trade={should_trade}, confidence={confidence:.3f}, seuil={gb_min_confidence}"
+                        )
 
                         if not should_trade:
-                            logger.warning(f"🚫 TRADE BLOQUÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} < {gb_min_confidence})")
+                            logger.warning(
+                                f"🚫 TRADE BLOQUÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} < {gb_min_confidence})"
+                            )
                             return None  # Bloquer le trade
                         else:
-                            logger.warning(f"✅ TRADE APPROUVÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} >= {gb_min_confidence})")
+                            logger.warning(
+                                f"✅ TRADE APPROUVÉ par filtre GradientBoosting: {symbol} {direction} (confidence={confidence:.3f} >= {gb_min_confidence})"
+                            )
                     else:
-                        logger.warning(f"⚠️ Prédicteur GB non disponible - Trade autorisé par défaut")
+                        logger.warning(
+                            f"⚠️ Prédicteur GB non disponible - Trade autorisé par défaut"
+                        )
 
             except Exception as e:
-                logger.warning(f"⚠️ Erreur filtre GradientBoosting: {e} - Trade autorisé par défaut")
+                logger.warning(
+                    f"⚠️ Erreur filtre GradientBoosting: {e} - Trade autorisé par défaut"
+                )
         elif gb_enabled and precomputed_ml:
-            logger.info(f"🌳 Filtre GradientBoosting ignoré (ML déjà calculé) pour {symbol}")
+            logger.info(
+                f"🌳 Filtre GradientBoosting ignoré (ML déjà calculé) pour {symbol}"
+            )
         else:
             logger.warning(f"💤 Filtre GradientBoosting désactivé pour {symbol}")
 
-        effective_ml_confidence = ml_confidence if ml_confidence is not None else gb_ml_confidence
+        effective_ml_confidence = (
+            ml_confidence if ml_confidence is not None else gb_ml_confidence
+        )
         ml_confidence_pct = None
         if effective_ml_confidence is not None:
             try:
@@ -1415,17 +1731,19 @@ class PositionManager:
                 ml_confidence_pct = None
 
         if gb_ml_prediction is None and ml_confidence_pct is not None:
-            gb_ml_prediction = 'win' if ml_confidence_pct >= 50 else 'loss'
+            gb_ml_prediction = "win" if ml_confidence_pct >= 50 else "loss"
 
         # 🔥 ML AUTO-CALIBRATION: Vérifier si le trade doit être pris
         calibrated_wr = None
-        logger.info(f"🔍 Calibration check: {symbol} {direction} | ml_confidence={ml_confidence_pct}")
+        logger.info(
+            f"🔍 Calibration check: {symbol} {direction} | ml_confidence={ml_confidence_pct}"
+        )
         try:
             from ml.calibration import get_calibration_manager
+
             calib_manager = get_calibration_manager()
             should_take, calibrated_wr, calib_reason = calib_manager.should_take_trade(
-                direction=direction,
-                ml_confidence=ml_confidence_pct
+                direction=direction, ml_confidence=ml_confidence_pct
             )
 
             if not should_take:
@@ -1439,10 +1757,12 @@ class PositionManager:
                 # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
                 try:
                     from core.postgresql_datalogger import PostgreSQLDataLogger
+
                     pg_logger = PostgreSQLDataLogger()
                     if pg_logger.enabled:
                         try:
                             loop = asyncio.get_running_loop()
+
                             async def _log_rejection_async():
                                 try:
                                     await pg_logger.update_ml_rejection_async(
@@ -1450,14 +1770,16 @@ class PositionManager:
                                         reject_reason=reject_reason_calib,
                                         reject_category="ml_calibration_winrate",
                                         ml_confidence=ml_confidence_pct,
-                                        calibrated_winrate=calibrated_wr
+                                        calibrated_winrate=calibrated_wr,
                                     )
                                 except Exception:
                                     pass
+
                             loop.create_task(_log_rejection_async())
                         except RuntimeError:
                             # Pas de boucle événements, utiliser thread
                             import threading
+
                             def _log_sync():
                                 try:
                                     pg_logger.update_ml_rejection(
@@ -1465,13 +1787,16 @@ class PositionManager:
                                         reject_reason=reject_reason_calib,
                                         reject_category="ml_calibration_winrate",
                                         ml_confidence=ml_confidence_pct,
-                                        calibrated_winrate=calibrated_wr
+                                        calibrated_winrate=calibrated_wr,
                                     )
                                 except Exception:
                                     pass
+
                             threading.Thread(target=_log_sync, daemon=True).start()
                 except Exception as calib_rej_err:
-                    logger.debug(f"⚠️ Erreur log ML calibration rejection: {calib_rej_err}")
+                    logger.debug(
+                        f"⚠️ Erreur log ML calibration rejection: {calib_rej_err}"
+                    )
 
                 return None  # Rejeter le trade
 
@@ -1481,12 +1806,15 @@ class PositionManager:
                     f"ML Conf={ml_confidence_pct:.1f}% → WR Réel={calibrated_wr:.1f}%"
                 )
             else:
-                logger.info(f"⏭️ Calibration: {symbol} {direction} | Phase apprentissage (calibrated_wr=None)")
+                logger.info(
+                    f"⏭️ Calibration: {symbol} {direction} | Phase apprentissage (calibrated_wr=None)"
+                )
         except Exception as e:
             logger.warning(f"⚠️ Calibration check erreur (non-bloquant): {e}")
 
         from utils.effective_config import get_effective_value
-        excluded_symbols = set(get_effective_value('excluded_symbols') or [])
+
+        excluded_symbols = set(get_effective_value("excluded_symbols") or [])
         if symbol in excluded_symbols:
             raise ValueError(f"Symbol {symbol} est exclu du trading (excluded_symbols)")
 
@@ -1494,16 +1822,16 @@ class PositionManager:
         self.tpsl_config.win_streak = self.config.win_streak
         self.tpsl_config.loss_streak = self.config.loss_streak
 
-        self.tpsl_config.fixed_tp_pct = get_effective_value('tp_percent') or 0.15
-        self.tpsl_config.fixed_sl_pct = get_effective_value('sl_percent') or 0.10
+        self.tpsl_config.fixed_tp_pct = get_effective_value("tp_percent") or 0.15
+        self.tpsl_config.fixed_sl_pct = get_effective_value("sl_percent") or 0.10
 
         # 🔥 FIX: Séparer complètement les modes - pas de mélange de paramètres
-        tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
+        tp_sl_mode = get_effective_value("tp_sl_mode") or "FIXE"
 
         # Modes distincts sans mélange
-        use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr
-        use_escalier = (tp_sl_mode in ['TP_MULTI', 'ESCALIER'])
-        is_fixe_mode = (tp_sl_mode == 'FIXE' and not use_atr and not use_escalier)
+        use_atr = (tp_sl_mode == "ATR") or self.config.use_atr
+        use_escalier = tp_sl_mode in ["TP_MULTI", "ESCALIER"]
+        is_fixe_mode = tp_sl_mode == "FIXE" and not use_atr and not use_escalier
         # FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
 
@@ -1512,44 +1840,56 @@ class PositionManager:
         effective_params = {}
         if use_atr:
             atr_pct = (atr / entry * 100) if atr and entry else 0
-            local_regime = 'UNKNOWN'
+            local_regime = "UNKNOWN"
 
             if atr_pct > 0:
                 if atr_pct < 0.20:
-                    local_regime = 'LOW'
+                    local_regime = "LOW"
                 elif atr_pct < 0.50:
-                    local_regime = 'MEDIUM'
+                    local_regime = "MEDIUM"
                 else:
-                    local_regime = 'HIGH'
+                    local_regime = "HIGH"
 
-            effective_params['local_regime'] = local_regime
-            effective_params['atr_pct'] = atr_pct
+            effective_params["local_regime"] = local_regime
+            effective_params["atr_pct"] = atr_pct
 
             # Valeurs de base ATR (depuis config manuelle/globale)
             base_mult_tp = (
                 float(self.config.atr_mult_tp)
-                if getattr(self.config, 'use_atr', False) and isinstance(getattr(self.config, 'atr_mult_tp', None), (int, float))
-                else float(get_effective_value('atr_mult_tp') or 1.5)
+                if getattr(self.config, "use_atr", False)
+                and isinstance(getattr(self.config, "atr_mult_tp", None), (int, float))
+                else float(get_effective_value("atr_mult_tp") or 1.5)
             )
             base_mult_sl = (
                 float(self.config.atr_mult_sl)
-                if getattr(self.config, 'use_atr', False) and isinstance(getattr(self.config, 'atr_mult_sl', None), (int, float))
-                else float(get_effective_value('atr_mult_sl') or 1.0)
+                if getattr(self.config, "use_atr", False)
+                and isinstance(getattr(self.config, "atr_mult_sl", None), (int, float))
+                else float(get_effective_value("atr_mult_sl") or 1.0)
             )
-            base_be_mult = get_effective_value('break_even_atr_mult') or 1.0
-            base_trailing_trigger = get_effective_value('trailing_trigger_atr_mult') or 1.5
+            base_be_mult = get_effective_value("break_even_atr_mult") or 1.0
+            base_trailing_trigger = (
+                get_effective_value("trailing_trigger_atr_mult") or 1.5
+            )
             base_trailing_dist = (
-                get_effective_value('trailing_distance_atr_mult')
-                or get_effective_value('trailing_atr_multiplier')
-                or get_effective_value('trailing_distance_mult')
+                get_effective_value("trailing_distance_atr_mult")
+                or get_effective_value("trailing_atr_multiplier")
+                or get_effective_value("trailing_distance_mult")
                 or 1.0
             )
-            base_stagnation_timeout = get_effective_value('stagnation_exit_timeout_seconds') or 120
-            base_stagnation_min_pnl = get_effective_value('stagnation_exit_min_pnl_to_stay') or 0.05
-            base_stagnation_positive_timeout = get_effective_value('stagnation_positive_timeout_seconds') or 60
+            base_stagnation_timeout = (
+                get_effective_value("stagnation_exit_timeout_seconds") or 120
+            )
+            base_stagnation_min_pnl = (
+                get_effective_value("stagnation_exit_min_pnl_to_stay") or 0.05
+            )
+            base_stagnation_positive_timeout = (
+                get_effective_value("stagnation_positive_timeout_seconds") or 60
+            )
         else:
             # 🔥 Mode FIXE/ESCALIER : NE PAS charger les paramètres ATR
-            logger.debug(f"📊 Mode {tp_sl_mode}: Paramètres ATR ignorés (pas de régime dynamique)")
+            logger.debug(
+                f"📊 Mode {tp_sl_mode}: Paramètres ATR ignorés (pas de régime dynamique)"
+            )
 
         # Ajustements selon régime local (Optimisation 10/12/2025)
         # Basé sur analyse trade_atr_metrics et doc BRAINSTORM_ATR_OPTIMIZATION
@@ -1557,55 +1897,105 @@ class PositionManager:
         # MEDIUM (0.2-0.5% ATR): Performance faible - SL trop serré cause pertes
         # → FIX 14/12/2025: BE encore plus tôt (0.5 au lieu de 0.6) pour maximiser BE triggers
         if use_atr:
-            if local_regime == 'MEDIUM':
-                effective_params['atr_mult_tp'] = base_mult_tp * 0.7  # TP court (prendre profits tôt)
-                effective_params['atr_mult_sl'] = base_mult_sl * 1.3  # FIX: SL PLUS LARGE (éviter SL prématurés)
-                effective_params['break_even_atr_mult'] = base_be_mult * 0.5  # FIX 14/12: BE très tôt (était 0.6)
-                effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.7  # Trigger tôt
-                effective_params['trailing_distance_mult'] = base_trailing_dist * 0.8  # Distance modérée
-                effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 0.8)  # Timeout réduit
-                effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 1.2  # Légèrement exigeant
-                effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 0.8)  # Sortie positive rapide
-                effective_params['adjustment_reason'] = 'MEDIUM_VOLATILITY_PROTECTIVE'
-                logger.info(f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.5)")
+            if local_regime == "MEDIUM":
+                effective_params["atr_mult_tp"] = (
+                    base_mult_tp * 0.7
+                )  # TP court (prendre profits tôt)
+                effective_params["atr_mult_sl"] = (
+                    base_mult_sl * 1.3
+                )  # FIX: SL PLUS LARGE (éviter SL prématurés)
+                effective_params["break_even_atr_mult"] = (
+                    base_be_mult * 0.5
+                )  # FIX 14/12: BE très tôt (était 0.6)
+                effective_params["trailing_trigger_atr_mult"] = (
+                    base_trailing_trigger * 0.7
+                )  # Trigger tôt
+                effective_params["trailing_distance_mult"] = (
+                    base_trailing_dist * 0.8
+                )  # Distance modérée
+                effective_params["stagnation_exit_timeout_seconds"] = int(
+                    base_stagnation_timeout * 0.8
+                )  # Timeout réduit
+                effective_params["stagnation_exit_min_pnl_to_stay"] = (
+                    base_stagnation_min_pnl * 1.2
+                )  # Légèrement exigeant
+                effective_params["stagnation_positive_timeout_seconds"] = int(
+                    base_stagnation_positive_timeout * 0.8
+                )  # Sortie positive rapide
+                effective_params["adjustment_reason"] = "MEDIUM_VOLATILITY_PROTECTIVE"
+                logger.info(
+                    f"⚡ Régime MEDIUM détecté ({atr_pct:.2f}%) -> Mode PROTECTIF (SL×1.3, TP×0.7, BE×0.5)"
+                )
 
             # HIGH (>0.5% ATR): BE 100% mais ratio PnL/ATR faible (0.30-0.65x)
             # → FIX 14/12/2025: BE légèrement plus tôt (1.0 au lieu de 1.2) pour protéger gains
-            elif local_regime == 'HIGH':
-                effective_params['atr_mult_tp'] = base_mult_tp
-                effective_params['atr_mult_sl'] = base_mult_sl * 1.2  # SL légèrement plus large (bruit)
-                effective_params['break_even_atr_mult'] = base_be_mult * 1.0  # FIX 14/12: BE neutre (était 1.2)
-                effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 1.2  # Trigger plus tard
-                effective_params['trailing_distance_mult'] = base_trailing_dist * 1.5  # Distance plus large
-                effective_params['stagnation_exit_timeout_seconds'] = int(base_stagnation_timeout * 1.5)  # Plus de temps
-                effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl * 0.5  # Moins exigeant
-                effective_params['stagnation_positive_timeout_seconds'] = int(base_stagnation_positive_timeout * 1.5)  # Plus de temps en volatilité
-                effective_params['adjustment_reason'] = 'HIGH_VOLATILITY_WIDEN'
-                logger.info(f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation (BE×1.0)")
+            elif local_regime == "HIGH":
+                effective_params["atr_mult_tp"] = base_mult_tp
+                effective_params["atr_mult_sl"] = (
+                    base_mult_sl * 1.2
+                )  # SL légèrement plus large (bruit)
+                effective_params["break_even_atr_mult"] = (
+                    base_be_mult * 1.0
+                )  # FIX 14/12: BE neutre (était 1.2)
+                effective_params["trailing_trigger_atr_mult"] = (
+                    base_trailing_trigger * 1.2
+                )  # Trigger plus tard
+                effective_params["trailing_distance_mult"] = (
+                    base_trailing_dist * 1.5
+                )  # Distance plus large
+                effective_params["stagnation_exit_timeout_seconds"] = int(
+                    base_stagnation_timeout * 1.5
+                )  # Plus de temps
+                effective_params["stagnation_exit_min_pnl_to_stay"] = (
+                    base_stagnation_min_pnl * 0.5
+                )  # Moins exigeant
+                effective_params["stagnation_positive_timeout_seconds"] = int(
+                    base_stagnation_positive_timeout * 1.5
+                )  # Plus de temps en volatilité
+                effective_params["adjustment_reason"] = "HIGH_VOLATILITY_WIDEN"
+                logger.info(
+                    f"⚡ Régime HIGH détecté ({atr_pct:.2f}%) -> Élargissement SL/Trailing/Stagnation (BE×1.0)"
+                )
 
             # LOW (<0.2% ATR): Performance 23% WR sans BE, mais 100% WR avec BE
             # → FIX 14/12/2025: BE plus tôt (0.7 au lieu de 1.0) pour maximiser BE triggers
             else:
-                effective_params['atr_mult_tp'] = base_mult_tp
-                effective_params['atr_mult_sl'] = base_mult_sl
-                effective_params['break_even_atr_mult'] = base_be_mult * 0.7  # FIX 14/12: BE plus tôt (était 1.0)
-                effective_params['trailing_trigger_atr_mult'] = base_trailing_trigger * 0.9  # FIX 14/12: Trailing légèrement plus tôt
-                effective_params['trailing_distance_mult'] = base_trailing_dist
-                effective_params['stagnation_exit_timeout_seconds'] = base_stagnation_timeout
-                effective_params['stagnation_exit_min_pnl_to_stay'] = base_stagnation_min_pnl
-                effective_params['stagnation_positive_timeout_seconds'] = base_stagnation_positive_timeout
-                effective_params['adjustment_reason'] = 'LOW_VOLATILITY_EARLY_BE'
-                logger.info(f"⚡ Régime LOW détecté ({atr_pct:.2f}%) -> BE anticipé (BE×0.7, Trail×0.9)")
+                effective_params["atr_mult_tp"] = base_mult_tp
+                effective_params["atr_mult_sl"] = base_mult_sl
+                effective_params["break_even_atr_mult"] = (
+                    base_be_mult * 0.7
+                )  # FIX 14/12: BE plus tôt (était 1.0)
+                effective_params["trailing_trigger_atr_mult"] = (
+                    base_trailing_trigger * 0.9
+                )  # FIX 14/12: Trailing légèrement plus tôt
+                effective_params["trailing_distance_mult"] = base_trailing_dist
+                effective_params["stagnation_exit_timeout_seconds"] = (
+                    base_stagnation_timeout
+                )
+                effective_params["stagnation_exit_min_pnl_to_stay"] = (
+                    base_stagnation_min_pnl
+                )
+                effective_params["stagnation_positive_timeout_seconds"] = (
+                    base_stagnation_positive_timeout
+                )
+                effective_params["adjustment_reason"] = "LOW_VOLATILITY_EARLY_BE"
+                logger.info(
+                    f"⚡ Régime LOW détecté ({atr_pct:.2f}%) -> BE anticipé (BE×0.7, Trail×0.9)"
+                )
 
         # Appliquer à la config TPSL
         if use_atr:
-            self.tpsl_config.atr_mult_tp = effective_params['atr_mult_tp']
-            self.tpsl_config.atr_mult_sl = effective_params['atr_mult_sl']
-        self.tpsl_config.atr_min = get_effective_value('atr_min') or 0.0005
-        self.tpsl_config.atr_max = get_effective_value('atr_max') or 0.015
+            self.tpsl_config.atr_mult_tp = effective_params["atr_mult_tp"]
+            self.tpsl_config.atr_mult_sl = effective_params["atr_mult_sl"]
+        self.tpsl_config.atr_min = get_effective_value("atr_min") or 0.0005
+        self.tpsl_config.atr_max = get_effective_value("atr_max") or 0.015
 
         # SPRINT 3: Propager les ajustements au système global pour affichage "Variables en cours"
-        from utils.effective_config import set_local_trade_adjustments, clear_local_trade_adjustments
+        from utils.effective_config import (
+            set_local_trade_adjustments,
+            clear_local_trade_adjustments,
+        )
+
         if use_atr:
             set_local_trade_adjustments(effective_params)
         else:
@@ -1622,7 +2012,7 @@ class PositionManager:
                 atr5m=atr5m,
                 direction=direction,
                 config=self.tpsl_config,
-                return_atr_used=True
+                return_atr_used=True,
             )
             if len(result) == 4:
                 sl, tp, atr_pct_used, atr_blended_used = result
@@ -1630,20 +2020,18 @@ class PositionManager:
                 sl, tp = result
         else:
             sl, tp = calculate_fixed_levels(
-                entry=entry,
-                direction=direction,
-                config=self.tpsl_config
+                entry=entry, direction=direction, config=self.tpsl_config
             )
 
         # Invariant FIXE: stocker le SL% configuré au moment de l'ouverture
         sl_percent_at_entry = None
         try:
-            sl_percent_at_entry = float(trading_params.get('sl_percent'))
+            sl_percent_at_entry = float(trading_params.get("sl_percent"))
         except Exception:
             sl_percent_at_entry = None
 
         # VALIDATION SL: Vérifier que SL est du bon côté de l'entry
-        if direction == 'SHORT' and sl <= entry:
+        if direction == "SHORT" and sl <= entry:
             logger.error(
                 f"BUG SL SHORT: sl={sl:.8f} <= entry={entry:.8f} ! "
                 f"SL devrait être AU-DESSUS de entry pour SHORT. Correction forcée..."
@@ -1652,7 +2040,7 @@ class PositionManager:
             sl_pct = abs(entry - sl) / entry * 100  # Distance en %
             sl = entry * (1 + sl_pct / 100)  # Inverser: mettre AU-DESSUS
             logger.warning(f"SL corrigé pour SHORT: {sl:.8f} (>{entry:.8f})")
-        elif direction == 'LONG' and sl >= entry:
+        elif direction == "LONG" and sl >= entry:
             logger.error(
                 f"BUG SL LONG: sl={sl:.8f} >= entry={entry:.8f} ! "
                 f"SL devrait être EN-DESSOUS de entry pour LONG. Correction forcée..."
@@ -1661,7 +2049,7 @@ class PositionManager:
             sl = entry * (1 - sl_pct / 100)
             logger.warning(f"SL corrigé pour LONG: {sl:.8f} (<{entry:.8f})")
 
-        if direction == 'SHORT' and tp >= entry:
+        if direction == "SHORT" and tp >= entry:
             logger.error(
                 f"BUG TP SHORT: tp={tp:.8f} >= entry={entry:.8f} ! "
                 f"TP devrait être EN-DESSOUS de entry pour SHORT. Correction forcée..."
@@ -1669,7 +2057,7 @@ class PositionManager:
             tp_dist = abs(tp - entry)
             tp = entry - tp_dist
             logger.warning(f"TP corrigé pour SHORT: {tp:.8f} (<{entry:.8f})")
-        elif direction == 'LONG' and tp <= entry:
+        elif direction == "LONG" and tp <= entry:
             logger.error(
                 f"BUG TP LONG: tp={tp:.8f} <= entry={entry:.8f} ! "
                 f"TP devrait être AU-DESSUS de entry pour LONG. Correction forcée..."
@@ -1685,15 +2073,15 @@ class PositionManager:
             market_info = self._get_market_info(symbol)
             if market_info:
                 # Essayer de récupérer pricePrecision (nombre de décimales)
-                price_precision = market_info.get('precision', {}).get('price')
+                price_precision = market_info.get("precision", {}).get("price")
                 if price_precision is None:
                     # Essayer de récupérer depuis info
-                    price_precision = market_info.get('info', {}).get('pricePrecision')
+                    price_precision = market_info.get("info", {}).get("pricePrecision")
 
                 # Essayer de récupérer tickSize
-                tick_size = market_info.get('precision', {}).get('amount')
+                tick_size = market_info.get("precision", {}).get("amount")
                 if tick_size is None:
-                    tick_size = market_info.get('info', {}).get('tickSize')
+                    tick_size = market_info.get("info", {}).get("tickSize")
                 if tick_size is None:
                     # Calculer depuis pricePrecision si disponible
                     if price_precision is not None:
@@ -1719,7 +2107,7 @@ class PositionManager:
             price_precision=price_precision,
             tick_size=tick_size,
             effective_config=effective_params,  # Stocker la config effective
-            tp_sl_mode=tp_sl_mode  # 🔥 NEW: Stocker le mode utilisé à l'ouverture
+            tp_sl_mode=tp_sl_mode,  # 🔥 NEW: Stocker le mode utilisé à l'ouverture
         )
 
         position = self.active_position
@@ -1730,7 +2118,7 @@ class PositionManager:
             return None
 
         # Invariant FIXE: ne jamais élargir le SL au-delà du SL% initial
-        self._enforce_fixe_sl_not_wider(context='OPEN_POSITION')
+        self._enforce_fixe_sl_not_wider(context="OPEN_POSITION")
 
         # FIX 29/12: Stocker l'ATR réellement utilisé pour diagnostic
         if atr_pct_used is not None:
@@ -1738,24 +2126,41 @@ class PositionManager:
             self.active_position.atr_blended = atr_blended_used
 
         try:
-            last_setup_ctx = getattr(self, '_last_setup', None)
-            market_regime = last_setup_ctx.get('_market_regime') if isinstance(last_setup_ctx, dict) else None
-            trading_session = last_setup_ctx.get('_trading_session') if isinstance(last_setup_ctx, dict) else None
-            trade_hour = last_setup_ctx.get('_trade_hour') if isinstance(last_setup_ctx, dict) else None
+            last_setup_ctx = getattr(self, "_last_setup", None)
+            market_regime = (
+                last_setup_ctx.get("_market_regime")
+                if isinstance(last_setup_ctx, dict)
+                else None
+            )
+            trading_session = (
+                last_setup_ctx.get("_trading_session")
+                if isinstance(last_setup_ctx, dict)
+                else None
+            )
+            trade_hour = (
+                last_setup_ctx.get("_trade_hour")
+                if isinstance(last_setup_ctx, dict)
+                else None
+            )
 
             if not market_regime or not trading_session or trade_hour is None:
                 try:
                     from core.market_regime_selector import get_regime_selector
                     from utils.session_detector import get_current_session
+
                     regime_selector = get_regime_selector()
                     if not market_regime:
-                        market_regime = regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN'
+                        market_regime = (
+                            regime_selector.current_regime.value
+                            if regime_selector.current_regime
+                            else "UNKNOWN"
+                        )
 
                     session_info = get_current_session()
                     if not trading_session and isinstance(session_info, dict):
-                        trading_session = session_info.get('name', 'UNKNOWN')
+                        trading_session = session_info.get("name", "UNKNOWN")
                     if trade_hour is None and isinstance(session_info, dict):
-                        trade_hour = session_info.get('hour_utc', None)
+                        trade_hour = session_info.get("hour_utc", None)
                 except Exception:
                     pass
 
@@ -1784,7 +2189,9 @@ class PositionManager:
         # Cette valeur NE DOIT PAS être écrasée par une valeur incorrecte de synchronisation
         self.active_position.size_initial_usdt = size  # size = taille en USDT demandée
         # FIX: Initialiser size_executed_usdt (sera écrasée après exécution ordre live)
-        self.active_position.size_executed_usdt = size  # Par défaut = demandée, mise à jour après ordre
+        self.active_position.size_executed_usdt = (
+            size  # Par défaut = demandée, mise à jour après ordre
+        )
 
         # FIX: Stocker ml_confidence sur la position pour le logging
         self.active_position.ml_confidence = ml_confidence_pct
@@ -1792,24 +2199,29 @@ class PositionManager:
 
         ml_prediction_value = gb_ml_prediction
         if ml_prediction_value is None and isinstance(setup_data, dict):
-            ml_prediction_value = setup_data.get('ml_prediction')
+            ml_prediction_value = setup_data.get("ml_prediction")
         self.active_position.ml_prediction = ml_prediction_value
 
         ml_features_value = gb_ml_features if isinstance(gb_ml_features, dict) else None
         if (
             ml_features_value is None
             and isinstance(setup_data, dict)
-            and isinstance(setup_data.get('ml_features'), dict)
+            and isinstance(setup_data.get("ml_features"), dict)
         ):
-            ml_features_value = setup_data.get('ml_features')
-        self.active_position.ml_features = ml_features_value if isinstance(ml_features_value, dict) else {}
+            ml_features_value = setup_data.get("ml_features")
+        self.active_position.ml_features = (
+            ml_features_value if isinstance(ml_features_value, dict) else {}
+        )
 
         # Stocker le multiplicateur sizing adaptatif
         self.active_position.adaptive_sizing_multiplier = adaptive_sizing_multiplier
 
         # Initialiser leverage_used dès la création (sera mis à jour après l'ordre)
         from utils.effective_config import get_effective_value
-        configured_leverage = get_effective_value('default_leverage') or 1  # FIX: 1x par défaut
+
+        configured_leverage = (
+            get_effective_value("default_leverage") or 1
+        )  # FIX: 1x par défaut
         self.active_position.leverage_used = configured_leverage
 
         # Initialiser TP Escalier si mode TP_MULTI
@@ -1818,17 +2230,15 @@ class PositionManager:
             # Construire config niveaux depuis la config effective
             levels_config = []
             for level in [1, 2, 3, 4]:
-                pnl = get_effective_value(f'escalier_level{level}_pnl') or 0.2
-                size_pct = (get_effective_value(f'escalier_level{level}_size') or 25.0) / 100.0
-                levels_config.append({
-                    'pnl': pnl,
-                    'size_pct': size_pct
-                })
+                pnl = get_effective_value(f"escalier_level{level}_pnl") or 0.2
+                size_pct = (
+                    get_effective_value(f"escalier_level{level}_size") or 25.0
+                ) / 100.0
+                levels_config.append({"pnl": pnl, "size_pct": size_pct})
 
             # Initialiser TP Escalier
             self.tp_escalier.initialize_levels(
-                position=self.active_position.to_dict(),
-                levels_config=levels_config
+                position=self.active_position.to_dict(), levels_config=levels_config
             )
             # Mettre à jour position avec tp_escalier_enabled
             self.active_position.tp_escalier_enabled = True
@@ -1848,7 +2258,9 @@ class PositionManager:
                 size_amount = size / entry if entry else 0.0
 
                 # FIX: Récupérer le levier depuis effective_config (déjà utilisé plus haut)
-                configured_leverage = get_effective_value('default_leverage') or 1  # FIX: 1x par défaut
+                configured_leverage = (
+                    get_effective_value("default_leverage") or 1
+                )  # FIX: 1x par défaut
 
                 # VÉRIFICATION LEVIER: Logger pour debug
                 logger.info(
@@ -1863,24 +2275,34 @@ class PositionManager:
                     entry_price=entry,
                     size_usdt=size,
                     leverage=configured_leverage,
-                    bot_sl_price=sl  # FIX: Passer le SL calculé pour SL MEXC = SL × 1.1
+                    bot_sl_price=sl,  # FIX: Passer le SL calculé pour SL MEXC = SL × 1.1
                 )
 
                 if order_result.success:
                     # Mettre à jour position avec données réelles
-                    self.active_position.live_execution_mode = 'LIVE'
+                    self.active_position.live_execution_mode = "LIVE"
                     self.active_position.entry_order_id = order_result.order_id
 
                     # FIX: Stocker le levier utilisé pour l'affichage frontend
                     self.active_position.leverage_used = order_result.leverage
 
                     # FIX: Stocker contract_size pour éviter erreurs de calcul PNL
-                    if hasattr(order_result, 'contract_size') and order_result.contract_size:
-                        self.active_position.contract_size_used = order_result.contract_size
-                        logger.info(f"Contract size stocké: {order_result.contract_size}")
+                    if (
+                        hasattr(order_result, "contract_size")
+                        and order_result.contract_size
+                    ):
+                        self.active_position.contract_size_used = (
+                            order_result.contract_size
+                        )
+                        logger.info(
+                            f"Contract size stocké: {order_result.contract_size}"
+                        )
 
                     # FIX: Mettre à jour la taille avec la taille réellement exécutée
-                    if order_result.filled_size_usdt and order_result.filled_size_usdt > 0:
+                    if (
+                        order_result.filled_size_usdt
+                        and order_result.filled_size_usdt > 0
+                    ):
                         executed_size_usdt = order_result.filled_size_usdt
                         # DEBUG: Log pour tracer le calcul
                         logger.warning(
@@ -1892,7 +2314,9 @@ class PositionManager:
                         self.active_position.size_remaining = executed_size_usdt
                         # FIX: Stocker la taille exécutée pour calcul PnL précis
                         self.active_position.size_executed_usdt = executed_size_usdt
-                        logger.info(f"Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT")
+                        logger.info(
+                            f"Taille position ajustée au réel: {size:.2f} -> {executed_size_usdt:.2f} USDT"
+                        )
 
                     if order_result.filled_amount:
                         # FIX CRITIQUE: Utiliser les valeurs de order_result correctement
@@ -1900,16 +2324,32 @@ class PositionManager:
                         # order_result.contract_size contient le contract_size utilisé
 
                         # Stocker le contract_size pour les calculs futurs
-                        if order_result.contract_size and order_result.contract_size > 0:
-                            self.active_position.contract_size_used = order_result.contract_size
-                            logger.info(f"Contract size depuis ordre: {order_result.contract_size} pour {symbol}")
-                        elif not self.active_position.contract_size_used or self.active_position.contract_size_used <= 0:
-                            self.active_position.contract_size_used = self._get_contract_size(symbol)
-                            logger.info(f"Contract size récupéré: {self.active_position.contract_size_used} pour {symbol}")
+                        if (
+                            order_result.contract_size
+                            and order_result.contract_size > 0
+                        ):
+                            self.active_position.contract_size_used = (
+                                order_result.contract_size
+                            )
+                            logger.info(
+                                f"Contract size depuis ordre: {order_result.contract_size} pour {symbol}"
+                            )
+                        elif (
+                            not self.active_position.contract_size_used
+                            or self.active_position.contract_size_used <= 0
+                        ):
+                            self.active_position.contract_size_used = (
+                                self._get_contract_size(symbol)
+                            )
+                            logger.info(
+                                f"Contract size récupéré: {self.active_position.contract_size_used} pour {symbol}"
+                            )
 
                         # FIX: filled_amount est DÉJÀ en tokens réels, pas besoin de conversion
                         real_tokens = order_result.filled_amount
-                        logger.info(f"Position ouverte: {real_tokens:.6f} tokens réels ({real_tokens / self.active_position.contract_size_used if self.active_position.contract_size_used else real_tokens:.2f} contrats MEXC)")
+                        logger.info(
+                            f"Position ouverte: {real_tokens:.6f} tokens réels ({real_tokens / self.active_position.contract_size_used if self.active_position.contract_size_used else real_tokens:.2f} contrats MEXC)"
+                        )
 
                         self.active_position.position_size_contracts = real_tokens
                         self.active_position.size_initial_contracts = real_tokens
@@ -1922,55 +2362,91 @@ class PositionManager:
                             new_sl, new_tp = calculate_fixed_levels(
                                 entry=order_result.filled_price,
                                 direction=direction,
-                                config=self.tpsl_config
+                                config=self.tpsl_config,
                             )
                             self.active_position.sl = new_sl
                             self.active_position.tp = new_tp
                             self.active_position.initial_sl = new_sl
                             self.active_position.entry = order_result.filled_price
-                            self.active_position.entry_fill_price = order_result.filled_price
-                            self._enforce_fixe_sl_not_wider(context='LIVE_FILL_RECALC_TPSL')
+                            self.active_position.entry_fill_price = (
+                                order_result.filled_price
+                            )
+                            self._enforce_fixe_sl_not_wider(
+                                context="LIVE_FILL_RECALC_TPSL"
+                            )
                         else:
                             # Ajuster TP/SL pour maintenir la distance relative (ATR)
                             price_diff = order_result.filled_price - entry
                             self.active_position.tp += price_diff
                             self.active_position.sl += price_diff
                             self.active_position.entry = order_result.filled_price
-                            self.active_position.entry_fill_price = order_result.filled_price
+                            self.active_position.entry_fill_price = (
+                                order_result.filled_price
+                            )
 
-                    self.active_position.entry_slippage_pct = order_result.actual_slippage_pct
+                    self.active_position.entry_slippage_pct = (
+                        order_result.actual_slippage_pct
+                    )
                     self.active_position.entry_latency_ms = order_result.latency_ms
-                    self.active_position.liquidation_price = order_result.liquidation_price
+                    self.active_position.liquidation_price = (
+                        order_result.liquidation_price
+                    )
                     self.active_position.entry_fee_usdt = order_result.actual_fees_usdt
                     self.active_position.margin_used = order_result.margin_used
 
                     # 🔥 Calculer le temps de remplissage de l'ordre d'entrée
-                    if hasattr(self.active_position, 'order_sent_timestamp') and self.active_position.order_sent_timestamp:
+                    if (
+                        hasattr(self.active_position, "order_sent_timestamp")
+                        and self.active_position.order_sent_timestamp
+                    ):
                         fill_time = time.time()
-                        time_to_fill_ms = (fill_time - self.active_position.order_sent_timestamp) * 1000
+                        time_to_fill_ms = (
+                            fill_time - self.active_position.order_sent_timestamp
+                        ) * 1000
                         self.active_position.time_to_fill_entry_ms = time_to_fill_ms
-                        logger.debug(f"⏱️ Temps de remplissage entrée: {time_to_fill_ms:.0f}ms")
+                        logger.debug(
+                            f"⏱️ Temps de remplissage entrée: {time_to_fill_ms:.0f}ms"
+                        )
 
                     # 🔥 Stocker le SL Exchange réel utilisé (en %) pour logging SQL
                     try:
-                        if getattr(order_result, 'sl_exchange_percent', None) is not None:
-                            self.active_position.entry_sl_exchange_percent = float(order_result.sl_exchange_percent)
+                        if (
+                            getattr(order_result, "sl_exchange_percent", None)
+                            is not None
+                        ):
+                            self.active_position.entry_sl_exchange_percent = float(
+                                order_result.sl_exchange_percent
+                            )
                     except Exception:
                         pass
 
                     # 🔥 FIX: Utiliser order_result.min_contract_amount
-                    self.active_position.min_contract_amount = order_result.min_contract_amount
+                    self.active_position.min_contract_amount = (
+                        order_result.min_contract_amount
+                    )
 
                     # 🔥 FIX CRITIQUE: Calculer si TP partiel doit fermer 100% au lieu de X%
                     # ATTENTION: filled_amount est en TOKENS, min_contract_amount est en CONTRATS
                     # Il faut convertir en contrats pour comparer correctement !
                     if order_result.min_contract_amount and order_result.filled_amount:
-                        partial_tp_percent = get_effective_value('partial_tp_percent') or 50.0
+                        partial_tp_percent = (
+                            get_effective_value("partial_tp_percent") or 50.0
+                        )
 
                         # 🔥 FIX: Convertir tokens → contrats pour comparaison
-                        contract_size = order_result.contract_size or self.active_position.contract_size_used or 1.0
-                        filled_contracts = order_result.filled_amount / contract_size if contract_size > 0 else order_result.filled_amount
-                        partial_contracts = filled_contracts * (partial_tp_percent / 100.0)
+                        contract_size = (
+                            order_result.contract_size
+                            or self.active_position.contract_size_used
+                            or 1.0
+                        )
+                        filled_contracts = (
+                            order_result.filled_amount / contract_size
+                            if contract_size > 0
+                            else order_result.filled_amount
+                        )
+                        partial_contracts = filled_contracts * (
+                            partial_tp_percent / 100.0
+                        )
 
                         logger.info(
                             f"📊 Vérification TP Partiel: {filled_contracts:.2f} contrats × {partial_tp_percent}% = "
@@ -1989,18 +2465,26 @@ class PositionManager:
                     # 🔄 Synchroniser avec la position réelle retournée par l'API MEXC (prix d'entrée & taille)
                     if not self.live_order_manager.dry_run:
                         # Attendre le délai configuré avant lecture (laisse le temps à MEXC d'enregistrer)
-                        sync_delay = get_effective_value('live_entry_sync_delay_sec') or 2
+                        sync_delay = (
+                            get_effective_value("live_entry_sync_delay_sec") or 2
+                        )
                         if sync_delay > 0:
-                            logger.debug(f"⏳ Attente {sync_delay}s avant synchro position MEXC...")
+                            logger.debug(
+                                f"⏳ Attente {sync_delay}s avant synchro position MEXC..."
+                            )
                             time.sleep(sync_delay)
 
                         # prefer_ccxt=True pour utiliser CCXT en priorité (économise bypass)
-                        live_position = self.live_order_manager.get_position(symbol, prefer_ccxt=True)
+                        live_position = self.live_order_manager.get_position(
+                            symbol, prefer_ccxt=True
+                        )
                         if live_position:
-                            live_entry_price = float(live_position.get('entry_price') or 0)
+                            live_entry_price = float(
+                                live_position.get("entry_price") or 0
+                            )
                             # 🔥 FIX: Utiliser 'tokens' directement (déjà calculé = contracts × contract_size)
-                            real_tokens = float(live_position.get('tokens') or 0)
-                            live_contracts = float(live_position.get('contracts') or 0)
+                            real_tokens = float(live_position.get("tokens") or 0)
+                            live_contracts = float(live_position.get("contracts") or 0)
 
                             logger.info(
                                 f"🔁 [LIVE] get_position: tokens={real_tokens:.6f}, contracts={live_contracts}, "
@@ -2014,17 +2498,21 @@ class PositionManager:
                                         new_sl, new_tp = calculate_fixed_levels(
                                             entry=live_entry_price,
                                             direction=direction,
-                                            config=self.tpsl_config
+                                            config=self.tpsl_config,
                                         )
                                         self.active_position.sl = new_sl
                                         self.active_position.tp = new_tp
                                         self.active_position.initial_sl = new_sl
                                         self.active_position.entry = live_entry_price
-                                        self.active_position.entry_fill_price = live_entry_price
+                                        self.active_position.entry_fill_price = (
+                                            live_entry_price
+                                        )
                                         logger.info(
                                             f"🔁 [LIVE] Recalcul TP/SL FIXE après sync entry: {previous_entry:.8f} -> {live_entry_price:.8f}"
                                         )
-                                        self._enforce_fixe_sl_not_wider(context='LIVE_ENTRY_SYNC_RECALC_TPSL')
+                                        self._enforce_fixe_sl_not_wider(
+                                            context="LIVE_ENTRY_SYNC_RECALC_TPSL"
+                                        )
                                     else:
                                         price_diff = live_entry_price - previous_entry
                                         self.active_position.tp += price_diff
@@ -2045,13 +2533,21 @@ class PositionManager:
 
                                 self.active_position.size = live_size_usdt
                                 self.active_position.position_size_usdt = live_size_usdt
-                                self.active_position.position_size_contracts = real_tokens
+                                self.active_position.position_size_contracts = (
+                                    real_tokens
+                                )
                                 self.active_position.size_remaining = live_size_usdt
-                                self.active_position.size_initial_contracts = real_tokens
-                                self.active_position.size_remaining_contracts = real_tokens
+                                self.active_position.size_initial_contracts = (
+                                    real_tokens
+                                )
+                                self.active_position.size_remaining_contracts = (
+                                    real_tokens
+                                )
                                 self.active_position.size_executed_usdt = live_size_usdt
                                 if not self.active_position.size_initial_usdt:
-                                    self.active_position.size_initial_usdt = live_size_usdt
+                                    self.active_position.size_initial_usdt = (
+                                        live_size_usdt
+                                    )
                             else:
                                 logger.warning(
                                     f"🔍 DEBUG SIZE (2b): live_contracts={live_contracts}, live_entry_price={live_entry_price} - SYNC SKIPPED!"
@@ -2060,22 +2556,55 @@ class PositionManager:
                         self._schedule_position_sync(symbol)
 
                     # Recalculer TP/SL avec nouveau prix d'entrée si slippage significatif
-                    if order_result.actual_slippage_pct and abs(order_result.actual_slippage_pct) > 0.01:  # > 0.01%
-                        if direction == 'SHORT' and self.active_position.tp >= self.active_position.entry:
-                            tp_dist = abs(self.active_position.tp - self.active_position.entry)
-                            self.active_position.tp = self.active_position.entry - tp_dist
-                        elif direction == 'LONG' and self.active_position.tp <= self.active_position.entry:
-                            tp_dist = abs(self.active_position.tp - self.active_position.entry)
-                            self.active_position.tp = self.active_position.entry + tp_dist
+                    if (
+                        order_result.actual_slippage_pct
+                        and abs(order_result.actual_slippage_pct) > 0.01
+                    ):  # > 0.01%
+                        if (
+                            direction == "SHORT"
+                            and self.active_position.tp >= self.active_position.entry
+                        ):
+                            tp_dist = abs(
+                                self.active_position.tp - self.active_position.entry
+                            )
+                            self.active_position.tp = (
+                                self.active_position.entry - tp_dist
+                            )
+                        elif (
+                            direction == "LONG"
+                            and self.active_position.tp <= self.active_position.entry
+                        ):
+                            tp_dist = abs(
+                                self.active_position.tp - self.active_position.entry
+                            )
+                            self.active_position.tp = (
+                                self.active_position.entry + tp_dist
+                            )
 
-                        if direction == 'SHORT' and self.active_position.sl <= self.active_position.entry:
-                            sl_dist = abs(self.active_position.sl - self.active_position.entry)
-                            self.active_position.sl = self.active_position.entry + sl_dist
-                        elif direction == 'LONG' and self.active_position.sl >= self.active_position.entry:
-                            sl_dist = abs(self.active_position.sl - self.active_position.entry)
-                            self.active_position.sl = self.active_position.entry - sl_dist
+                        if (
+                            direction == "SHORT"
+                            and self.active_position.sl <= self.active_position.entry
+                        ):
+                            sl_dist = abs(
+                                self.active_position.sl - self.active_position.entry
+                            )
+                            self.active_position.sl = (
+                                self.active_position.entry + sl_dist
+                            )
+                        elif (
+                            direction == "LONG"
+                            and self.active_position.sl >= self.active_position.entry
+                        ):
+                            sl_dist = abs(
+                                self.active_position.sl - self.active_position.entry
+                            )
+                            self.active_position.sl = (
+                                self.active_position.entry - sl_dist
+                            )
 
-                        self._enforce_fixe_sl_not_wider(context='LIVE_SLIPPAGE_SIDE_CORRECTION')
+                        self._enforce_fixe_sl_not_wider(
+                            context="LIVE_SLIPPAGE_SIDE_CORRECTION"
+                        )
 
                     logger.info(
                         f"✅ Ordre LIVE placé: {symbol} | "
@@ -2102,7 +2631,11 @@ class PositionManager:
             f"SL: {self._format_price(sl)} | TP: {self._format_price(tp)} | "
             f"Size: {executed_size_usdt:.2f} USDT | Mode: {'ATR' if use_atr else 'FIXE'}"
             + (f" | TP Escalier: {len(levels_config)} niveaux" if levels_config else "")
-            + (f" | LIVE: {self.live_order_manager.dry_run and 'DRY-RUN' or 'RÉEL'}" if self.live_order_manager else " | PAPER")
+            + (
+                f" | LIVE: {self.live_order_manager.dry_run and 'DRY-RUN' or 'RÉEL'}"
+                if self.live_order_manager
+                else " | PAPER"
+            )
         )
 
         # ========================================
@@ -2120,14 +2653,18 @@ class PositionManager:
             return None
         # 🔥 FIX: Capturer les indicateurs TOUJOURS, pas seulement si data_logger.is_running
         # Récupérer scan_uuid, opportunity_id et setup depuis les attributs stockés
-        scan_uuid = getattr(self, '_last_setup_scan_uuid', None)
-        opportunity_id = getattr(self, '_last_setup_opportunity_id', None)
-        last_setup = getattr(self, '_last_setup', None)
+        scan_uuid = getattr(self, "_last_setup_scan_uuid", None)
+        opportunity_id = getattr(self, "_last_setup_opportunity_id", None)
+        last_setup = getattr(self, "_last_setup", None)
 
         # 🔥 DEBUG: Tracer la propagation des IDs
-        logger.info(f"🔍 DEBUG open_position: scan_uuid={scan_uuid}, opportunity_id={opportunity_id}, last_setup présent={last_setup is not None}")
+        logger.info(
+            f"🔍 DEBUG open_position: scan_uuid={scan_uuid}, opportunity_id={opportunity_id}, last_setup présent={last_setup is not None}"
+        )
         if last_setup:
-            logger.info(f"🔍 DEBUG last_setup keys: {list(last_setup.keys())[:10] if isinstance(last_setup, dict) else 'not dict'}")
+            logger.info(
+                f"🔍 DEBUG last_setup keys: {list(last_setup.keys())[:10] if isinstance(last_setup, dict) else 'not dict'}"
+            )
 
         # 🔥 FIX BUG #4: Monitoring amélioré - Log d'alerte si _last_setup est None
         if not last_setup:
@@ -2137,8 +2674,10 @@ class PositionManager:
                 f"Vérifier que scanner_loop.py stocke correctement _last_setup dans position_manager."
             )
         else:
-            logger.info(f"✅ _last_setup disponible pour {symbol}, keys: {list(last_setup.keys())[:10]}")
-            if 'indicators_1m' not in last_setup and 'indicators_5m' not in last_setup:
+            logger.info(
+                f"✅ _last_setup disponible pour {symbol}, keys: {list(last_setup.keys())[:10]}"
+            )
+            if "indicators_1m" not in last_setup and "indicators_5m" not in last_setup:
                 logger.warning(
                     f"⚠️ BUG #4: _last_setup ne contient pas 'indicators_1m' ou 'indicators_5m' pour {symbol}. "
                     f"Vérifier que analyzer.py ajoute ces indicateurs au setup retourné."
@@ -2146,24 +2685,42 @@ class PositionManager:
 
         # Préparer entry_indicators (snapshot au moment de l'entrée)
         # Récupérer depuis setup si disponible
-        indicators_1m = last_setup.get('indicators_1m', {}) if last_setup else {}
-        indicators_5m = last_setup.get('indicators_5m', {}) if last_setup else {}
+        indicators_1m = last_setup.get("indicators_1m", {}) if last_setup else {}
+        indicators_5m = last_setup.get("indicators_5m", {}) if last_setup else {}
 
         # 🔥 DEBUG: Log pour vérifier le contenu des indicateurs
         if indicators_1m or indicators_5m:
-            indicators_1m_non_null = len([v for v in indicators_1m.values() if v is not None]) if indicators_1m else 0
-            indicators_5m_non_null = len([v for v in indicators_5m.values() if v is not None]) if indicators_5m else 0
-            logger.info(f"✅ Indicateurs trouvés: indicators_1m keys: {list(indicators_1m.keys())[:5]}, indicators_5m keys: {list(indicators_5m.keys())[:5]}")
-            logger.info(f"✅ Indicateurs non-null: indicators_1m: {indicators_1m_non_null}/{len(indicators_1m) if indicators_1m else 0}, indicators_5m: {indicators_5m_non_null}/{len(indicators_5m) if indicators_5m else 0}")
+            indicators_1m_non_null = (
+                len([v for v in indicators_1m.values() if v is not None])
+                if indicators_1m
+                else 0
+            )
+            indicators_5m_non_null = (
+                len([v for v in indicators_5m.values() if v is not None])
+                if indicators_5m
+                else 0
+            )
+            logger.info(
+                f"✅ Indicateurs trouvés: indicators_1m keys: {list(indicators_1m.keys())[:5]}, indicators_5m keys: {list(indicators_5m.keys())[:5]}"
+            )
+            logger.info(
+                f"✅ Indicateurs non-null: indicators_1m: {indicators_1m_non_null}/{len(indicators_1m) if indicators_1m else 0}, indicators_5m: {indicators_5m_non_null}/{len(indicators_5m) if indicators_5m else 0}"
+            )
             # 🔥 DEBUG: Vérifier les valeurs spécifiques
             if indicators_1m:
-                logger.info(f"🔍 DEBUG indicators_1m valeurs: rsi={indicators_1m.get('rsi')}, macd_hist={indicators_1m.get('macd_hist')}, adx={indicators_1m.get('adx')}, ema9={indicators_1m.get('ema9')}, ema21={indicators_1m.get('ema21')}")
+                logger.info(
+                    f"🔍 DEBUG indicators_1m valeurs: rsi={indicators_1m.get('rsi')}, macd_hist={indicators_1m.get('macd_hist')}, adx={indicators_1m.get('adx')}, ema9={indicators_1m.get('ema9')}, ema21={indicators_1m.get('ema21')}"
+                )
         else:
-            logger.warning(f"⚠️ Aucun indicateur trouvé dans indicators_1m ou indicators_5m pour {symbol}")
+            logger.warning(
+                f"⚠️ Aucun indicateur trouvé dans indicators_1m ou indicators_5m pour {symbol}"
+            )
 
         # 🔥 DEBUG: Vérifier si last_setup contient directement les indicateurs (fallback)
         if last_setup:
-            logger.info(f"🔍 DEBUG last_setup contient directement: rsi={last_setup.get('rsi')}, macd={last_setup.get('macd')}, adx={last_setup.get('adx')}, ema9={last_setup.get('ema9')}, ema21={last_setup.get('ema21')}")
+            logger.info(
+                f"🔍 DEBUG last_setup contient directement: rsi={last_setup.get('rsi')}, macd={last_setup.get('macd')}, adx={last_setup.get('adx')}, ema9={last_setup.get('ema9')}, ema21={last_setup.get('ema21')}"
+            )
 
         # 🔥 FIX: Utiliser last_setup comme fallback pour tous les indicateurs manquants
         # Helper function pour obtenir une valeur avec fallback
@@ -2178,66 +2735,80 @@ class PositionManager:
             return default
 
         entry_indicators = {
-                    # RSI
-                    'rsi_1m': get_indicator('rsi', None, 'rsi'),
-                    'rsi_5m': get_indicator(None, 'rsi', None),
-                    'rsi_prev_1m': get_indicator('rsi_prev', None, 'rsi_prev'),
-                    'rsi_prev_5m': get_indicator(None, 'rsi_prev', None),
-                    # MACD
-                    'macd_1m': get_indicator('macd', None, 'macd'),
-                    'macd_signal_1m': get_indicator('macd_signal', None, 'macd_signal'),
-                    'macd_hist_1m': get_indicator('macd_hist', None, 'macd_hist'),
-                    'macd_hist_prev_1m': get_indicator('macd_hist_prev', None, 'macd_hist_prev'),
-                    'macd_5m': get_indicator(None, 'macd', None),
-                    'macd_signal_5m': get_indicator(None, 'macd_signal', None),
-                    'macd_hist_5m': get_indicator(None, 'macd_hist', None),
-                    'macd_hist_prev_5m': get_indicator(None, 'macd_hist_prev', None),
-                    # ADX
-                    'adx_1m': get_indicator('adx', None, 'adx'),
-                    'adx_5m': get_indicator(None, 'adx', None),
-                    'di_plus_1m': get_indicator('di_plus', None, 'di_plus'),
-                    'di_minus_1m': get_indicator('di_minus', None, 'di_minus'),
-                    'di_gap_1m': get_indicator('di_gap', None, 'di_gap'),
-                    'di_plus_5m': get_indicator(None, 'di_plus', None),
-                    'di_minus_5m': get_indicator(None, 'di_minus', None),
-                    'di_gap_5m': get_indicator(None, 'di_gap', None),
-                    # EMA
-                    'ema9_1m': get_indicator('ema9', None, 'ema9'),
-                    'ema21_1m': get_indicator('ema21', None, 'ema21'),
-                    'ema_diff_pct_1m': get_indicator('ema_diff_pct', None, 'ema_diff_pct'),
-                    'ema9_5m': get_indicator(None, 'ema9', None),
-                    'ema21_5m': get_indicator(None, 'ema21', None),
-                    'ema_diff_pct_5m': get_indicator(None, 'ema_diff_pct', None),
-                    # ATR
-                    'atr_1m': get_indicator('atr', None, 'atr'),
-                    'atr_pct_1m': (atr / entry * 100) if atr and entry else get_indicator('atr_pct', None, 'atr_pct'),
-                    'atr_5m': get_indicator(None, 'atr', None),
-                    'atr_pct_5m': (atr5m / entry * 100) if atr5m and entry else get_indicator(None, 'atr_pct', None),
-                    # Bollinger Bands
-                    'bb_upper_1m': get_indicator('bb_upper', None, 'bb_upper'),
-                    'bb_middle_1m': get_indicator('bb_middle', None, 'bb_middle'),
-                    'bb_lower_1m': get_indicator('bb_lower', None, 'bb_lower'),
-                    'bb_width_1m': get_indicator('bb_width', None, 'bb_width'),
-                    'bb_distance_to_lower_1m': get_indicator('bb_distance_to_lower', None, 'bb_distance_to_lower'),
-                    'bb_distance_to_upper_1m': get_indicator('bb_distance_to_upper', None, 'bb_distance_to_upper'),
-                    'bb_upper_5m': get_indicator(None, 'bb_upper', None),
-                    'bb_middle_5m': get_indicator(None, 'bb_middle', None),
-                    'bb_lower_5m': get_indicator(None, 'bb_lower', None),
-                    'bb_width_5m': get_indicator(None, 'bb_width', None),
-                    'bb_distance_to_lower_5m': get_indicator(None, 'bb_distance_to_lower', None),
-                    'bb_distance_to_upper_5m': get_indicator(None, 'bb_distance_to_upper', None),
-                    # Volume
-                    'volume_1m': get_indicator('volume', None, 'volume'),
-                    'volume_avg_1m': get_indicator('volume_avg', None, 'volume_avg'),
-                    'volume_ratio_1m': get_indicator('volume_ratio', None, 'volumeSpike'),
-                    'volume_spike_1m': get_indicator('volume_spike', None, 'volumeSpike'),
-                    'volume_5m': get_indicator(None, 'volume', None),
-                    'volume_avg_5m': get_indicator(None, 'volume_avg', None),
-                    'volume_ratio_5m': get_indicator(None, 'volume_ratio', None),
-                    'volume_spike_5m': get_indicator(None, 'volume_spike', None),
-                    # Score
-                    'score': last_setup.get('totalScore') if last_setup else None,
-                }
+            # RSI
+            "rsi_1m": get_indicator("rsi", None, "rsi"),
+            "rsi_5m": get_indicator(None, "rsi", None),
+            "rsi_prev_1m": get_indicator("rsi_prev", None, "rsi_prev"),
+            "rsi_prev_5m": get_indicator(None, "rsi_prev", None),
+            # MACD
+            "macd_1m": get_indicator("macd", None, "macd"),
+            "macd_signal_1m": get_indicator("macd_signal", None, "macd_signal"),
+            "macd_hist_1m": get_indicator("macd_hist", None, "macd_hist"),
+            "macd_hist_prev_1m": get_indicator(
+                "macd_hist_prev", None, "macd_hist_prev"
+            ),
+            "macd_5m": get_indicator(None, "macd", None),
+            "macd_signal_5m": get_indicator(None, "macd_signal", None),
+            "macd_hist_5m": get_indicator(None, "macd_hist", None),
+            "macd_hist_prev_5m": get_indicator(None, "macd_hist_prev", None),
+            # ADX
+            "adx_1m": get_indicator("adx", None, "adx"),
+            "adx_5m": get_indicator(None, "adx", None),
+            "di_plus_1m": get_indicator("di_plus", None, "di_plus"),
+            "di_minus_1m": get_indicator("di_minus", None, "di_minus"),
+            "di_gap_1m": get_indicator("di_gap", None, "di_gap"),
+            "di_plus_5m": get_indicator(None, "di_plus", None),
+            "di_minus_5m": get_indicator(None, "di_minus", None),
+            "di_gap_5m": get_indicator(None, "di_gap", None),
+            # EMA
+            "ema9_1m": get_indicator("ema9", None, "ema9"),
+            "ema21_1m": get_indicator("ema21", None, "ema21"),
+            "ema_diff_pct_1m": get_indicator("ema_diff_pct", None, "ema_diff_pct"),
+            "ema9_5m": get_indicator(None, "ema9", None),
+            "ema21_5m": get_indicator(None, "ema21", None),
+            "ema_diff_pct_5m": get_indicator(None, "ema_diff_pct", None),
+            # ATR
+            "atr_1m": get_indicator("atr", None, "atr"),
+            "atr_pct_1m": (atr / entry * 100)
+            if atr and entry
+            else get_indicator("atr_pct", None, "atr_pct"),
+            "atr_5m": get_indicator(None, "atr", None),
+            "atr_pct_5m": (atr5m / entry * 100)
+            if atr5m and entry
+            else get_indicator(None, "atr_pct", None),
+            # Bollinger Bands
+            "bb_upper_1m": get_indicator("bb_upper", None, "bb_upper"),
+            "bb_middle_1m": get_indicator("bb_middle", None, "bb_middle"),
+            "bb_lower_1m": get_indicator("bb_lower", None, "bb_lower"),
+            "bb_width_1m": get_indicator("bb_width", None, "bb_width"),
+            "bb_distance_to_lower_1m": get_indicator(
+                "bb_distance_to_lower", None, "bb_distance_to_lower"
+            ),
+            "bb_distance_to_upper_1m": get_indicator(
+                "bb_distance_to_upper", None, "bb_distance_to_upper"
+            ),
+            "bb_upper_5m": get_indicator(None, "bb_upper", None),
+            "bb_middle_5m": get_indicator(None, "bb_middle", None),
+            "bb_lower_5m": get_indicator(None, "bb_lower", None),
+            "bb_width_5m": get_indicator(None, "bb_width", None),
+            "bb_distance_to_lower_5m": get_indicator(
+                None, "bb_distance_to_lower", None
+            ),
+            "bb_distance_to_upper_5m": get_indicator(
+                None, "bb_distance_to_upper", None
+            ),
+            # Volume
+            "volume_1m": get_indicator("volume", None, "volume"),
+            "volume_avg_1m": get_indicator("volume_avg", None, "volume_avg"),
+            "volume_ratio_1m": get_indicator("volume_ratio", None, "volumeSpike"),
+            "volume_spike_1m": get_indicator("volume_spike", None, "volumeSpike"),
+            "volume_5m": get_indicator(None, "volume", None),
+            "volume_avg_5m": get_indicator(None, "volume_avg", None),
+            "volume_ratio_5m": get_indicator(None, "volume_ratio", None),
+            "volume_spike_5m": get_indicator(None, "volume_spike", None),
+            # Score
+            "score": last_setup.get("totalScore") if last_setup else None,
+        }
 
         # Conditions matched
         entry_conditions = condition_types or []
@@ -2247,31 +2818,39 @@ class PositionManager:
 
         # 🔥 FIX: TOUJOURS stocker les indicateurs dans la position (pour PostgreSQL)
         self.active_position._scan_log_id = scan_uuid
-        self.active_position._opportunity_id = opportunity_id  # 🔥 FIX: Stocker opportunity_id
+        self.active_position._opportunity_id = (
+            opportunity_id  # 🔥 FIX: Stocker opportunity_id
+        )
         self.active_position._entry_indicators = entry_indicators
         self.active_position._entry_conditions = entry_conditions
         self.active_position._entry_scalability = entry_scalability
 
         # 🔥 DEBUG: Compter les indicateurs récupérés
-        entry_indicators_non_null = len([v for v in entry_indicators.values() if v is not None])
-        logger.info(f"✅ Indicateurs d'entrée stockés pour {symbol}: {entry_indicators_non_null}/{len(entry_indicators)} indicateurs non-null")
+        entry_indicators_non_null = len(
+            [v for v in entry_indicators.values() if v is not None]
+        )
+        logger.info(
+            f"✅ Indicateurs d'entrée stockés pour {symbol}: {entry_indicators_non_null}/{len(entry_indicators)} indicateurs non-null"
+        )
 
         # 🔥 DEBUG: Log quelques indicateurs clés pour vérification
         if entry_indicators_non_null > 0:
-            logger.info(f"🔍 DEBUG entry_indicators exemples: rsi_1m={entry_indicators.get('rsi_1m')}, macd_hist_1m={entry_indicators.get('macd_hist_1m')}, adx_1m={entry_indicators.get('adx_1m')}, ema9_1m={entry_indicators.get('ema9_1m')}, ema21_1m={entry_indicators.get('ema21_1m')}")
+            logger.info(
+                f"🔍 DEBUG entry_indicators exemples: rsi_1m={entry_indicators.get('rsi_1m')}, macd_hist_1m={entry_indicators.get('macd_hist_1m')}, adx_1m={entry_indicators.get('adx_1m')}, ema9_1m={entry_indicators.get('ema9_1m')}, ema21_1m={entry_indicators.get('ema21_1m')}"
+            )
 
         # ========================================
         # ✅ LOG TRADE ENTRY (backend.ml.data_logger - optionnel)
         # ========================================
         try:
             from core.callbacks.scanner_loop import get_pg_datalogger
+
             pg_datalogger = get_pg_datalogger()
 
             if pg_datalogger and pg_datalogger.enabled:
                 try:
                     timestamp_entry = datetime.fromtimestamp(
-                        self.active_position.start_time,
-                        tz=timezone.utc
+                        self.active_position.start_time, tz=timezone.utc
                     ).isoformat()
                 except Exception:
                     timestamp_entry = datetime.now(timezone.utc).isoformat()
@@ -2289,37 +2868,58 @@ class PositionManager:
                 self.active_position._trade_id = candidate_trade_id
 
                 entry_trade_data = {
-                    'symbol': symbol,
-                    'direction': direction,
-                    'entry_price': self.active_position.entry,
-                    'exit_price': None,
-                    'tp_price': self.active_position.tp,
-                    'sl_price': self.active_position.sl,
-                    'size_usdt': self.active_position.size,
-                    'timestamp_entry': timestamp_entry,
-                    'timestamp_exit': None,
-                    'tp_sl_mode': get_effective_value('tp_sl_mode') or 'FIXE',
-                    'break_even_triggered': False,
-                    'trailing_stop_triggered': False,
-                    'partial_tp_triggered': False,
-                    'tp_escalier_levels_hit': [],
-                    'early_invalidation_triggered': False,
-                    'entry_indicators': entry_indicators,
-                    'entry_conditions': entry_conditions,
-                    'entry_scalability': entry_scalability,
-                    'exit_indicators': {},
-                    'pnl_history': [],
-                    'is_backtest': False,
-                    'ml_confidence': getattr(self.active_position, 'ml_confidence', None),
-                    'adaptive_sizing_multiplier': getattr(self.active_position, 'adaptive_sizing_multiplier', None),
+                    "symbol": symbol,
+                    "direction": direction,
+                    "entry_price": self.active_position.entry,
+                    "exit_price": None,
+                    "tp_price": self.active_position.tp,
+                    "sl_price": self.active_position.sl,
+                    "size_usdt": self.active_position.size,
+                    "timestamp_entry": timestamp_entry,
+                    "timestamp_exit": None,
+                    "tp_sl_mode": get_effective_value("tp_sl_mode") or "FIXE",
+                    "break_even_triggered": False,
+                    "trailing_stop_triggered": False,
+                    "partial_tp_triggered": False,
+                    "tp_escalier_levels_hit": [],
+                    "early_invalidation_triggered": False,
+                    "entry_indicators": entry_indicators,
+                    "entry_conditions": entry_conditions,
+                    "entry_scalability": entry_scalability,
+                    "exit_indicators": {},
+                    "pnl_history": [],
+                    "is_backtest": False,
+                    "ml_confidence": getattr(
+                        self.active_position, "ml_confidence", None
+                    ),
+                    "adaptive_sizing_multiplier": getattr(
+                        self.active_position, "adaptive_sizing_multiplier", None
+                    ),
                     # Extra fields to avoid NULLs when we have the data
-                    'setup_score': (last_setup.get('score_total') or last_setup.get('totalScore')) if last_setup else None,
-                    'ml_prediction': (last_setup.get('ml_prediction') if last_setup else None),
-                    'ml_features': (last_setup.get('ml_features') if last_setup else None),
-                    'price_at_signal': getattr(self.active_position, 'price_at_signal', None) or self.active_position.entry,
-                    'price_at_order_sent': getattr(self.active_position, 'price_at_order_sent', None),
-                    'time_to_fill_entry_ms': getattr(self.active_position, 'time_to_fill_entry_ms', None),
-                    'volume_24h_at_entry': (last_setup.get('volume_24h') if last_setup else None)
+                    "setup_score": (
+                        last_setup.get("score_total") or last_setup.get("totalScore")
+                    )
+                    if last_setup
+                    else None,
+                    "ml_prediction": (
+                        last_setup.get("ml_prediction") if last_setup else None
+                    ),
+                    "ml_features": (
+                        last_setup.get("ml_features") if last_setup else None
+                    ),
+                    "price_at_signal": getattr(
+                        self.active_position, "price_at_signal", None
+                    )
+                    or self.active_position.entry,
+                    "price_at_order_sent": getattr(
+                        self.active_position, "price_at_order_sent", None
+                    ),
+                    "time_to_fill_entry_ms": getattr(
+                        self.active_position, "time_to_fill_entry_ms", None
+                    ),
+                    "volume_24h_at_entry": (
+                        last_setup.get("volume_24h") if last_setup else None
+                    ),
                 }
 
                 # 🔥 FIX: Utiliser version async non-bloquante pour ne pas freeze l'event loop
@@ -2333,21 +2933,22 @@ class PositionManager:
                                 trade_data=entry_trade_data,
                                 opportunity_id=opportunity_id,
                                 scan_log_id=scan_uuid,
-                                session_id=getattr(self, 'session_id', None),
-                                trade_id=candidate_trade_id
+                                session_id=getattr(self, "session_id", None),
+                                trade_id=candidate_trade_id,
                             )
                             if logged_id:
                                 self._log_trade_event(
-                                    'ENTRY',
+                                    "ENTRY",
                                     self.active_position.entry,
                                     0.0,
                                     pnl_usdt=0.0,
                                     details={
-                                        'tp_price': self.active_position.tp,
-                                        'sl_price': self.active_position.sl,
-                                        'size_usdt': self.active_position.size,
-                                        'tp_sl_mode': get_effective_value('tp_sl_mode') or 'FIXE'
-                                    }
+                                        "tp_price": self.active_position.tp,
+                                        "sl_price": self.active_position.sl,
+                                        "size_usdt": self.active_position.size,
+                                        "tp_sl_mode": get_effective_value("tp_sl_mode")
+                                        or "FIXE",
+                                    },
                                 )
                         except Exception as e:
                             logger.debug(f"Erreur log_trade_async (non-bloquant): {e}")
@@ -2356,30 +2957,33 @@ class PositionManager:
                 except RuntimeError:
                     # Pas de boucle événements, utiliser version synchrone en thread
                     import threading
+
                     def _log_sync():
                         try:
                             logged_trade_id = pg_datalogger.log_trade(
                                 trade_data=entry_trade_data,
                                 opportunity_id=opportunity_id,
                                 scan_log_id=scan_uuid,
-                                session_id=getattr(self, 'session_id', None),
-                                trade_id=candidate_trade_id
+                                session_id=getattr(self, "session_id", None),
+                                trade_id=candidate_trade_id,
                             )
                             if logged_trade_id:
                                 self._log_trade_event(
-                                    'ENTRY',
+                                    "ENTRY",
                                     self.active_position.entry,
                                     0.0,
                                     pnl_usdt=0.0,
                                     details={
-                                        'tp_price': self.active_position.tp,
-                                        'sl_price': self.active_position.sl,
-                                        'size_usdt': self.active_position.size,
-                                        'tp_sl_mode': get_effective_value('tp_sl_mode') or 'FIXE'
-                                    }
+                                        "tp_price": self.active_position.tp,
+                                        "sl_price": self.active_position.sl,
+                                        "size_usdt": self.active_position.size,
+                                        "tp_sl_mode": get_effective_value("tp_sl_mode")
+                                        or "FIXE",
+                                    },
                                 )
                         except Exception:
                             pass
+
                     threading.Thread(target=_log_sync, daemon=True).start()
         except Exception as e:
             logger.debug(f"Erreur log_trade_entry (non-bloquant): {e}")
@@ -2388,36 +2992,46 @@ class PositionManager:
         # ========================================
 
         # 📢 NOTIFICATION: Position ouverte
-        if hasattr(self, 'notification_manager') and self.notification_manager:
+        if hasattr(self, "notification_manager") and self.notification_manager:
             try:
                 # 🔥 FIX: Structure de données correcte pour notify_position_opened
                 position_data = {
-                    'symbol': symbol,
-                    'direction': direction,
-                    'entry': entry,  # notify_position_opened attend 'entry' et pas 'entry_price'
-                    'size': executed_size_usdt,  # notify_position_opened attend 'size' et pas 'size_usdt'
-                    'sl': sl,
-                    'tp': tp,
-                    'atr': atr,
-                    'leverage': getattr(self.live_order_manager, 'leverage', 1) if self.live_order_manager else 1,
-                    'tp_escalier_levels': len(levels_config) if levels_config else 0,
-                    'condition_types': getattr(setup, 'condition_types', []) if 'setup' in locals() else []  # Ajouter conditions manquantes
+                    "symbol": symbol,
+                    "direction": direction,
+                    "entry": entry,  # notify_position_opened attend 'entry' et pas 'entry_price'
+                    "size": executed_size_usdt,  # notify_position_opened attend 'size' et pas 'size_usdt'
+                    "sl": sl,
+                    "tp": tp,
+                    "atr": atr,
+                    "leverage": getattr(self.live_order_manager, "leverage", 1)
+                    if self.live_order_manager
+                    else 1,
+                    "tp_escalier_levels": len(levels_config) if levels_config else 0,
+                    "condition_types": getattr(setup, "condition_types", [])
+                    if "setup" in locals()
+                    else [],  # Ajouter conditions manquantes
                 }
                 # Appel async non-bloquant
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
                     # Pas de loop dans ce thread -> exécuter dans un event loop dédié
-                    asyncio.run(self.notification_manager.notify('position_opened', position_data, priority='info'))
+                    asyncio.run(
+                        self.notification_manager.notify(
+                            "position_opened", position_data, priority="info"
+                        )
+                    )
                 else:
                     loop.create_task(
-                        self.notification_manager.notify('position_opened', position_data, priority='info')
+                        self.notification_manager.notify(
+                            "position_opened", position_data, priority="info"
+                        )
                     )
             except Exception as e:
                 logger.debug(f"Erreur envoi notification position_opened: {e}")
 
         return self.active_position
-    
+
     def _calculate_position_size(self, setup: Dict, capital: float = 1000.0) -> float:
         """Méthode privée pour compatibilité tests - délègue vers calculate_position_size"""
         return self.calculate_position_size(setup, capital)
@@ -2428,7 +3042,7 @@ class PositionManager:
         capital: float = 1000.0,
         base_risk: float = 0.01,
         min_risk: float = 0.005,
-        max_risk: float = 0.03
+        max_risk: float = 0.03,
     ) -> float:
         """
         Calcule la taille de position en USDT basée sur le risque
@@ -2436,12 +3050,12 @@ class PositionManager:
         from utils.effective_config import get_effective_value
 
         # ✅ Lire risk_per_trade et bornes depuis la config effective
-        risk_per_trade_pct = float(get_effective_value('risk_per_trade') or 2.0)
+        risk_per_trade_pct = float(get_effective_value("risk_per_trade") or 2.0)
         risk_per_trade = risk_per_trade_pct / 100.0
         base_risk = risk_per_trade
 
-        min_risk_pct_cfg = get_effective_value('min_risk_per_trade')
-        max_risk_pct_cfg = get_effective_value('max_risk_per_trade')
+        min_risk_pct_cfg = get_effective_value("min_risk_per_trade")
+        max_risk_pct_cfg = get_effective_value("max_risk_per_trade")
 
         min_risk = (
             max(0.001, float(min_risk_pct_cfg) / 100.0)
@@ -2453,7 +3067,7 @@ class PositionManager:
             if max_risk_pct_cfg is not None
             else max_risk
         )
-        score = setup.get('score', 5.0)
+        score = setup.get("score", 5.0)
 
         # Taille de base
         base_size = capital * base_risk
@@ -2474,12 +3088,13 @@ class PositionManager:
         # On n'applique pas de réduction simple ici pour éviter le double emploi
 
         # Recovery Mode - Réduction de taille progressive
-        recovery_mult = self.recovery_mode.get_position_size_multiplier(self.config.loss_streak)
+        recovery_mult = self.recovery_mode.get_position_size_multiplier(
+            self.config.loss_streak
+        )
 
         recovery_state = None
-        if (
-            get_effective_value('recovery_shadow_compare')
-            or get_effective_value('recovery_refactor_enabled')
+        if get_effective_value("recovery_shadow_compare") or get_effective_value(
+            "recovery_refactor_enabled"
         ):
             try:
                 recovery_state = self.recovery_mode.get_state(self.config.loss_streak)
@@ -2487,14 +3102,21 @@ class PositionManager:
                 logger.debug(f"🔎 RECOVERY STATE sizing error: {type(e).__name__}: {e}")
                 recovery_state = None
 
-        if get_effective_value('recovery_shadow_compare') and recovery_state:
-            if recovery_state.position_size_mult != recovery_mult or recovery_state.active != self.recovery_mode.active:
+        if get_effective_value("recovery_shadow_compare") and recovery_state:
+            if (
+                recovery_state.position_size_mult != recovery_mult
+                or recovery_state.active != self.recovery_mode.active
+            ):
                 logger.debug(
                     f"🔎 RECOVERY SHADOW sizing: loss_streak={self.config.loss_streak} "
                     f"active={self.recovery_mode.active}->{recovery_state.active} level={recovery_state.level}"
                 )
 
-        if get_effective_value('recovery_refactor_enabled') and recovery_state and recovery_state.level is not None:
+        if (
+            get_effective_value("recovery_refactor_enabled")
+            and recovery_state
+            and recovery_state.level is not None
+        ):
             recovery_mult = recovery_state.position_size_mult
 
         if recovery_mult < 1.0:
@@ -2507,10 +3129,11 @@ class PositionManager:
 
         # 🔥 PHASE 8: Sizing Adaptatif par Paire/Session
         adaptive_mult = 1.0
-        symbol = setup.get('symbol', '')
-        if symbol and get_effective_value('adaptive_sizing_enabled'):
+        symbol = setup.get("symbol", "")
+        if symbol and get_effective_value("adaptive_sizing_enabled"):
             try:
                 from core.position.adaptive_sizing import get_adaptive_sizing_manager
+
                 adaptive_manager = get_adaptive_sizing_manager()
                 adaptive_mult = adaptive_manager.get_size_multiplier(symbol)
                 logger.debug(f"📉 Adaptive sizing for {symbol}: {adaptive_mult:.2f}x")
@@ -2536,7 +3159,7 @@ class PositionManager:
         # 🔥 DEBUG: Log WARNING pour visibilité
         logger.warning(
             f"📊 POSITION SIZING DEBUG: {setup.get('symbol', 'N/A')} | "
-            f"Score={score:.1f} | Capital={capital:.2f} | Risk={base_risk*100:.2f}% | "
+            f"Score={score:.1f} | Capital={capital:.2f} | Risk={base_risk * 100:.2f}% | "
             f"Base={base_size:.2f} | Multiplier={multiplier:.2f} | "
             f"Streak={streak_mult:.2f} | Adaptive={adaptive_mult:.2f} | "
             f"Final={final_size:.2f} USDT"
@@ -2544,7 +3167,9 @@ class PositionManager:
 
         return round(final_size, 2)
 
-    def record_trade_for_adaptive_sizing(self, symbol: str, pnl_pct: float, is_win: bool):
+    def record_trade_for_adaptive_sizing(
+        self, symbol: str, pnl_pct: float, is_win: bool
+    ):
         """
         Enregistre un trade dans le manager de sizing adaptatif.
         Appelé après la fermeture d'une position.
@@ -2555,11 +3180,13 @@ class PositionManager:
             is_win: True si trade gagnant
         """
         from utils.effective_config import get_effective_value
-        if not get_effective_value('adaptive_sizing_enabled'):
+
+        if not get_effective_value("adaptive_sizing_enabled"):
             return
 
         try:
             from core.position.adaptive_sizing import get_adaptive_sizing_manager
+
             manager = get_adaptive_sizing_manager()
             manager.record_trade(symbol, pnl_pct, is_win)
         except Exception as e:
@@ -2584,7 +3211,7 @@ class PositionManager:
         depth: float,
         balance_score: float,
         bid_vol: Optional[float] = None,
-        ask_vol: Optional[float] = None
+        ask_vol: Optional[float] = None,
     ) -> float:
         """
         Estime le slippage réaliste pour un ordre
@@ -2601,10 +3228,14 @@ class PositionManager:
             Slippage estimé en %
         """
         # 🔥 INFO: Log pour vérifier les paramètres (changer de debug à info pour visibilité)
-        logger.info(f"💹 _estimate_slippage: order_size={order_size}, spread_pct={spread_pct}, depth={depth}, balance_score={balance_score}")
+        logger.info(
+            f"💹 _estimate_slippage: order_size={order_size}, spread_pct={spread_pct}, depth={depth}, balance_score={balance_score}"
+        )
 
         if spread_pct <= 0 or depth <= 0:
-            logger.warning(f"💹 _estimate_slippage: Retourne 0.0 car spread_pct={spread_pct} ou depth={depth} <= 0")
+            logger.warning(
+                f"💹 _estimate_slippage: Retourne 0.0 car spread_pct={spread_pct} ou depth={depth} <= 0"
+            )
             return 0.0
 
         # Imbalance factor
@@ -2641,26 +3272,38 @@ class PositionManager:
         from utils.effective_config import get_effective_value, get_effective_config
 
         # 🔒 Contrôle global: en mode FIXE, empêcher toute fonction imbriquée d'élargir le SL
-        self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_PRE')
+        self._enforce_fixe_sl_not_wider(context="CHECK_POSITION_PRE")
 
         # 🔥 BOUCLE DE VÉRIFICATION: Assurer cohérence entre size, tokens et entry
         # Source de vérité = size_initial_contracts (tokens MEXC à l'ouverture)
         # Si pas de TP partiel: size_remaining_contracts doit = size_initial_contracts
         # size USDT doit être = tokens × entry_price
         if self.active_position.entry and self.active_position.entry > 0:
-
             # 🔥 FIX CRITIQUE: Si pas de TP partiel, synchroniser remaining avec initial
-            if not self.active_position.partial_tp_sold and self.active_position.size_initial_contracts:
-                if self.active_position.size_remaining_contracts != self.active_position.size_initial_contracts:
+            if (
+                not self.active_position.partial_tp_sold
+                and self.active_position.size_initial_contracts
+            ):
+                if (
+                    self.active_position.size_remaining_contracts
+                    != self.active_position.size_initial_contracts
+                ):
                     logger.warning(
                         f"⚠️ SYNC: size_remaining_contracts ({self.active_position.size_remaining_contracts:.6f}) "
                         f"!= size_initial_contracts ({self.active_position.size_initial_contracts:.6f}) sans TP partiel. Correction..."
                     )
-                    self.active_position.size_remaining_contracts = self.active_position.size_initial_contracts
-                    self.active_position.position_size_contracts = self.active_position.size_initial_contracts
+                    self.active_position.size_remaining_contracts = (
+                        self.active_position.size_initial_contracts
+                    )
+                    self.active_position.position_size_contracts = (
+                        self.active_position.size_initial_contracts
+                    )
 
             # Utiliser size_initial_contracts comme source de vérité
-            tokens_source = self.active_position.size_remaining_contracts or self.active_position.size_initial_contracts
+            tokens_source = (
+                self.active_position.size_remaining_contracts
+                or self.active_position.size_initial_contracts
+            )
 
             if tokens_source and tokens_source > 0:
                 expected_size_usdt = tokens_source * self.active_position.entry
@@ -2696,75 +3339,104 @@ class PositionManager:
 
         # 🔥 FIX: Initialiser size_initial_usdt si manquant (pour historique)
         if not self.active_position.size_initial_usdt:
-             if self.active_position.partial_tp_sold:
-                  # Estimation rétroactive si on a déjà vendu
-                  partial_pct = (get_effective_value('partial_tp_percent') or 50.0) / 100.0
-                  try:
-                      # Si size actuel est 10.40 et partial 50%, initial ~ 20.80.
-                      self.active_position.size_initial_usdt = self.active_position.size / (1 - partial_pct)
-                  except:
-                      self.active_position.size_initial_usdt = self.active_position.size
-             else:
-                  self.active_position.size_initial_usdt = self.active_position.size
+            if self.active_position.partial_tp_sold:
+                # Estimation rétroactive si on a déjà vendu
+                partial_pct = (
+                    get_effective_value("partial_tp_percent") or 50.0
+                ) / 100.0
+                try:
+                    # Si size actuel est 10.40 et partial 50%, initial ~ 20.80.
+                    self.active_position.size_initial_usdt = (
+                        self.active_position.size / (1 - partial_pct)
+                    )
+                except Exception as e:
+                    logger.debug(f"Estimation size_initial_usdt échouée: {e}")
+                    self.active_position.size_initial_usdt = self.active_position.size
+            else:
+                self.active_position.size_initial_usdt = self.active_position.size
 
         # 🔥 FIX: Initialiser start_time si manquant (pour duration)
         if not self.active_position.start_time:
-             self.active_position.start_time = time.time()
+            self.active_position.start_time = time.time()
 
         # Calculer temps écoulé et PnL
         elapsed = time.time() - self.active_position.start_time
 
         # 🔥 SANITY CHECK LOOP: Resynchroniser toutes les 15 secondes
         # Cela répond à la demande de "boucles de verifs" pour assurer la cohérence exchange/local
-        if elapsed > 10 and int(elapsed) % 15 == 0 and int(elapsed) != getattr(self, '_last_sync_check', 0):
-             self._last_sync_check = int(elapsed)
-             # Ne pas spammer les logs si tout va bien
-             self._schedule_position_sync(self.active_position.symbol, delay=0)
+        if (
+            elapsed > 10
+            and int(elapsed) % 15 == 0
+            and int(elapsed) != getattr(self, "_last_sync_check", 0)
+        ):
+            self._last_sync_check = int(elapsed)
+            # Ne pas spammer les logs si tout va bien
+            self._schedule_position_sync(self.active_position.symbol, delay=0)
 
         # 🔥 OPT #3: Utiliser prix RÉEL rempli pour calcul PnL (early invalidation)
         # Si entry_fill_price est disponible (ordre réel exécuté), l'utiliser
         # Sinon fallback sur entry (prix théorique, pour paper trading)
-        effective_entry = self.active_position.entry_fill_price or self.active_position.entry
+        effective_entry = (
+            self.active_position.entry_fill_price or self.active_position.entry
+        )
 
         pnl = self.pnl_calculator.calculate_pnl_percent(
             effective_entry,  # 🔥 Prix RÉEL au lieu de théorique
             current_price,
-            self.active_position.direction
+            self.active_position.direction,
         )
 
         # 🔥 FIX: Enregistrer le PnL dans l'historique pour calculer max_drawdown
-        pnl_usdt = (pnl / 100) * self.active_position.size if self.active_position.size else 0
-        self.active_position.pnl_history.append({
-            'timestamp': time.time(),
-            'price': current_price,
-            'pnl_pct': pnl,
-            'pnl_usdt': pnl_usdt
-        })
+        pnl_usdt = (
+            (pnl / 100) * self.active_position.size if self.active_position.size else 0
+        )
+        self.active_position.pnl_history.append(
+            {
+                "timestamp": time.time(),
+                "price": current_price,
+                "pnl_pct": pnl,
+                "pnl_usdt": pnl_usdt,
+            }
+        )
 
         # 🔥 PHASE 0.5: Tracker max/min price et pnl
         now_ts = time.time()
         # Max price
-        if self.active_position.max_price_reached is None or current_price > self.active_position.max_price_reached:
+        if (
+            self.active_position.max_price_reached is None
+            or current_price > self.active_position.max_price_reached
+        ):
             self.active_position.max_price_reached = current_price
         # Min price
-        if self.active_position.min_price_reached is None or current_price < self.active_position.min_price_reached:
+        if (
+            self.active_position.min_price_reached is None
+            or current_price < self.active_position.min_price_reached
+        ):
             self.active_position.min_price_reached = current_price
         # Max PnL
         previous_max_pnl = self.active_position.max_pnl_reached
         if previous_max_pnl is None or pnl > previous_max_pnl:
             self.active_position.max_pnl_reached = pnl
             self.active_position.max_pnl_timestamp = now_ts
-            self._log_trade_event('MAX_PNL_REACHED', current_price, pnl, pnl_usdt, details={
-                'previous_max': previous_max_pnl
-            })
+            self._log_trade_event(
+                "MAX_PNL_REACHED",
+                current_price,
+                pnl,
+                pnl_usdt,
+                details={"previous_max": previous_max_pnl},
+            )
         # Min PnL
         previous_min_pnl = self.active_position.min_pnl_reached
         if previous_min_pnl is None or pnl < previous_min_pnl:
             self.active_position.min_pnl_reached = pnl
             self.active_position.min_pnl_timestamp = now_ts
-            self._log_trade_event('MIN_PNL_REACHED', current_price, pnl, pnl_usdt, details={
-                'previous_min': previous_min_pnl
-            })
+            self._log_trade_event(
+                "MIN_PNL_REACHED",
+                current_price,
+                pnl,
+                pnl_usdt,
+                details={"previous_min": previous_min_pnl},
+            )
 
         # 1. Early Invalidation (10-30s)
         early_invalidation_data = None
@@ -2772,11 +3444,11 @@ class PositionManager:
             invalidation = self.early_invalidation.check_invalidation(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
-                pnl_percent=pnl  # 🔥 PnL basé sur prix RÉEL
+                pnl_percent=pnl,  # 🔥 PnL basé sur prix RÉEL
             )
             if invalidation:
                 # Stocker les détails de l'invalidation pour le logging
-                atr_pct_used = getattr(self.active_position, 'atr_pct_used', None)
+                atr_pct_used = getattr(self.active_position, "atr_pct_used", None)
                 if atr_pct_used is not None and atr_pct_used > 0:
                     atr_pct = atr_pct_used
                 else:
@@ -2789,16 +3461,18 @@ class PositionManager:
                 )
                 # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
                 early_invalidation_data = {
-                    'triggered': True,
-                    'triggered_at': datetime.now(timezone.utc).isoformat(),
-                    'threshold': invalidation_threshold,
-                    'elapsed': elapsed,
-                    'atr_pct': atr_pct,
-                    'pnl_pct': pnl
+                    "triggered": True,
+                    "triggered_at": datetime.now(timezone.utc).isoformat(),
+                    "threshold": invalidation_threshold,
+                    "elapsed": elapsed,
+                    "atr_pct": atr_pct,
+                    "pnl_pct": pnl,
                 }
                 # Stocker dans la position pour le logging
                 self.active_position._early_invalidation_data = early_invalidation_data
-                self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_EARLY_INVALIDATION_RETURN')
+                self._enforce_fixe_sl_not_wider(
+                    context="CHECK_POSITION_EARLY_INVALIDATION_RETURN"
+                )
                 return invalidation
 
         # 🔥 OPT #13: Time-Based Exit - Fermer si position flat après 20min
@@ -2807,16 +3481,17 @@ class PositionManager:
             if -0.1 <= pnl <= 0.1:
                 logger.warning(
                     f"⏱️ Time-Based Exit: Position {self.active_position.symbol} {self.active_position.direction} "
-                    f"ouverte depuis {elapsed/60:.1f}min avec PnL {pnl:+.2f}% (flat) → Fermeture"
+                    f"ouverte depuis {elapsed / 60:.1f}min avec PnL {pnl:+.2f}% (flat) → Fermeture"
                 )
-                self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_TIME_BASED_EXIT_RETURN')
-                return 'TIME_BASED_EXIT'
+                self._enforce_fixe_sl_not_wider(
+                    context="CHECK_POSITION_TIME_BASED_EXIT_RETURN"
+                )
+                return "TIME_BASED_EXIT"
 
         # 2. TP Escalier - Vérifier niveaux
         if self.active_position.tp_escalier_enabled:
             level_result = self.tp_escalier.check_and_execute_levels(
-                position=self.active_position.to_dict(),
-                current_price=current_price
+                position=self.active_position.to_dict(), current_price=current_price
             )
             if level_result:
                 escalier_filled_contracts = None
@@ -2828,10 +3503,14 @@ class PositionManager:
                         size_contracts = self.active_position.position_size_contracts
                         if not size_contracts:
                             entry_price = self.active_position.entry or 1
-                            size_contracts = (self.active_position.size / entry_price) if entry_price else 0
+                            size_contracts = (
+                                (self.active_position.size / entry_price)
+                                if entry_price
+                                else 0
+                            )
 
                         # Calculer le % à vendre pour ce niveau
-                        level_pct = level_result['size_pct'] * 100  # Convertir en %
+                        level_pct = level_result["size_pct"] * 100  # Convertir en %
 
                         escalier_order_result = await asyncio.to_thread(
                             self.live_order_manager.close_position,
@@ -2840,19 +3519,26 @@ class PositionManager:
                             entry_price=self.active_position.entry,
                             current_price=current_price,
                             size_amount=size_contracts,
-                            partial_pct=level_pct
+                            partial_pct=level_pct,
                         )
 
                         if escalier_order_result.success:
-                            filled_amount = escalier_order_result.filled_amount or (size_contracts * level_pct / 100)
+                            filled_amount = escalier_order_result.filled_amount or (
+                                size_contracts * level_pct / 100
+                            )
 
                             # Mettre à jour les contrats restants
                             remaining_contracts = size_contracts - filled_amount
-                            self.active_position.position_size_contracts = remaining_contracts
+                            self.active_position.position_size_contracts = (
+                                remaining_contracts
+                            )
                             escalier_filled_contracts = filled_amount
                             escalier_remaining_contracts = remaining_contracts
 
-                            level_result['profit_usdt'] = escalier_order_result.actual_pnl_usdt or level_result['profit_usdt']
+                            level_result["profit_usdt"] = (
+                                escalier_order_result.actual_pnl_usdt
+                                or level_result["profit_usdt"]
+                            )
 
                             logger.info(
                                 f"💰 [LIVE] TP Escalier niveau {level_result.get('level', '?')} exécuté: "
@@ -2870,81 +3556,134 @@ class PositionManager:
                         logger.error(f"❌ Erreur TP Escalier LIVE: {e}")
 
                 # Mettre à jour position avec résultats TP Escalier
-                self.active_position.tp_escalier_current_level = self.active_position.to_dict()['tp_escalier_current_level'] + 1
-                self.active_position.tp_escalier_size_remaining = self.active_position.to_dict()['tp_escalier_size_remaining'] - level_result['size_pct']
+                self.active_position.tp_escalier_current_level = (
+                    self.active_position.to_dict()["tp_escalier_current_level"] + 1
+                )
+                self.active_position.tp_escalier_size_remaining = (
+                    self.active_position.to_dict()["tp_escalier_size_remaining"]
+                    - level_result["size_pct"]
+                )
                 self.active_position.tp_escalier_profits.append(level_result)
-                self.active_position.partial_profit_usdt += level_result['profit_usdt']
+                self.active_position.partial_profit_usdt += level_result["profit_usdt"]
 
                 # 🔥 Phase 2H.6: Log trade event TP Escalier
                 try:
-                    if not (self.live_order_manager and not self.live_order_manager.dry_run and escalier_order_failed):
+                    if not (
+                        self.live_order_manager
+                        and not self.live_order_manager.dry_run
+                        and escalier_order_failed
+                    ):
                         entry_price = self.active_position.entry or current_price or 1
-                        sold_pct_value = level_result.get('size_pct')
-                        sold_pct = sold_pct_value * 100 if sold_pct_value is not None else None
-                        sold_usdt = level_result.get('size_usdt')
-                        if sold_usdt is None and sold_pct_value is not None and self.active_position.size:
+                        sold_pct_value = level_result.get("size_pct")
+                        sold_pct = (
+                            sold_pct_value * 100 if sold_pct_value is not None else None
+                        )
+                        sold_usdt = level_result.get("size_usdt")
+                        if (
+                            sold_usdt is None
+                            and sold_pct_value is not None
+                            and self.active_position.size
+                        ):
                             sold_usdt = self.active_position.size * sold_pct_value
 
                         remaining_usdt = None
-                        if self.active_position.size is not None and self.active_position.tp_escalier_size_remaining is not None:
-                            remaining_usdt = self.active_position.size * self.active_position.tp_escalier_size_remaining
+                        if (
+                            self.active_position.size is not None
+                            and self.active_position.tp_escalier_size_remaining
+                            is not None
+                        ):
+                            remaining_usdt = (
+                                self.active_position.size
+                                * self.active_position.tp_escalier_size_remaining
+                            )
 
                         sold_contracts = escalier_filled_contracts
                         remaining_contracts = escalier_remaining_contracts
-                        if sold_contracts is None and sold_usdt is not None and entry_price:
+                        if (
+                            sold_contracts is None
+                            and sold_usdt is not None
+                            and entry_price
+                        ):
                             sold_contracts = sold_usdt / entry_price
-                        if remaining_contracts is None and remaining_usdt is not None and entry_price:
+                        if (
+                            remaining_contracts is None
+                            and remaining_usdt is not None
+                            and entry_price
+                        ):
                             remaining_contracts = remaining_usdt / entry_price
 
                         self._log_trade_event(
-                            'TP_ESCALIER_LEVEL',
+                            "TP_ESCALIER_LEVEL",
                             current_price,
                             pnl,
-                            pnl_usdt=level_result.get('profit_usdt'),
+                            pnl_usdt=level_result.get("profit_usdt"),
                             details={
-                                'level': level_result.get('level'),
-                                'sold_pct': sold_pct,
-                                'sold_usdt': sold_usdt,
-                                'remaining_usdt': remaining_usdt,
-                                'sold_qty': sold_contracts,
-                                'remaining_qty': remaining_contracts,
-                                'sold_contracts': sold_contracts,
-                                'remaining_contracts': remaining_contracts
-                            }
+                                "level": level_result.get("level"),
+                                "sold_pct": sold_pct,
+                                "sold_usdt": sold_usdt,
+                                "remaining_usdt": remaining_usdt,
+                                "sold_qty": sold_contracts,
+                                "remaining_qty": remaining_contracts,
+                                "sold_contracts": sold_contracts,
+                                "remaining_contracts": remaining_contracts,
+                            },
                         )
                 except Exception:
                     pass
 
-                if hasattr(self, 'notification_manager') and self.notification_manager:
+                if hasattr(self, "notification_manager") and self.notification_manager:
                     try:
                         notification_data = {
-                            'symbol': self.active_position.symbol,
-                            'level': level_result.get('level'),
-                            'total_levels': len(getattr(self.active_position, 'tp_escalier_levels', []) or []),
-                            'profit_usdt': level_result.get('profit_usdt', 0.0),
-                            'profit_pct': level_result.get('profit_pct', 0.0),
-                            'size_remaining_pct': (getattr(self.active_position, 'tp_escalier_size_remaining', 0.0) or 0.0) * 100.0
+                            "symbol": self.active_position.symbol,
+                            "level": level_result.get("level"),
+                            "total_levels": len(
+                                getattr(self.active_position, "tp_escalier_levels", [])
+                                or []
+                            ),
+                            "profit_usdt": level_result.get("profit_usdt", 0.0),
+                            "profit_pct": level_result.get("profit_pct", 0.0),
+                            "size_remaining_pct": (
+                                getattr(
+                                    self.active_position,
+                                    "tp_escalier_size_remaining",
+                                    0.0,
+                                )
+                                or 0.0
+                            )
+                            * 100.0,
                         }
                         try:
                             loop = asyncio.get_event_loop()
                             if loop.is_running():
                                 loop.create_task(
-                                    self.notification_manager.notify('tp_escalier_level', notification_data, priority='info')
+                                    self.notification_manager.notify(
+                                        "tp_escalier_level",
+                                        notification_data,
+                                        priority="info",
+                                    )
                                 )
                             else:
-                                asyncio.run(self.notification_manager.notify('tp_escalier_level', notification_data, priority='info'))
+                                asyncio.run(
+                                    self.notification_manager.notify(
+                                        "tp_escalier_level",
+                                        notification_data,
+                                        priority="info",
+                                    )
+                                )
                         except RuntimeError:
                             pass
                     except Exception as e:
-                        logger.debug(f"Erreur envoi notification tp_escalier_level: {e}")
+                        logger.debug(
+                            f"Erreur envoi notification tp_escalier_level: {e}"
+                        )
 
         # 3. TP Partiel (si pas TP Escalier) - utiliser break_even_trigger comme seuil du 1er TP
-        if (not self.active_position.tp_escalier_enabled and 
-            get_effective_value('use_partial_tp')):  # 🔥 FIX: Vérifier que TP partiel est activé
-            
+        if not self.active_position.tp_escalier_enabled and get_effective_value(
+            "use_partial_tp"
+        ):  # 🔥 FIX: Vérifier que TP partiel est activé
             # 🔥 FIX: Break-even déterminé par tp_sl_mode, pas par flag séparé
-            tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
-            break_even_use_atr = (tp_sl_mode == 'ATR') or self.config.use_atr
+            tp_sl_mode = get_effective_value("tp_sl_mode") or "FIXE"
+            break_even_use_atr = (tp_sl_mode == "ATR") or self.config.use_atr
 
             # 🔥 SPRINT 3: Utiliser config effective si disponible (Adaptation Régime)
             effective_config = get_effective_config()
@@ -2953,36 +3692,46 @@ class PositionManager:
                 atr_pct = self._get_position_atr_percent()
 
                 # Utiliser le multiplicateur effectif s'il existe (adapté au régime), sinon config globale
-                be_atr_mult = effective_config.get('break_even_atr_mult') or get_effective_value('break_even_atr_mult') or 0.5
+                be_atr_mult = (
+                    effective_config.get("break_even_atr_mult")
+                    or get_effective_value("break_even_atr_mult")
+                    or 0.5
+                )
 
                 break_even_trigger = atr_pct * be_atr_mult
-                logger.debug(f"🎯 BE ATR: trigger={break_even_trigger:.3f}% (ATR={atr_pct:.3f}% × {be_atr_mult})")
+                logger.debug(
+                    f"🎯 BE ATR: trigger={break_even_trigger:.3f}% (ATR={atr_pct:.3f}% × {be_atr_mult})"
+                )
             else:
                 # Mode FIXE: utiliser break_even_trigger pour TP partiel
-                break_even_trigger = get_effective_value('break_even_trigger') or 0.3
-            
-            logger.debug(f"🎯 TP Partiel: Vérification trigger à {break_even_trigger:.3f}% (mode {tp_sl_mode})")
-            
+                break_even_trigger = get_effective_value("break_even_trigger") or 0.3
+
+            logger.debug(
+                f"🎯 TP Partiel: Vérification trigger à {break_even_trigger:.3f}% (mode {tp_sl_mode})"
+            )
+
             # 🔥 DEBUG: Vérifier conditions TP partiel
             tp_partial_should_trigger = self.partial_tp.check_trigger(
                 position=self.active_position.to_dict(),
                 current_price=current_price,
-                trigger_pct=break_even_trigger  # TP partiel utilise break_even_trigger en mode FIXE
+                trigger_pct=break_even_trigger,  # TP partiel utilise break_even_trigger en mode FIXE
             )
-            
+
             logger.debug(
                 f"💰 TP Partiel Check {self.active_position.symbol}: "
                 f"pnl={pnl:.3f}%, trigger={break_even_trigger:.3f}%, "
                 f"already_sold={getattr(self.active_position, 'partial_tp_sold', False)} → "
                 f"should_trigger={tp_partial_should_trigger}"
             )
-            
+
             if tp_partial_should_trigger:
                 # Calculer le pourcentage à vendre
-                partial_tp_percent = get_effective_value('partial_tp_percent') or 50.0
+                partial_tp_percent = get_effective_value("partial_tp_percent") or 50.0
 
                 # 🔥 FIX: Vérifier si on doit forcer 100% (position trop petite pour TP partiel)
-                force_full_tp = getattr(self.active_position, 'force_full_tp_for_partial', False)
+                force_full_tp = getattr(
+                    self.active_position, "force_full_tp_for_partial", False
+                )
                 if force_full_tp:
                     logger.info(
                         f"🔧 Force TP 100% au lieu de {partial_tp_percent}% (position au minimum du contrat)"
@@ -2994,7 +3743,9 @@ class PositionManager:
                 size_amount = self.active_position.position_size_contracts
                 if not size_amount:
                     entry_price = self.active_position.entry or 1
-                    size_amount = (self.active_position.size / entry_price) if entry_price else 0
+                    size_amount = (
+                        (self.active_position.size / entry_price) if entry_price else 0
+                    )
 
                 order_success = False
                 filled_amount = None
@@ -3008,26 +3759,40 @@ class PositionManager:
                             entry_price=self.active_position.entry,
                             current_price=current_price,
                             size_amount=size_amount,
-                            partial_pct=partial_tp_percent
+                            partial_pct=partial_tp_percent,
                         )
                         if order_result and order_result.success:
                             order_success = True
                             filled_amount = order_result.filled_amount
-                            partial_pnl_usdt = getattr(order_result, 'actual_pnl_usdt', None)
+                            partial_pnl_usdt = getattr(
+                                order_result, "actual_pnl_usdt", None
+                            )
                         else:
-                            error_msg = getattr(order_result, 'error_message', None) if order_result else None
-                            logger.error(f"❌ [LIVE] Échec TP Partiel: {error_msg or 'unknown'}")
+                            error_msg = (
+                                getattr(order_result, "error_message", None)
+                                if order_result
+                                else None
+                            )
+                            logger.error(
+                                f"❌ [LIVE] Échec TP Partiel: {error_msg or 'unknown'}"
+                            )
                     except Exception as e:
                         logger.error(f"❌ Erreur TP Partiel LIVE: {e}")
 
                 size_pct = float(partial_tp_percent) / 100.0
-                effective_entry = self.active_position.entry_fill_price or self.active_position.entry
+                effective_entry = (
+                    self.active_position.entry_fill_price or self.active_position.entry
+                )
                 profit_pct = 0.0
                 if effective_entry and effective_entry > 0:
-                    if self.active_position.direction == 'LONG':
-                        profit_pct = ((current_price - effective_entry) / effective_entry) * 100
+                    if self.active_position.direction == "LONG":
+                        profit_pct = (
+                            (current_price - effective_entry) / effective_entry
+                        ) * 100
                     else:
-                        profit_pct = ((effective_entry - current_price) / effective_entry) * 100
+                        profit_pct = (
+                            (effective_entry - current_price) / effective_entry
+                        ) * 100
                 sold_usdt = (self.active_position.size or 0.0) * size_pct
                 profit_usdt = sold_usdt * (profit_pct / 100.0)
                 if partial_pnl_usdt is not None:
@@ -3037,12 +3802,18 @@ class PositionManager:
                 self.active_position.size_remaining = remaining_usdt
                 self.active_position.partial_tp_sold = True
                 self.active_position.partial_tp_percent = float(partial_tp_percent)
-                self.active_position.partial_profit_usdt = (self.active_position.partial_profit_usdt or 0.0) + profit_usdt
+                self.active_position.partial_profit_usdt = (
+                    self.active_position.partial_profit_usdt or 0.0
+                ) + profit_usdt
 
                 filled_fallback = size_amount * size_pct
-                filled_used = filled_amount if filled_amount is not None else filled_fallback
+                filled_used = (
+                    filled_amount if filled_amount is not None else filled_fallback
+                )
                 try:
-                    remaining_contracts = max(0.0, float(size_amount) - float(filled_used))
+                    remaining_contracts = max(
+                        0.0, float(size_amount) - float(filled_used)
+                    )
                 except Exception:
                     remaining_contracts = None
                 if remaining_contracts is not None:
@@ -3051,20 +3822,28 @@ class PositionManager:
 
                 pos_dict = self.active_position.to_dict()
                 try:
-                    new_sl = self.partial_tp.update_sl_after_partial_tp(pos_dict, current_price=current_price)
+                    new_sl = self.partial_tp.update_sl_after_partial_tp(
+                        pos_dict, current_price=current_price
+                    )
                     if new_sl:
                         self.active_position.sl = float(new_sl)
                         self.active_position.break_even_set = True
                 except Exception:
                     pass
-                self._enforce_fixe_sl_not_wider(context='PARTIAL_TP')
-                self._log_trade_event('PARTIAL_TP', current_price, pnl, pnl_usdt=profit_usdt, details={
-                    'sold_pct': float(partial_tp_percent),
-                    'sold_usdt': sold_usdt,
-                    'remaining_usdt': remaining_usdt,
-                    'filled_qty': filled_used,
-                    'order_success': order_success
-                })
+                self._enforce_fixe_sl_not_wider(context="PARTIAL_TP")
+                self._log_trade_event(
+                    "PARTIAL_TP",
+                    current_price,
+                    pnl,
+                    pnl_usdt=profit_usdt,
+                    details={
+                        "sold_pct": float(partial_tp_percent),
+                        "sold_usdt": sold_usdt,
+                        "remaining_usdt": remaining_usdt,
+                        "filled_qty": filled_used,
+                        "order_success": order_success,
+                    },
+                )
 
                 if float(partial_tp_percent) >= 99.9:
                     try:
@@ -3072,26 +3851,31 @@ class PositionManager:
                         self.active_position.position_size_contracts = 0
                     except Exception:
                         pass
-                    return 'TP'
+                    return "TP"
 
         # 3.5 🎯 TRAILING MFE: Déplacer SL à break-even quand MFE atteint le seuil
         # Complémentaire au trailing stop existant - protection précoce du capital
         # 🔥 FIX: Trailing MFE uniquement en mode ATR
-        tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
-        use_atr_for_mfe = (tp_sl_mode == 'ATR') or self.config.use_atr
+        tp_sl_mode = get_effective_value("tp_sl_mode") or "FIXE"
+        use_atr_for_mfe = (tp_sl_mode == "ATR") or self.config.use_atr
 
-        if (use_atr_for_mfe
-            and get_effective_value('trailing_mfe_enabled')
+        if (
+            use_atr_for_mfe
+            and get_effective_value("trailing_mfe_enabled")
             and not self.active_position.trailing_mfe_triggered
-            and self.active_position.max_pnl_reached is not None):
-
-            trailing_mfe_trigger = get_effective_value('trailing_mfe_trigger_pct') or 0.10
+            and self.active_position.max_pnl_reached is not None
+        ):
+            trailing_mfe_trigger = (
+                get_effective_value("trailing_mfe_trigger_pct") or 0.10
+            )
 
             if self.active_position.max_pnl_reached >= trailing_mfe_trigger:
                 # Déplacer SL à break-even + lock-in (entry +/- lock_in_pct)
-                lock_in_pct = float(get_effective_value('trailing_mfe_lock_in_pct') or 0.0)
+                lock_in_pct = float(
+                    get_effective_value("trailing_mfe_lock_in_pct") or 0.0
+                )
                 lock_in_pct = max(0.0, min(0.50, lock_in_pct))
-                if self.active_position.direction == 'LONG':
+                if self.active_position.direction == "LONG":
                     new_sl = self.active_position.entry * (1.0 + (lock_in_pct / 100.0))
                     if new_sl >= current_price:
                         new_sl = current_price * 0.9999
@@ -3103,13 +3887,12 @@ class PositionManager:
 
                 # Vérifier que le nouveau SL est plus favorable
                 should_update = (
-                    (self.active_position.direction == 'LONG' and new_sl > current_sl) or
-                    (self.active_position.direction == 'SHORT' and new_sl < current_sl)
-                )
+                    self.active_position.direction == "LONG" and new_sl > current_sl
+                ) or (self.active_position.direction == "SHORT" and new_sl < current_sl)
 
                 if should_update:
                     self.active_position.sl = new_sl
-                    self._enforce_fixe_sl_not_wider(context='TRAILING_MFE')
+                    self._enforce_fixe_sl_not_wider(context="TRAILING_MFE")
                     # 🛡️ Track SL applied at trigger (for SQL/Excel analysis)
                     try:
                         self.active_position.trailing_mfe_new_sl = new_sl
@@ -3134,39 +3917,53 @@ class PositionManager:
                     self._schedule_position_sync(self.active_position.symbol)
 
                     # 🔥 Phase 2H.6: Log trade event
-                    self._log_trade_event('TRAILING_MFE_TRIGGERED', current_price, pnl, details={
-                        'new_sl': new_sl, 'mfe_pct': self.active_position.max_pnl_reached,
-                        'trigger_threshold': trailing_mfe_trigger,
-                        'lock_in_pct': lock_in_pct
-                    })
+                    self._log_trade_event(
+                        "TRAILING_MFE_TRIGGERED",
+                        current_price,
+                        pnl,
+                        details={
+                            "new_sl": new_sl,
+                            "mfe_pct": self.active_position.max_pnl_reached,
+                            "trigger_threshold": trailing_mfe_trigger,
+                            "lock_in_pct": lock_in_pct,
+                        },
+                    )
 
         # 4. Trailing Stop (activé après le 1er TP partiel ou si PnL > trigger ATR)
         # 🔥 FIX: Trailing déterminé par tp_sl_mode, pas par flag séparé
-        tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
-        use_atr_trigger = (tp_sl_mode == 'ATR') or self.config.use_atr
+        tp_sl_mode = get_effective_value("tp_sl_mode") or "FIXE"
+        use_atr_trigger = (tp_sl_mode == "ATR") or self.config.use_atr
 
         trailing_config = {}
 
         # 🔥 GATING: trailing_enabled coupe le trailing en mode FIXE
-        trailing_enabled = get_effective_value('trailing_enabled')
+        trailing_enabled = get_effective_value("trailing_enabled")
         if trailing_enabled is None:
             trailing_enabled = True
 
-        if tp_sl_mode == 'FIXE' and not trailing_enabled:
+        if tp_sl_mode == "FIXE" and not trailing_enabled:
             # Trailing désactivé en mode FIXE, on skip cette section
             pass
-        elif self.active_position.partial_tp_sold or (use_atr_trigger and self.active_position.pnl_pct and self.active_position.pnl_pct > 0):
+        elif self.active_position.partial_tp_sold or (
+            use_atr_trigger
+            and self.active_position.pnl_pct
+            and self.active_position.pnl_pct > 0
+        ):
             if use_atr_trigger:
                 atr_pct = self._get_position_atr_percent()
 
                 # Utiliser les multiplicateurs effectifs s'ils existent (adaptés au régime)
-                trigger_atr_mult = effective_config.get('trailing_trigger_atr_mult') or get_effective_value('trailing_trigger_atr_mult') or 1.5
+                trigger_atr_mult = (
+                    effective_config.get("trailing_trigger_atr_mult")
+                    or get_effective_value("trailing_trigger_atr_mult")
+                    or 1.5
+                )
                 # Distance trailing adaptée (ex: plus large en HIGH volatility)
                 distance_atr_mult = (
-                    effective_config.get('trailing_distance_mult')
-                    or get_effective_value('trailing_distance_atr_mult')
-                    or get_effective_value('trailing_atr_multiplier')
-                    or get_effective_value('trailing_distance_mult')
+                    effective_config.get("trailing_distance_mult")
+                    or get_effective_value("trailing_distance_atr_mult")
+                    or get_effective_value("trailing_atr_multiplier")
+                    or get_effective_value("trailing_distance_mult")
                     or 1.0
                 )
 
@@ -3180,11 +3977,14 @@ class PositionManager:
             else:
                 # Mode FIXE
                 trailing_trigger = (
-                    trailing_config.get('trigger_pnl') or
-                    get_effective_value('trailing_trigger_pnl') or 0.15
+                    trailing_config.get("trigger_pnl")
+                    or get_effective_value("trailing_trigger_pnl")
+                    or 0.15
                 )
 
-            trailing_should_activate = self.active_position.partial_tp_sold or pnl >= trailing_trigger
+            trailing_should_activate = (
+                self.active_position.partial_tp_sold or pnl >= trailing_trigger
+            )
 
             # 🔥 DEBUG: Log trailing decision
             logger.debug(
@@ -3197,22 +3997,29 @@ class PositionManager:
                 # 🔥 PHASE 0.5: Enregistrer timestamp trailing activation
                 if not self.active_position.trailing_activated:
                     self.active_position.trailing_activated = True
-                    self.active_position.trailing_activated_at = datetime.now().timestamp()
-                    logger.warning(f"✅ Trailing ACTIVÉ pour {self.active_position.symbol} à {pnl:.3f}%")
+                    self.active_position.trailing_activated_at = (
+                        datetime.now().timestamp()
+                    )
+                    logger.warning(
+                        f"✅ Trailing ACTIVÉ pour {self.active_position.symbol} à {pnl:.3f}%"
+                    )
                     # Phase 2H.6: Log trade event
-                    self._log_trade_event('TRAILING_ACTIVATED', current_price, pnl, details={
-                        'trigger_pct': trailing_trigger
-                    })
+                    self._log_trade_event(
+                        "TRAILING_ACTIVATED",
+                        current_price,
+                        pnl,
+                        details={"trigger_pct": trailing_trigger},
+                    )
 
                 # 🔥 FIX: Une fois trailing activé, mettre à jour SL à CHAQUE tick (pas seulement si pnl >= trigger)
                 # Le trailing doit suivre le prix même si le PnL redescend après activation
-                tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
-                if tp_sl_mode == 'FIXE':
+                tp_sl_mode = get_effective_value("tp_sl_mode") or "FIXE"
+                if tp_sl_mode == "FIXE":
                     # 🔥 Mode FIXE LINÉAIRE: distance adaptative basée sur PnL (min → max)
                     # Formule: distance = min + (max - min) * clamp((pnl - trigger) / (pnl_cap - trigger), 0, 1)
-                    min_dist = get_effective_value('trailing_min_distance') or 0.10
-                    max_dist = get_effective_value('trailing_max_distance') or 0.30
-                    pnl_cap = get_effective_value('trailing_pnl_cap') or 0.60
+                    min_dist = get_effective_value("trailing_min_distance") or 0.10
+                    max_dist = get_effective_value("trailing_max_distance") or 0.30
+                    pnl_cap = get_effective_value("trailing_pnl_cap") or 0.60
 
                     # Calcul linéaire de la distance
                     if pnl <= trailing_trigger:
@@ -3220,16 +4027,20 @@ class PositionManager:
                     else:
                         denominator = pnl_cap - trailing_trigger
                         if denominator > 0:
-                            x = min(1.0, max(0.0, (pnl - trailing_trigger) / denominator))
+                            x = min(
+                                1.0, max(0.0, (pnl - trailing_trigger) / denominator)
+                            )
                             trailing_distance = min_dist + (max_dist - min_dist) * x
                         else:
                             trailing_distance = max_dist
 
                     old_sl = self.active_position.sl
-                    new_sl = self._update_trailing_stop_fixe(current_price, trailing_distance)
+                    new_sl = self._update_trailing_stop_fixe(
+                        current_price, trailing_distance
+                    )
                     if new_sl:
                         self.active_position.sl = new_sl
-                        self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_FIXE')
+                        self._enforce_fixe_sl_not_wider(context="TRAILING_STOP_FIXE")
                         self.active_position.dynamic_sl = new_sl
                         # PHASE 0.5: Capturer trailing final SL et distance
                         self.active_position.trailing_final_sl = new_sl
@@ -3238,11 +4049,16 @@ class PositionManager:
                             f"🎢 Trailing FIXE {self.active_position.symbol}: "
                             f"SL {old_sl:.8f} → {new_sl:.8f} | PnL={pnl:.3f}% | Distance={trailing_distance:.3f}%"
                         )
-                        self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
-                            'old_sl': old_sl,
-                            'new_sl': new_sl,
-                            'trailing_distance': trailing_distance
-                        })
+                        self._log_trade_event(
+                            "TRAILING_SL_MOVED",
+                            current_price,
+                            pnl,
+                            details={
+                                "old_sl": old_sl,
+                                "new_sl": new_sl,
+                                "trailing_distance": trailing_distance,
+                            },
+                        )
                 else:
                     # Mode ATR : utiliser distance adaptative
                     # FIX SPRINT 3: Passer la distance calculée avec les multiplicateurs adaptatifs
@@ -3253,69 +4069,76 @@ class PositionManager:
                         self.active_position.to_dict(),
                         current_price=current_price,
                         pnl_percent=pnl,
-                        custom_distance_pct=custom_dist
+                        custom_distance_pct=custom_dist,
                     )
                     if new_sl:
                         self.active_position.sl = new_sl
-                        self._enforce_fixe_sl_not_wider(context='TRAILING_STOP_ATR')
+                        self._enforce_fixe_sl_not_wider(context="TRAILING_STOP_ATR")
                         self.active_position.dynamic_sl = new_sl
                         # PHASE 0.5: Capturer trailing final SL et distance
                         self.active_position.trailing_final_sl = new_sl
                         self.active_position.trailing_distance_pct = custom_dist
-                        self.active_position.trailing_distance_pct = abs(current_price - new_sl) / entry * 100
-                        self._log_trade_event('TRAILING_SL_MOVED', current_price, pnl, details={
-                            'old_sl': old_sl,
-                            'new_sl': new_sl
-                        })
+                        self.active_position.trailing_distance_pct = (
+                            abs(current_price - new_sl) / entry * 100
+                        )
+                        self._log_trade_event(
+                            "TRAILING_SL_MOVED",
+                            current_price,
+                            pnl,
+                            details={"old_sl": old_sl, "new_sl": new_sl},
+                        )
 
         # 5. HYBRID: Stagnation Exit (Time Decay)
         stagnation_reason = self._check_stagnation_exit(pnl)
         if stagnation_reason:
-            self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_STAGNATION_RETURN')
+            self._enforce_fixe_sl_not_wider(context="CHECK_POSITION_STAGNATION_RETURN")
             return stagnation_reason
 
         # 6. Vérifier TP/SL
-        self._enforce_fixe_sl_not_wider(context='CHECK_POSITION_PRE_CHECK_LEVELS')
+        self._enforce_fixe_sl_not_wider(context="CHECK_POSITION_PRE_CHECK_LEVELS")
         return self._check_levels(current_price)
 
     def _check_levels(self, current_price: float) -> Optional[str]:
         """Vérifier si TP ou SL est touché"""
         from utils.effective_config import get_effective_value
+
         direction = self.active_position.direction
         sl = self.active_position.sl
         tp = self.active_position.tp
 
         # Calculer PnL
         pnl = self.pnl_calculator.calculate_pnl_percent(
-            self.active_position.entry,
-            current_price,
-            direction
+            self.active_position.entry, current_price, direction
         )
 
         # TP Escalier - Gestion spéciale
         if self.active_position.tp_escalier_enabled:
-            if self.active_position.tp_escalier_current_level >= len(self.active_position.tp_escalier_levels):
+            if self.active_position.tp_escalier_current_level >= len(
+                self.active_position.tp_escalier_levels
+            ):
                 # Tous niveaux passés, vérifier SL et TP final
-                if direction == 'LONG':
+                if direction == "LONG":
                     if current_price <= sl:
-                        return 'TS'
+                        return "TS"
                     if tp is not None and current_price >= tp:
-                        return 'TP'
+                        return "TP"
                 else:
                     if current_price >= sl:
-                        return 'TS'
+                        return "TS"
                     if tp is not None and current_price <= tp:
-                        return 'TP'
+                        return "TP"
                 return None
             else:
                 # Niveaux restants, vérifier seulement SL
-                has_tp_escalier_profits = len(self.active_position.tp_escalier_profits) > 0
-                if direction == 'LONG':
+                has_tp_escalier_profits = (
+                    len(self.active_position.tp_escalier_profits) > 0
+                )
+                if direction == "LONG":
                     if current_price <= sl:
-                        return 'TS' if (has_tp_escalier_profits or pnl >= 0) else 'SL'
+                        return "TS" if (has_tp_escalier_profits or pnl >= 0) else "SL"
                 else:
                     if current_price >= sl:
-                        return 'TS' if (has_tp_escalier_profits or pnl >= 0) else 'SL'
+                        return "TS" if (has_tp_escalier_profits or pnl >= 0) else "SL"
                 return None
 
         # Mode standard avec TP partiel
@@ -3323,15 +4146,17 @@ class PositionManager:
         # Le bloc précédent empêchait le TP final d'être atteint.
         # La vérification standard ci-dessous gère correctement tous les cas.
 
-        tp_sl_mode = get_effective_value('tp_sl_mode') or 'FIXE'
-        disable_final_tp_after_partial = get_effective_value('partial_tp_disable_final_tp')
+        tp_sl_mode = get_effective_value("tp_sl_mode") or "FIXE"
+        disable_final_tp_after_partial = get_effective_value(
+            "partial_tp_disable_final_tp"
+        )
         if disable_final_tp_after_partial is None:
             disable_final_tp_after_partial = False
 
         skip_final_tp = (
-            tp_sl_mode == 'FIXE'
+            tp_sl_mode == "FIXE"
             and disable_final_tp_after_partial
-            and getattr(self.active_position, 'partial_tp_sold', False)
+            and getattr(self.active_position, "partial_tp_sold", False)
         )
 
         # 🔥 DEBUG: Logs pour vérification des niveaux
@@ -3341,27 +4166,39 @@ class PositionManager:
         )
 
         # Vérification standard TP/SL
-        if direction == 'LONG':
+        if direction == "LONG":
             if current_price <= sl:
-                close_reason = 'TS' if pnl >= 0 else 'SL'
-                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} <= SL {sl} → {close_reason}")
+                close_reason = "TS" if pnl >= 0 else "SL"
+                logger.warning(
+                    f"🔚 {self.active_position.symbol}: Prix {current_price} <= SL {sl} → {close_reason}"
+                )
                 return close_reason
             if not skip_final_tp and current_price >= tp:
-                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} >= TP {tp} → TP")
-                return 'TP'
+                logger.warning(
+                    f"🔚 {self.active_position.symbol}: Prix {current_price} >= TP {tp} → TP"
+                )
+                return "TP"
         else:  # SHORT
             if current_price >= sl:
-                close_reason = 'TS' if pnl >= 0 else 'SL'
-                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} >= SL {sl} → {close_reason}")
+                close_reason = "TS" if pnl >= 0 else "SL"
+                logger.warning(
+                    f"🔚 {self.active_position.symbol}: Prix {current_price} >= SL {sl} → {close_reason}"
+                )
                 return close_reason
             if not skip_final_tp and current_price <= tp:
-                logger.warning(f"🔚 {self.active_position.symbol}: Prix {current_price} <= TP {tp} → TP")
-                return 'TP'
+                logger.warning(
+                    f"🔚 {self.active_position.symbol}: Prix {current_price} <= TP {tp} → TP"
+                )
+                return "TP"
 
-        logger.debug(f"➡️ {self.active_position.symbol}: Position continue (aucun niveau touché)")
+        logger.debug(
+            f"➡️ {self.active_position.symbol}: Position continue (aucun niveau touché)"
+        )
         return None
 
-    def close_position(self, exit_price: float, reason: str, skip_order: bool = False) -> Dict[str, Any]:
+    def close_position(
+        self, exit_price: float, reason: str, skip_order: bool = False
+    ) -> Dict[str, Any]:
         """
         Fermer la position active
 
@@ -3382,9 +4219,11 @@ class PositionManager:
 
         # 🔥 FIX: Détecter si la position a déjà été fermée sur MEXC (TP forcé à 100%)
         # Dans ce cas, size_remaining_contracts = 0 et on ne doit pas envoyer d'ordre
-        if (self.active_position.size_remaining_contracts == 0 and
-            self.active_position.partial_tp_sold and
-            reason == 'TP'):
+        if (
+            self.active_position.size_remaining_contracts == 0
+            and self.active_position.partial_tp_sold
+            and reason == "TP"
+        ):
             logger.info(
                 f"📋 Position déjà fermée sur MEXC (TP forcé 100%): {self.active_position.symbol} | "
                 f"Finalisation du trade sans envoyer d'ordre..."
@@ -3393,7 +4232,7 @@ class PositionManager:
 
         # 🔥 FIX Phase 1D: Si SL_EXCHANGE, la position est DÉJÀ fermée par MEXC
         # Ne pas envoyer d'ordre de fermeture (évite erreur 2009)
-        if reason == 'SL_EXCHANGE':
+        if reason == "SL_EXCHANGE":
             logger.info(
                 f"📋 Position fermée par SL MEXC: {self.active_position.symbol} | "
                 f"Prix exécution: {exit_price} | "
@@ -3402,7 +4241,7 @@ class PositionManager:
             skip_order = True
             # 🔥 FIX: Renseigner exit_fill_price pour SL_EXCHANGE (prix passé en paramètre)
             self.active_position.exit_fill_price = exit_price
-            self.active_position.exit_order_type = 'sl_exchange'
+            self.active_position.exit_order_type = "sl_exchange"
             self.active_position.exit_requested_price = self.active_position.sl
 
         # ✅ FIX: Validation exit_price avec fallback multi-niveaux
@@ -3416,16 +4255,13 @@ class PositionManager:
             # Fallback 1: Essayer le cache de prix
             cached_price = self.get_cached_price(
                 self.active_position.symbol,
-                max_age_ms=30000  # 30 secondes max
+                max_age_ms=30000,  # 30 secondes max
             )
 
             if cached_price and cached_price > 0:
                 exit_price = cached_price
                 exit_price_source = "cache"
-                logger.info(
-                    f"✅ Utilisation prix en cache: {exit_price} "
-                    f"(âge < 30s)"
-                )
+                logger.info(f"✅ Utilisation prix en cache: {exit_price} (âge < 30s)")
             else:
                 # Fallback 2: Utiliser le prix d'entrée
                 exit_price = self.active_position.entry
@@ -3439,7 +4275,10 @@ class PositionManager:
         duration = int(time.time() - self.active_position.start_time)
 
         # 🔥 FIX SL_EXCHANGE: Ne jamais attendre pour SL_EXCHANGE (position déjà fermée sur MEXC)
-        if duration < MIN_LIVE_TRADE_DURATION_SEC and reason not in ['SL', 'SL_EXCHANGE']:
+        if duration < MIN_LIVE_TRADE_DURATION_SEC and reason not in [
+            "SL",
+            "SL_EXCHANGE",
+        ]:
             wait_time = MIN_LIVE_TRADE_DURATION_SEC - duration
             if wait_time > 0:
                 logger.info(
@@ -3452,13 +4291,15 @@ class PositionManager:
         # 🔥 FIX CRITIQUE: Limiter exit_price au SL + slippage maximum (éviter pertes > SL configuré)
         # Problème: Un trade a perdu -2.10% alors que SL = 0.20% (facteur x10 inacceptable)
         # Cause: Latence entre vérification et execution, prix peut dépasser largement le SL
-        if reason in ['SL', 'EARLY_INVALIDATION']:
-            max_slippage_on_sl = get_effective_value('max_slippage_pct') or 0.03  # 0.03% max par défaut
+        if reason in ["SL", "EARLY_INVALIDATION"]:
+            max_slippage_on_sl = (
+                get_effective_value("max_slippage_pct") or 0.03
+            )  # 0.03% max par défaut
             sl = self.active_position.sl
             entry = self.active_position.entry
             direction = self.active_position.direction
 
-            if direction == 'LONG':
+            if direction == "LONG":
                 # SL est en dessous de entry
                 # Accepter max 0.03% de slippage sous le SL
                 min_exit = sl * (1 - max_slippage_on_sl / 100)
@@ -3471,7 +4312,7 @@ class PositionManager:
                         f"🔴 SLIPPAGE EXTRÊME détecté sur SL: "
                         f"{self.active_position.symbol} | "
                         f"Prix original={original_exit:.8f} ({original_pnl:.2f}%) < "
-                        f"SL={sl:.8f} ({((sl-entry)/entry)*100:.2f}%) | "
+                        f"SL={sl:.8f} ({((sl - entry) / entry) * 100:.2f}%) | "
                         f"Prix plafonné={exit_price:.8f} ({exit_pnl:.2f}%) | "
                         f"Slippage max autorisé: {max_slippage_on_sl}%"
                     )
@@ -3487,7 +4328,7 @@ class PositionManager:
                         f"🔴 SLIPPAGE EXTRÊME détecté sur SL: "
                         f"{self.active_position.symbol} | "
                         f"Prix original={original_exit:.8f} ({original_pnl:.2f}%) > "
-                        f"SL={sl:.8f} ({((entry-sl)/entry)*100:.2f}%) | "
+                        f"SL={sl:.8f} ({((entry - sl) / entry) * 100:.2f}%) | "
                         f"Prix plafonné={exit_price:.8f} ({exit_pnl:.2f}%) | "
                         f"Slippage max autorisé: {max_slippage_on_sl}%"
                     )
@@ -3503,7 +4344,9 @@ class PositionManager:
                 size_amount = self.active_position.position_size_contracts
                 if not size_amount:
                     entry_price = self.active_position.entry or 1
-                    size_amount = (self.active_position.size / entry_price) if entry_price else 0
+                    size_amount = (
+                        (self.active_position.size / entry_price) if entry_price else 0
+                    )
 
                 order_result = self.live_order_manager.close_position(
                     symbol=self.active_position.symbol,
@@ -3511,7 +4354,7 @@ class PositionManager:
                     entry_price=self.active_position.entry,
                     current_price=exit_price,
                     size_amount=size_amount,
-                    partial_pct=None  # Full close
+                    partial_pct=None,  # Full close
                 )
 
                 if order_result.success:
@@ -3520,23 +4363,33 @@ class PositionManager:
                     actual_slippage_pct = order_result.actual_slippage_pct or 0.0
                     # 💾 Stocker métadonnées ordre de sortie
                     self.active_position.exit_order_id = order_result.order_id
-                    self.active_position.exit_order_type = 'market'
+                    self.active_position.exit_order_type = "market"
                     self.active_position.exit_requested_price = requested_exit_price
                     self.active_position.exit_fill_price = order_result.filled_price
                     self.active_position.exit_slippage_pct = actual_slippage_pct
                     self.active_position.exit_latency_ms = order_result.latency_ms
                     self.active_position.exit_timestamp = order_result.executed_at
-                    self.active_position.exit_fee_usdt = getattr(order_result, 'actual_fees_usdt', None)
+                    self.active_position.exit_fee_usdt = getattr(
+                        order_result, "actual_fees_usdt", None
+                    )
                     self.active_position.time_to_fill_exit_ms = order_result.latency_ms
-                    self.active_position.funding_rate_at_exit = getattr(order_result, 'funding_rate', None)
-                    self.active_position.exit_api_response = getattr(order_result, 'raw_api_response', None)
+                    self.active_position.funding_rate_at_exit = getattr(
+                        order_result, "funding_rate", None
+                    )
+                    self.active_position.exit_api_response = getattr(
+                        order_result, "raw_api_response", None
+                    )
                     entry_fees = self.active_position.entry_fee_usdt or 0.0
-                    exit_fees = getattr(order_result, 'actual_fees_usdt', None) or 0.0
+                    exit_fees = getattr(order_result, "actual_fees_usdt", None) or 0.0
                     self.active_position.total_fees_usdt = entry_fees + exit_fees
 
                     # Calculer PnL réalisé depuis order_result
                     realized_pnl_usdt = order_result.actual_pnl_usdt or 0.0
-                    realized_pnl_pct = (realized_pnl_usdt / self.active_position.size * 100) if self.active_position.size > 0 else 0.0
+                    realized_pnl_pct = (
+                        (realized_pnl_usdt / self.active_position.size * 100)
+                        if self.active_position.size > 0
+                        else 0.0
+                    )
 
                     # 🔥 FIX 19/12/2025: Stocker le PnL MEXC réel pour utilisation dans result
                     self.active_position.mexc_actual_pnl_usdt = realized_pnl_usdt
@@ -3553,7 +4406,11 @@ class PositionManager:
                     # Cela signifie que la position a été fermée autrement (manuellement, liquidation, etc.)
                     error_msg = order_result.error_message or ""
                     # Note: FuturesOrderResult n'a pas error_code, seulement error_message
-                    if "2009" in error_msg or "nonexistent" in error_msg.lower() or "closed" in error_msg.lower():
+                    if (
+                        "2009" in error_msg
+                        or "nonexistent" in error_msg.lower()
+                        or "closed" in error_msg.lower()
+                    ):
                         logger.info(
                             f"✅ Position DÉJÀ FERMÉE sur MEXC: {self.active_position.symbol} | "
                             f"Message: {error_msg} | "
@@ -3575,84 +4432,103 @@ class PositionManager:
         exit_price = actual_exit_price
 
         # ✅ Déterminer si on dispose de données réelles d'exchange (prix rempli + fees réels)
-        actual_entry_fee = getattr(self.active_position, 'entry_fee_usdt', None)
-        actual_exit_fee = getattr(self.active_position, 'exit_fee_usdt', None)
+        actual_entry_fee = getattr(self.active_position, "entry_fee_usdt", None)
+        actual_exit_fee = getattr(self.active_position, "exit_fee_usdt", None)
         actual_fees_usdt = None
         if actual_entry_fee is not None or actual_exit_fee is not None:
             actual_fees_usdt = (actual_entry_fee or 0.0) + (actual_exit_fee or 0.0)
 
-        has_exchange_fill = getattr(self.active_position, 'exit_fill_price', None) is not None
+        has_exchange_fill = (
+            getattr(self.active_position, "exit_fill_price", None) is not None
+        )
 
         # 🔥 FIX: Calculer PnL réalisé avec les frais configurés
         # (Si fees réels disponibles, ne pas ré-estimer)
-        mexc_pnl_usdt = getattr(self.active_position, 'mexc_actual_pnl_usdt', None)
-        fees_pct = (get_effective_value('fee_per_trade') or 0.0004) * 100  # 0.04% par défaut
+        mexc_pnl_usdt = getattr(self.active_position, "mexc_actual_pnl_usdt", None)
+        fees_pct = (
+            get_effective_value("fee_per_trade") or 0.0004
+        ) * 100  # 0.04% par défaut
         if actual_fees_usdt is not None or mexc_pnl_usdt is not None:
             fees_pct = 0.0
 
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
             position=self.active_position.to_dict(),
             exit_price=exit_price,
-            fees_percent=fees_pct
+            fees_percent=fees_pct,
         )
 
         # ✅ Si frais réels connus, écraser les fees et net_pnl calculés
         if actual_fees_usdt is not None:
-            pnl_data['fees'] = round(actual_fees_usdt, 4)
-            net_pnl_actual = pnl_data['pnl_usdt_gross'] - actual_fees_usdt
-            pnl_data['net_pnl'] = round(net_pnl_actual, 4)
+            pnl_data["fees"] = round(actual_fees_usdt, 4)
+            net_pnl_actual = pnl_data["pnl_usdt_gross"] - actual_fees_usdt
+            pnl_data["net_pnl"] = round(net_pnl_actual, 4)
             if self.active_position.size > 0:
-                pnl_data['net_pnl_pct'] = round((net_pnl_actual / self.active_position.size) * 100, 6)
+                pnl_data["net_pnl_pct"] = round(
+                    (net_pnl_actual / self.active_position.size) * 100, 6
+                )
 
         # Calculer slippage si applicable
         # 🔥 FIX: _estimate_slippage retourne un pourcentage (%)
         slippage_pct = 0.0
         # 🔥 INFO: Log pour vérifier les conditions (changer de debug à info pour visibilité)
-        logger.info(f"💹 Calcul slippage: use_slippage_calculation={self.config.use_slippage_calculation}, "
-                   f"scalability_data={'présent' if self.active_position.scalability_data else 'absent'}")
+        logger.info(
+            f"💹 Calcul slippage: use_slippage_calculation={self.config.use_slippage_calculation}, "
+            f"scalability_data={'présent' if self.active_position.scalability_data else 'absent'}"
+        )
 
-        if self.config.use_slippage_calculation and self.active_position.scalability_data:
-            spread_pct = self.active_position.scalability_data.get('spread_pct', 0.0)
-            depth = self.active_position.scalability_data.get('depth', 0.0)
-            balance = self.active_position.scalability_data.get('balance', 1.0)
+        if (
+            self.config.use_slippage_calculation
+            and self.active_position.scalability_data
+        ):
+            spread_pct = self.active_position.scalability_data.get("spread_pct", 0.0)
+            depth = self.active_position.scalability_data.get("depth", 0.0)
+            balance = self.active_position.scalability_data.get("balance", 1.0)
 
-            logger.info(f"💹 Données scalabilité: spread_pct={spread_pct}, depth={depth}, balance={balance}, size={self.active_position.size}")
+            logger.info(
+                f"💹 Données scalabilité: spread_pct={spread_pct}, depth={depth}, balance={balance}, size={self.active_position.size}"
+            )
 
             slippage_pct = self._estimate_slippage(
                 order_size=self.active_position.size,
                 spread_pct=spread_pct,
                 depth=depth,
                 balance_score=balance,
-                bid_vol=self.active_position.scalability_data.get('bid_vol'),
-                ask_vol=self.active_position.scalability_data.get('ask_vol')
+                bid_vol=self.active_position.scalability_data.get("bid_vol"),
+                ask_vol=self.active_position.scalability_data.get("ask_vol"),
             )
             logger.info(f"💹 Slippage calculé: {slippage_pct}%")
         else:
             if not self.config.use_slippage_calculation:
-                logger.warning("💹 Slippage non calculé: use_slippage_calculation est False")
+                logger.warning(
+                    "💹 Slippage non calculé: use_slippage_calculation est False"
+                )
             if not self.active_position.scalability_data:
                 logger.warning("💹 Slippage non calculé: scalability_data est absent")
 
         # 🔥 FIX: Convertir slippage_pct en USDT pour les calculs
-        slippage_usdt = (slippage_pct / 100) * self.active_position.size if self.active_position.size > 0 else 0.0
+        slippage_usdt = (
+            (slippage_pct / 100) * self.active_position.size
+            if self.active_position.size > 0
+            else 0.0
+        )
         # ✅ Si on a un prix d'exécution réel, ne pas appliquer un coût de slippage
         if has_exchange_fill:
             slippage_usdt = 0.0
 
         # Calculer coûts totaux (fees en USDT + slippage en USDT)
-        total_costs = pnl_data['fees'] + slippage_usdt
+        total_costs = pnl_data["fees"] + slippage_usdt
 
         # PnL net
         # 🔥 FIX CRITIQUE: Toujours utiliser la taille INITIALE (size_initial_usdt) pour calculer le % PnL.
         # Sinon, si on utilise la taille restante (ex: 50%), le PnL % est artificiellement doublé.
         # Le PnL USDT net, lui, est déjà correct car il additionne (Profit_Partiel + Profit_Restant).
         size_for_pct = (
-            getattr(self.active_position, 'size_initial_usdt', None) or
-            getattr(self.active_position, 'size_executed_usdt', None) or
-            self.active_position.size
+            getattr(self.active_position, "size_initial_usdt", None)
+            or getattr(self.active_position, "size_executed_usdt", None)
+            or self.active_position.size
         )
 
-        gross_pnl_pct = pnl_data['pnl_pct']
+        gross_pnl_pct = pnl_data["pnl_pct"]
 
         # 🔥 FIX: Gestion robuste de la division par zéro
         if size_for_pct > 0:
@@ -3662,7 +4538,7 @@ class PositionManager:
             logger.warning(f"⚠️ Position size est zéro lors du calcul des coûts")
 
         # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage USDT
-        net_pnl_usdt = pnl_data['net_pnl'] - slippage_usdt
+        net_pnl_usdt = pnl_data["net_pnl"] - slippage_usdt
 
         # 🔥 FIX CRITIQUE: Calculer net_pnl_pct directement depuis net_pnl_usdt / size_initial
         # Cela garantit cohérence parfaite: PnL % = PnL USDT / Size * 100
@@ -3674,11 +4550,13 @@ class PositionManager:
         # 🔥 FIX 19/12/2025: Comparer PnL calculé avec PnL MEXC réel et alerter si divergence
         if mexc_pnl_usdt is not None:
             partial_profit_usdt = 0.0
-            if getattr(self.active_position, 'partial_tp_sold', False):
-                partial_profit_usdt = float(getattr(self.active_position, 'partial_profit_usdt', 0.0) or 0.0)
+            if getattr(self.active_position, "partial_tp_sold", False):
+                partial_profit_usdt = float(
+                    getattr(self.active_position, "partial_profit_usdt", 0.0) or 0.0
+                )
 
             mexc_gross_pnl_usdt = mexc_pnl_usdt + partial_profit_usdt
-            pnl_divergence = abs(pnl_data['pnl_usdt_gross'] - mexc_gross_pnl_usdt)
+            pnl_divergence = abs(pnl_data["pnl_usdt_gross"] - mexc_gross_pnl_usdt)
             if pnl_divergence > 0.05:  # Divergence > 0.05 USDT
                 logger.warning(
                     f"🔴 PNL DIVERGENCE DÉTECTÉE: {self.active_position.symbol} | "
@@ -3692,11 +4570,13 @@ class PositionManager:
                 f"📊 Utilisation PnL MEXC réel (incl. TP partiel) au lieu du calculé: "
                 f"{mexc_gross_pnl_usdt:.4f} USDT"
             )
-            pnl_data['pnl_usdt_gross'] = round(mexc_gross_pnl_usdt, 4)
+            pnl_data["pnl_usdt_gross"] = round(mexc_gross_pnl_usdt, 4)
             if size_for_pct > 0:
-                pnl_data['pnl_pct'] = round((mexc_gross_pnl_usdt / size_for_pct) * 100, 6)
+                pnl_data["pnl_pct"] = round(
+                    (mexc_gross_pnl_usdt / size_for_pct) * 100, 6
+                )
 
-            net_pnl_usdt = pnl_data['pnl_usdt_gross'] - total_costs
+            net_pnl_usdt = pnl_data["pnl_usdt_gross"] - total_costs
             if size_for_pct > 0:
                 net_pnl_pct = (net_pnl_usdt / size_for_pct) * 100
 
@@ -3726,49 +4606,59 @@ class PositionManager:
         # Construire résultat
         # 🔥 FIX: Ajouter opened_at et closed_at pour l'affichage frontend
         # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
-        opened_at = datetime.fromtimestamp(self.active_position.start_time).isoformat() if hasattr(self.active_position, 'start_time') else self.active_position.timestamp
+        opened_at = (
+            datetime.fromtimestamp(self.active_position.start_time).isoformat()
+            if hasattr(self.active_position, "start_time")
+            else self.active_position.timestamp
+        )
         closed_at = datetime.now(timezone.utc).isoformat()
 
-        stable_trade_id = getattr(self.active_position, '_trade_id', None)
+        stable_trade_id = getattr(self.active_position, "_trade_id", None)
 
         result = {
-            'id': stable_trade_id,
-            'symbol': self.active_position.symbol,
-            'direction': self.active_position.direction,
-            'entry': self.active_position.entry,
-            'entry_price': self.active_position.entry,  # 🔥 FIX: Ajouté pour PostgreSQL log_trade
+            "id": stable_trade_id,
+            "symbol": self.active_position.symbol,
+            "direction": self.active_position.direction,
+            "entry": self.active_position.entry,
+            "entry_price": self.active_position.entry,  # 🔥 FIX: Ajouté pour PostgreSQL log_trade
             # 🔥 FIX Option B: Utiliser la taille exécutée (réelle) pour cohérence avec PnL
-            'size': round(size_for_pct, 4),  # Taille utilisée pour calcul PnL
-            'size_initial_usdt': getattr(self.active_position, 'size_initial_usdt', None),
-            'size_executed_usdt': getattr(self.active_position, 'size_executed_usdt', None),  # 🔥 NEW
-            'confirmed_by': getattr(self.active_position, 'confirmed_by', ''),  # 🔥 FIX: Ajouté pour l'affichage signals
+            "size": round(size_for_pct, 4),  # Taille utilisée pour calcul PnL
+            "size_initial_usdt": getattr(
+                self.active_position, "size_initial_usdt", None
+            ),
+            "size_executed_usdt": getattr(
+                self.active_position, "size_executed_usdt", None
+            ),  # 🔥 NEW
+            "confirmed_by": getattr(
+                self.active_position, "confirmed_by", ""
+            ),  # 🔥 FIX: Ajouté pour l'affichage signals
             # 🔥 FIX: Ajouter tp_sl_mode pour SQLite analytics
-            'tp_sl_mode': get_effective_value('tp_sl_mode') or 'FIXE',
+            "tp_sl_mode": get_effective_value("tp_sl_mode") or "FIXE",
             # ✅ FIX: Tracking source du exit_price
-            'exit_price_source': exit_price_source,
-            'exit_price_from_fallback': exit_price_source != "api",
+            "exit_price_source": exit_price_source,
+            "exit_price_from_fallback": exit_price_source != "api",
             # ✅ Métadonnées clôture + PnL (attendu par tests/loggers/UI)
-            'closure_id': closure_id,
-            'exit': exit_price,
-            'exit_price': exit_price,
-            'reason': reason,
-            'close_reason': reason,
-            'exit_reason': reason,
-            'opened_at': opened_at,
-            'closed_at': closed_at,
-            'duration': duration,
-            'duration_seconds': duration,
-            'pnl_pct': pnl_data['pnl_pct'],
-            'pnl_usdt': pnl_data['pnl_usdt_gross'],
-            'gross_pnl_pct': pnl_data['pnl_pct'],
-            'gross_pnl_usdt': pnl_data['pnl_usdt_gross'],
-            'net_pnl_pct': net_pnl_pct,
-            'net_pnl_usdt': net_pnl_usdt,
-            'fees': pnl_data['fees'],
-            'slippage_pct': slippage_pct,
-            'slippage_usdt': slippage_usdt,
-            'total_costs': total_costs,
-            'total_costs_pct': total_costs_pct
+            "closure_id": closure_id,
+            "exit": exit_price,
+            "exit_price": exit_price,
+            "reason": reason,
+            "close_reason": reason,
+            "exit_reason": reason,
+            "opened_at": opened_at,
+            "closed_at": closed_at,
+            "duration": duration,
+            "duration_seconds": duration,
+            "pnl_pct": pnl_data["pnl_pct"],
+            "pnl_usdt": pnl_data["pnl_usdt_gross"],
+            "gross_pnl_pct": pnl_data["pnl_pct"],
+            "gross_pnl_usdt": pnl_data["pnl_usdt_gross"],
+            "net_pnl_pct": net_pnl_pct,
+            "net_pnl_usdt": net_pnl_usdt,
+            "fees": pnl_data["fees"],
+            "slippage_pct": slippage_pct,
+            "slippage_usdt": slippage_usdt,
+            "total_costs": total_costs,
+            "total_costs_pct": total_costs_pct,
         }
 
         # ========================================
@@ -3778,28 +4668,47 @@ class PositionManager:
         # 🔥 PHASE 2: Logger dans PostgreSQL si activé
         try:
             from core.callbacks.scanner_loop import get_pg_datalogger
+
             pg_datalogger = get_pg_datalogger()
             if pg_datalogger and pg_datalogger.enabled:
                 try:
                     # Préparer les données du trade pour PostgreSQL
                     # Récupérer pnl_history pour métriques de position
                     pnl_history = []
-                    if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history:
+                    if (
+                        hasattr(self.active_position, "pnl_history")
+                        and self.active_position.pnl_history
+                    ):
                         pnl_history = self.active_position.pnl_history
 
                     # Récupérer entry_indicators, entry_conditions, entry_scalability
-                    entry_indicators = getattr(self.active_position, '_entry_indicators', {})
-                    entry_conditions = getattr(self.active_position, '_entry_conditions', [])
-                    entry_scalability = getattr(self.active_position, '_entry_scalability', {})
+                    entry_indicators = getattr(
+                        self.active_position, "_entry_indicators", {}
+                    )
+                    entry_conditions = getattr(
+                        self.active_position, "_entry_conditions", []
+                    )
+                    entry_scalability = getattr(
+                        self.active_position, "_entry_scalability", {}
+                    )
 
                     # 🔥 FIX: Si entry_indicators est vide, essayer de récupérer depuis scan_log_id
-                    if not entry_indicators or all(v is None for v in entry_indicators.values()):
-                        scan_log_id = getattr(self.active_position, '_scan_log_id', None)
+                    if not entry_indicators or all(
+                        v is None for v in entry_indicators.values()
+                    ):
+                        scan_log_id = getattr(
+                            self.active_position, "_scan_log_id", None
+                        )
                         if scan_log_id:
-                            logger.warning(f"⚠️ entry_indicators vide pour {self.active_position.symbol}, tentative de récupération depuis scan_log_id={scan_log_id}")
+                            logger.warning(
+                                f"⚠️ entry_indicators vide pour {self.active_position.symbol}, tentative de récupération depuis scan_log_id={scan_log_id}"
+                            )
                             # Essayer de récupérer depuis PostgreSQL si disponible
                             try:
-                                from core.callbacks.scanner_loop import get_pg_datalogger
+                                from core.callbacks.scanner_loop import (
+                                    get_pg_datalogger,
+                                )
+
                                 pg_datalogger = get_pg_datalogger()
                                 if pg_datalogger and pg_datalogger.enabled:
                                     # Récupérer les indicateurs depuis scan_logs (colonnes individuelles, pas JSONB)
@@ -3825,38 +4734,82 @@ class PositionManager:
                                         WHERE id = %s
                                         LIMIT 1
                                     """
-                                    db_result = pg_datalogger._execute_query(query, (scan_log_id,), fetch=True)
+                                    db_result = pg_datalogger._execute_query(
+                                        query, (scan_log_id,), fetch=True
+                                    )
                                     if db_result and db_result[0]:
                                         row = db_result[0]
                                         # Reconstruire entry_indicators depuis les colonnes individuelles
                                         entry_indicators = {
-                                            'rsi_1m': row[0], 'rsi_5m': row[1], 'rsi_prev_1m': row[2], 'rsi_prev_5m': row[3],
-                                            'macd_1m': row[4], 'macd_signal_1m': row[5], 'macd_hist_1m': row[6], 'macd_hist_prev_1m': row[7],
-                                            'macd_5m': row[8], 'macd_signal_5m': row[9], 'macd_hist_5m': row[10], 'macd_hist_prev_5m': row[11],
-                                            'adx_1m': row[12], 'adx_5m': row[13],
-                                            'di_plus_1m': row[14], 'di_minus_1m': row[15], 'di_gap_1m': row[16],
-                                            'di_plus_5m': row[17], 'di_minus_5m': row[18], 'di_gap_5m': row[19],
-                                            'ema9_1m': row[20], 'ema21_1m': row[21], 'ema_diff_pct_1m': row[22],
-                                            'ema9_5m': row[23], 'ema21_5m': row[24], 'ema_diff_pct_5m': row[25],
-                                            'atr_1m': row[26], 'atr_pct_1m': row[27], 'atr_5m': row[28], 'atr_pct_5m': row[29],
-                                            'bb_upper_1m': row[30], 'bb_middle_1m': row[31], 'bb_lower_1m': row[32],
-                                            'bb_width_1m': row[33], 'bb_distance_to_lower_1m': row[34], 'bb_distance_to_upper_1m': row[35],
-                                            'bb_upper_5m': row[36], 'bb_middle_5m': row[37], 'bb_lower_5m': row[38],
-                                            'bb_width_5m': row[39], 'bb_distance_to_lower_5m': row[40], 'bb_distance_to_upper_5m': row[41],
-                                            'volume_1m': row[42], 'volume_avg_1m': row[43], 'volume_ratio_1m': row[44], 'volume_spike_1m': row[45],
-                                            'volume_5m': row[46], 'volume_avg_5m': row[47], 'volume_ratio_5m': row[48], 'volume_spike_5m': row[49],
-                                            'score': row[50] if len(row) > 50 else None,
+                                            "rsi_1m": row[0],
+                                            "rsi_5m": row[1],
+                                            "rsi_prev_1m": row[2],
+                                            "rsi_prev_5m": row[3],
+                                            "macd_1m": row[4],
+                                            "macd_signal_1m": row[5],
+                                            "macd_hist_1m": row[6],
+                                            "macd_hist_prev_1m": row[7],
+                                            "macd_5m": row[8],
+                                            "macd_signal_5m": row[9],
+                                            "macd_hist_5m": row[10],
+                                            "macd_hist_prev_5m": row[11],
+                                            "adx_1m": row[12],
+                                            "adx_5m": row[13],
+                                            "di_plus_1m": row[14],
+                                            "di_minus_1m": row[15],
+                                            "di_gap_1m": row[16],
+                                            "di_plus_5m": row[17],
+                                            "di_minus_5m": row[18],
+                                            "di_gap_5m": row[19],
+                                            "ema9_1m": row[20],
+                                            "ema21_1m": row[21],
+                                            "ema_diff_pct_1m": row[22],
+                                            "ema9_5m": row[23],
+                                            "ema21_5m": row[24],
+                                            "ema_diff_pct_5m": row[25],
+                                            "atr_1m": row[26],
+                                            "atr_pct_1m": row[27],
+                                            "atr_5m": row[28],
+                                            "atr_pct_5m": row[29],
+                                            "bb_upper_1m": row[30],
+                                            "bb_middle_1m": row[31],
+                                            "bb_lower_1m": row[32],
+                                            "bb_width_1m": row[33],
+                                            "bb_distance_to_lower_1m": row[34],
+                                            "bb_distance_to_upper_1m": row[35],
+                                            "bb_upper_5m": row[36],
+                                            "bb_middle_5m": row[37],
+                                            "bb_lower_5m": row[38],
+                                            "bb_width_5m": row[39],
+                                            "bb_distance_to_lower_5m": row[40],
+                                            "bb_distance_to_upper_5m": row[41],
+                                            "volume_1m": row[42],
+                                            "volume_avg_1m": row[43],
+                                            "volume_ratio_1m": row[44],
+                                            "volume_spike_1m": row[45],
+                                            "volume_5m": row[46],
+                                            "volume_avg_5m": row[47],
+                                            "volume_ratio_5m": row[48],
+                                            "volume_spike_5m": row[49],
+                                            "score": row[50] if len(row) > 50 else None,
                                         }
-                                        logger.info(f"✅ Indicateurs récupérés depuis PostgreSQL pour {self.active_position.symbol}")
+                                        logger.info(
+                                            f"✅ Indicateurs récupérés depuis PostgreSQL pour {self.active_position.symbol}"
+                                        )
                             except Exception as e:
-                                logger.debug(f"Erreur récupération indicateurs depuis PostgreSQL: {e}")
+                                logger.debug(
+                                    f"Erreur récupération indicateurs depuis PostgreSQL: {e}"
+                                )
 
                     # Récupérer timestamps
                     from utils.effective_config import get_effective_config
+
                     timestamp_entry = None
-                    if hasattr(self.active_position, 'start_time'):
-                        timestamp_entry = datetime.fromtimestamp(self.active_position.start_time).isoformat()
-                    elif hasattr(self.active_position, 'timestamp'):
+                    if hasattr(self.active_position, "start_time"):
+                        timestamp_entry = datetime.fromtimestamp(
+                            self.active_position.start_time
+                        ).isoformat()
+                    elif hasattr(self.active_position, "timestamp"):
                         timestamp_entry = self.active_position.timestamp
                     else:
                         # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
@@ -3868,11 +4821,15 @@ class PositionManager:
                     # Préparer config_snapshot complet (toutes les variables de configuration)
                     # 🔥 FIX BUG #1: Utiliser serialize_config_safe() pour éviter les erreurs de sérialisation
                     from config import (
-                        RISK_CONFIG, CONDITION_WEIGHTS,
-                        TREND_BONUS_CONFIG, RETRY_CONFIG, CIRCUIT_BREAKER_CONFIG,
-                        WEBSOCKET_CONFIG
+                        RISK_CONFIG,
+                        CONDITION_WEIGHTS,
+                        TREND_BONUS_CONFIG,
+                        RETRY_CONFIG,
+                        CIRCUIT_BREAKER_CONFIG,
+                        WEBSOCKET_CONFIG,
                     )
                     from core.postgresql_datalogger import serialize_config_safe
+
                     config_snapshot = {}
                     # Copier EFFECTIVE_CONFIG avec sérialisation safe
                     effective_cfg = get_effective_config()
@@ -3880,18 +4837,45 @@ class PositionManager:
                         config_snapshot.update(serialize_config_safe(effective_cfg))
 
                     # 🔥 SPRINT 3: Injecter la config effective locale (prioritaire pour le logging)
-                    if hasattr(self.active_position, 'effective_config') and self.active_position.effective_config:
-                        effective_conf_safe = serialize_config_safe(self.active_position.effective_config)
+                    if (
+                        hasattr(self.active_position, "effective_config")
+                        and self.active_position.effective_config
+                    ):
+                        effective_conf_safe = serialize_config_safe(
+                            self.active_position.effective_config
+                        )
                         config_snapshot.update(effective_conf_safe)
-                        config_snapshot['effective_config_used'] = True  # Marqueur pour le frontend
+                        config_snapshot["effective_config_used"] = (
+                            True  # Marqueur pour le frontend
+                        )
 
                     # Ajouter les variables définies séparément avec sérialisation safe
-                    config_snapshot['RISK_CONFIG'] = serialize_config_safe(RISK_CONFIG) if RISK_CONFIG else {}
-                    config_snapshot['CONDITION_WEIGHTS'] = serialize_config_safe(CONDITION_WEIGHTS) if CONDITION_WEIGHTS else {}
-                    config_snapshot['TREND_BONUS_CONFIG'] = serialize_config_safe(TREND_BONUS_CONFIG) if TREND_BONUS_CONFIG else {}
-                    config_snapshot['RETRY_CONFIG'] = serialize_config_safe(RETRY_CONFIG) if RETRY_CONFIG else {}
-                    config_snapshot['CIRCUIT_BREAKER_CONFIG'] = serialize_config_safe(CIRCUIT_BREAKER_CONFIG) if CIRCUIT_BREAKER_CONFIG else {}
-                    config_snapshot['WEBSOCKET_CONFIG'] = serialize_config_safe(WEBSOCKET_CONFIG) if WEBSOCKET_CONFIG else {}
+                    config_snapshot["RISK_CONFIG"] = (
+                        serialize_config_safe(RISK_CONFIG) if RISK_CONFIG else {}
+                    )
+                    config_snapshot["CONDITION_WEIGHTS"] = (
+                        serialize_config_safe(CONDITION_WEIGHTS)
+                        if CONDITION_WEIGHTS
+                        else {}
+                    )
+                    config_snapshot["TREND_BONUS_CONFIG"] = (
+                        serialize_config_safe(TREND_BONUS_CONFIG)
+                        if TREND_BONUS_CONFIG
+                        else {}
+                    )
+                    config_snapshot["RETRY_CONFIG"] = (
+                        serialize_config_safe(RETRY_CONFIG) if RETRY_CONFIG else {}
+                    )
+                    config_snapshot["CIRCUIT_BREAKER_CONFIG"] = (
+                        serialize_config_safe(CIRCUIT_BREAKER_CONFIG)
+                        if CIRCUIT_BREAKER_CONFIG
+                        else {}
+                    )
+                    config_snapshot["WEBSOCKET_CONFIG"] = (
+                        serialize_config_safe(WEBSOCKET_CONFIG)
+                        if WEBSOCKET_CONFIG
+                        else {}
+                    )
 
                     # Préparer indicateurs de sortie
                     # 🔥 FIX: Récupérer les indicateurs depuis pnl_history (dernier point)
@@ -3899,204 +4883,437 @@ class PositionManager:
                     exit_indicators = {}
                     try:
                         # Utiliser les derniers indicateurs du pnl_history si disponibles
-                        if hasattr(self.active_position, 'pnl_history') and self.active_position.pnl_history:
+                        if (
+                            hasattr(self.active_position, "pnl_history")
+                            and self.active_position.pnl_history
+                        ):
                             last_entry = self.active_position.pnl_history[-1]
                             # Les indicateurs peuvent être stockés dans _last_indicators
-                            last_indicators = getattr(self.active_position, '_last_indicators', {})
+                            last_indicators = getattr(
+                                self.active_position, "_last_indicators", {}
+                            )
                             if last_indicators:
                                 exit_indicators = last_indicators
-                                logger.debug(f"📊 Exit indicators depuis _last_indicators: {exit_indicators}")
+                                logger.debug(
+                                    f"📊 Exit indicators depuis _last_indicators: {exit_indicators}"
+                                )
 
                         # Si toujours vide, on laisse vide (évite RuntimeWarning en essayant d'appeler async depuis sync)
                         if not exit_indicators:
-                            logger.debug("⚠️ Pas d'indicateurs de sortie disponibles (async call skipped)")
+                            logger.debug(
+                                "⚠️ Pas d'indicateurs de sortie disponibles (async call skipped)"
+                            )
 
                     except Exception as e:
-                        logger.warning(f"⚠️ Impossible de récupérer exit_indicators: {e}")
+                        logger.warning(
+                            f"⚠️ Impossible de récupérer exit_indicators: {e}"
+                        )
                         exit_indicators = {}
 
                     # 🔥 Déterminer le mode de trading (Live/Paper et Dry-Run)
                     is_live_trade = self.live_order_manager is not None
-                    is_dry_run = getattr(self.live_order_manager, 'dry_run', True) if self.live_order_manager else False
-                    live_execution_mode = 'DRY_RUN' if is_dry_run else ('LIVE_REAL' if is_live_trade else 'PAPER')
+                    is_dry_run = (
+                        getattr(self.live_order_manager, "dry_run", True)
+                        if self.live_order_manager
+                        else False
+                    )
+                    live_execution_mode = (
+                        "DRY_RUN"
+                        if is_dry_run
+                        else ("LIVE_REAL" if is_live_trade else "PAPER")
+                    )
 
                     trade_data = {
-                        'symbol': self.active_position.symbol,
-                        'direction': self.active_position.direction,
-                        'entry_price': self.active_position.entry,
-                        'exit_price': exit_price,
-                        'tp_price': self.active_position.tp,
-                        'sl_price': self.active_position.sl,
-                        'size_usdt': self.active_position.size,
-                        'timestamp_entry': timestamp_entry,
-                        'timestamp_exit': timestamp_exit,
+                        "symbol": self.active_position.symbol,
+                        "direction": self.active_position.direction,
+                        "entry_price": self.active_position.entry,
+                        "exit_price": exit_price,
+                        "tp_price": self.active_position.tp,
+                        "sl_price": self.active_position.sl,
+                        "size_usdt": self.active_position.size,
+                        "timestamp_entry": timestamp_entry,
+                        "timestamp_exit": timestamp_exit,
                         # 🔥 LIVE TRADING MODE
-                        'is_live_trade': is_live_trade,
-                        'is_dry_run': is_dry_run,
-                        'live_execution_mode': live_execution_mode,
-                        'gross_pnl_usdt': pnl_data['pnl_usdt_gross'],
-                        'gross_pnl_pct': pnl_data['pnl_pct'],
-                        'net_pnl_usdt': net_pnl_usdt,
-                        'net_pnl_pct': net_pnl_pct,
-                        'fees': pnl_data['fees'],
-                        'slippage': slippage_pct,
-                        'total_costs': total_costs,
-                        'reason': reason,
-                        'duration_seconds': duration,
-                        'tp_sl_mode': get_effective_value('tp_sl_mode') or 'FIXE',
-                        'break_even_triggered': self.active_position.break_even_set,
-                        'break_even_triggered_at': datetime.fromtimestamp(self.active_position.break_even_triggered_at).isoformat() if self.active_position.break_even_triggered_at else None,
-                        'trailing_stop_triggered': self.active_position.trailing_activated or (reason == 'TS'),
-                        'trailing_stop_triggered_at': datetime.fromtimestamp(self.active_position.trailing_activated_at).isoformat() if self.active_position.trailing_activated_at else None,
-                        'partial_tp_triggered': self.active_position.partial_tp_sold,
-                        'partial_tp_percent': getattr(self.active_position, 'partial_tp_percent', None),
-                        'partial_tp_profit': getattr(self.active_position, 'partial_profit_usdt', None),
-                        # Early Invalidation
-                        'early_invalidation_triggered': (reason == 'EARLY_INVALIDATION'),
-                        'early_invalidation_triggered_at': getattr(self.active_position, '_early_invalidation_data', {}).get('triggered_at') if reason == 'EARLY_INVALIDATION' else None,
-                        'early_invalidation_threshold': getattr(self.active_position, '_early_invalidation_data', {}).get('threshold') if reason == 'EARLY_INVALIDATION' else None,
-                        'early_invalidation_elapsed': getattr(self.active_position, '_early_invalidation_data', {}).get('elapsed') if reason == 'EARLY_INVALIDATION' else None,
-                        'early_invalidation_atr_pct': getattr(self.active_position, '_early_invalidation_data', {}).get('atr_pct') if reason == 'EARLY_INVALIDATION' else None,
-                        'early_invalidation_pnl_pct': getattr(self.active_position, '_early_invalidation_data', {}).get('pnl_pct') if reason == 'EARLY_INVALIDATION' else None,
-                        'tp_escalier_enabled': self.active_position.tp_escalier_enabled,
-                        'tp_escalier_levels_hit': [
-                            {'level': i+1, 'profit': p.get('profit', 0)}
-                            for i, p in enumerate(self.active_position.tp_escalier_profits)
-                        ] if hasattr(self.active_position, 'tp_escalier_profits') and self.active_position.tp_escalier_profits else [],
-                        # 🔥 PHASE 0.5: Utiliser les valeurs trackées directement
-                        'max_pnl_reached': self.active_position.max_pnl_reached if self.active_position.max_pnl_reached is not None else (max([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None),
-                        'min_pnl_reached': self.active_position.min_pnl_reached if self.active_position.min_pnl_reached is not None else (min([p.get('pnl_pct', 0) for p in pnl_history], default=None) if pnl_history else None),
-                        'max_price_reached': self.active_position.max_price_reached,
-                        'min_price_reached': self.active_position.min_price_reached,
-                        'time_to_max_pnl_seconds': int(self.active_position.max_pnl_timestamp - self.active_position.start_time) if self.active_position.max_pnl_timestamp and self.active_position.start_time else None,
-                        'time_to_min_pnl_seconds': int(self.active_position.min_pnl_timestamp - self.active_position.start_time) if self.active_position.min_pnl_timestamp and self.active_position.start_time else None,
-                        # 🔥 PHASE 0.5 Extended: BE, Trailing, Stagnation details
-                        'break_even_price': self.active_position.be_price_at_trigger,
-                        'break_even_pnl_pct': self.active_position.be_pnl_at_trigger,
-                        # Trailing: capture sl final même si dynamic_sl non défini
-                        'trailing_final_sl': (
-                            self.active_position.dynamic_sl
-                            if self.active_position.trailing_activated and self.active_position.dynamic_sl
-                            else (self.active_position.sl if self.active_position.trailing_activated or reason == 'TS' else None)
+                        "is_live_trade": is_live_trade,
+                        "is_dry_run": is_dry_run,
+                        "live_execution_mode": live_execution_mode,
+                        "gross_pnl_usdt": pnl_data["pnl_usdt_gross"],
+                        "gross_pnl_pct": pnl_data["pnl_pct"],
+                        "net_pnl_usdt": net_pnl_usdt,
+                        "net_pnl_pct": net_pnl_pct,
+                        "fees": pnl_data["fees"],
+                        "slippage": slippage_pct,
+                        "total_costs": total_costs,
+                        "reason": reason,
+                        "duration_seconds": duration,
+                        "tp_sl_mode": get_effective_value("tp_sl_mode") or "FIXE",
+                        "break_even_triggered": self.active_position.break_even_set,
+                        "break_even_triggered_at": datetime.fromtimestamp(
+                            self.active_position.break_even_triggered_at
+                        ).isoformat()
+                        if self.active_position.break_even_triggered_at
+                        else None,
+                        "trailing_stop_triggered": self.active_position.trailing_activated
+                        or (reason == "TS"),
+                        "trailing_stop_triggered_at": datetime.fromtimestamp(
+                            self.active_position.trailing_activated_at
+                        ).isoformat()
+                        if self.active_position.trailing_activated_at
+                        else None,
+                        "partial_tp_triggered": self.active_position.partial_tp_sold,
+                        "partial_tp_percent": getattr(
+                            self.active_position, "partial_tp_percent", None
                         ),
-                        'trailing_distance_pct': (
-                            abs((self.active_position.entry or exit_price) - (
+                        "partial_tp_profit": getattr(
+                            self.active_position, "partial_profit_usdt", None
+                        ),
+                        # Early Invalidation
+                        "early_invalidation_triggered": (
+                            reason == "EARLY_INVALIDATION"
+                        ),
+                        "early_invalidation_triggered_at": getattr(
+                            self.active_position, "_early_invalidation_data", {}
+                        ).get("triggered_at")
+                        if reason == "EARLY_INVALIDATION"
+                        else None,
+                        "early_invalidation_threshold": getattr(
+                            self.active_position, "_early_invalidation_data", {}
+                        ).get("threshold")
+                        if reason == "EARLY_INVALIDATION"
+                        else None,
+                        "early_invalidation_elapsed": getattr(
+                            self.active_position, "_early_invalidation_data", {}
+                        ).get("elapsed")
+                        if reason == "EARLY_INVALIDATION"
+                        else None,
+                        "early_invalidation_atr_pct": getattr(
+                            self.active_position, "_early_invalidation_data", {}
+                        ).get("atr_pct")
+                        if reason == "EARLY_INVALIDATION"
+                        else None,
+                        "early_invalidation_pnl_pct": getattr(
+                            self.active_position, "_early_invalidation_data", {}
+                        ).get("pnl_pct")
+                        if reason == "EARLY_INVALIDATION"
+                        else None,
+                        "tp_escalier_enabled": self.active_position.tp_escalier_enabled,
+                        "tp_escalier_levels_hit": [
+                            {"level": i + 1, "profit": p.get("profit", 0)}
+                            for i, p in enumerate(
+                                self.active_position.tp_escalier_profits
+                            )
+                        ]
+                        if hasattr(self.active_position, "tp_escalier_profits")
+                        and self.active_position.tp_escalier_profits
+                        else [],
+                        # 🔥 PHASE 0.5: Utiliser les valeurs trackées directement
+                        "max_pnl_reached": self.active_position.max_pnl_reached
+                        if self.active_position.max_pnl_reached is not None
+                        else (
+                            max(
+                                [p.get("pnl_pct", 0) for p in pnl_history], default=None
+                            )
+                            if pnl_history
+                            else None
+                        ),
+                        "min_pnl_reached": self.active_position.min_pnl_reached
+                        if self.active_position.min_pnl_reached is not None
+                        else (
+                            min(
+                                [p.get("pnl_pct", 0) for p in pnl_history], default=None
+                            )
+                            if pnl_history
+                            else None
+                        ),
+                        "max_price_reached": self.active_position.max_price_reached,
+                        "min_price_reached": self.active_position.min_price_reached,
+                        "time_to_max_pnl_seconds": int(
+                            self.active_position.max_pnl_timestamp
+                            - self.active_position.start_time
+                        )
+                        if self.active_position.max_pnl_timestamp
+                        and self.active_position.start_time
+                        else None,
+                        "time_to_min_pnl_seconds": int(
+                            self.active_position.min_pnl_timestamp
+                            - self.active_position.start_time
+                        )
+                        if self.active_position.min_pnl_timestamp
+                        and self.active_position.start_time
+                        else None,
+                        # 🔥 PHASE 0.5 Extended: BE, Trailing, Stagnation details
+                        "break_even_price": self.active_position.be_price_at_trigger,
+                        "break_even_pnl_pct": self.active_position.be_pnl_at_trigger,
+                        # Trailing: capture sl final même si dynamic_sl non défini
+                        "trailing_final_sl": (
+                            self.active_position.dynamic_sl
+                            if self.active_position.trailing_activated
+                            and self.active_position.dynamic_sl
+                            else (
+                                self.active_position.sl
+                                if self.active_position.trailing_activated
+                                or reason == "TS"
+                                else None
+                            )
+                        ),
+                        "trailing_distance_pct": (
+                            abs(
+                                (self.active_position.entry or exit_price)
+                                - (
+                                    self.active_position.dynamic_sl
+                                    if self.active_position.dynamic_sl
+                                    else self.active_position.sl
+                                )
+                            )
+                            / (self.active_position.entry or exit_price)
+                            * 100
+                            if (
+                                self.active_position.trailing_activated
+                                or reason == "TS"
+                            )
+                            and (
                                 self.active_position.dynamic_sl
-                                if self.active_position.dynamic_sl
-                                else self.active_position.sl
-                            )) / (self.active_position.entry or exit_price) * 100
-                            if (self.active_position.trailing_activated or reason == 'TS')
-                            and (self.active_position.dynamic_sl or self.active_position.sl)
+                                or self.active_position.sl
+                            )
                             and (self.active_position.entry or exit_price)
                             else None
                         ),
-                        'stagnation_detected': isinstance(reason, str) and reason.startswith('STAGNATION'),
-                        'stagnation_detected_at': datetime.fromtimestamp(self.active_position.stagnation_detected_at).isoformat() if self.active_position.stagnation_detected_at else None,
+                        "stagnation_detected": isinstance(reason, str)
+                        and reason.startswith("STAGNATION"),
+                        "stagnation_detected_at": datetime.fromtimestamp(
+                            self.active_position.stagnation_detected_at
+                        ).isoformat()
+                        if self.active_position.stagnation_detected_at
+                        else None,
                         # Stagnation duration: temps depuis détection OU depuis le timeout
-                        'stagnation_duration_seconds': (
-                            int(time.time() - self.active_position.stagnation_detected_at)
+                        "stagnation_duration_seconds": (
+                            int(
+                                time.time()
+                                - self.active_position.stagnation_detected_at
+                            )
                             if self.active_position.stagnation_detected_at
-                            else (int(duration) if reason == 'STAGNATION' else None)
+                            else (int(duration) if reason == "STAGNATION" else None)
                         ),
-                        'stagnation_pnl_at_exit': self.active_position.stagnation_pnl_at_detection if self.active_position.stagnation_pnl_at_detection else (result['net_pnl_pct'] if reason == 'STAGNATION' else None),
+                        "stagnation_pnl_at_exit": self.active_position.stagnation_pnl_at_detection
+                        if self.active_position.stagnation_pnl_at_detection
+                        else (
+                            result["net_pnl_pct"] if reason == "STAGNATION" else None
+                        ),
                         # 🎯 Stagnation Positive/MFE Protect metrics
-                        'stagnation_positive_triggered': getattr(self.active_position, 'stagnation_positive_triggered', False),
-                        'stagnation_mfe_at_exit': getattr(self.active_position, 'stagnation_mfe_at_exit', None),
-                        'stagnation_pullback_at_exit': getattr(self.active_position, 'stagnation_pullback_at_exit', None),
+                        "stagnation_positive_triggered": getattr(
+                            self.active_position, "stagnation_positive_triggered", False
+                        ),
+                        "stagnation_mfe_at_exit": getattr(
+                            self.active_position, "stagnation_mfe_at_exit", None
+                        ),
+                        "stagnation_pullback_at_exit": getattr(
+                            self.active_position, "stagnation_pullback_at_exit", None
+                        ),
                         # 🎯 Trailing MFE data
-                        'trailing_mfe_triggered': self.active_position.trailing_mfe_triggered,
-                        'trailing_mfe_triggered_at': datetime.fromtimestamp(self.active_position.trailing_mfe_triggered_at).isoformat() if self.active_position.trailing_mfe_triggered_at else None,
-                        'trailing_mfe_trigger_pnl_pct': self.active_position.trailing_mfe_trigger_pnl_pct,
-                        'trailing_mfe_trigger_price': self.active_position.trailing_mfe_trigger_price,
-                        'pnl_history': pnl_history,  # Pour calculer max_favorable_excursion
-                        'entry_indicators': entry_indicators,
-                        'entry_conditions': entry_conditions,
-                        'entry_scalability': entry_scalability,
-                        'exit_indicators': exit_indicators,  # Vide pour l'instant, sera rempli plus tard
-                        'config_snapshot': config_snapshot,  # Toutes les variables de configuration
-                        'is_backtest': False,
+                        "trailing_mfe_triggered": self.active_position.trailing_mfe_triggered,
+                        "trailing_mfe_triggered_at": datetime.fromtimestamp(
+                            self.active_position.trailing_mfe_triggered_at
+                        ).isoformat()
+                        if self.active_position.trailing_mfe_triggered_at
+                        else None,
+                        "trailing_mfe_trigger_pnl_pct": self.active_position.trailing_mfe_trigger_pnl_pct,
+                        "trailing_mfe_trigger_price": self.active_position.trailing_mfe_trigger_price,
+                        "pnl_history": pnl_history,  # Pour calculer max_favorable_excursion
+                        "entry_indicators": entry_indicators,
+                        "entry_conditions": entry_conditions,
+                        "entry_scalability": entry_scalability,
+                        "exit_indicators": exit_indicators,  # Vide pour l'instant, sera rempli plus tard
+                        "config_snapshot": config_snapshot,  # Toutes les variables de configuration
+                        "is_backtest": False,
                         # Métadonnées LIVE (si disponibles)
-                        'entry_order_id': getattr(self.active_position, 'entry_order_id', None),
-                        'entry_order_type': getattr(self.active_position, 'entry_order_type', None),
-                        'entry_requested_price': getattr(self.active_position, 'entry_requested_price', None),
-                        'entry_fill_price': getattr(self.active_position, 'entry_fill_price', None),
-                        'entry_slippage_pct': getattr(self.active_position, 'entry_slippage_pct', None),
-                        'entry_latency_ms': getattr(self.active_position, 'entry_latency_ms', None),
-                        'entry_timestamp': getattr(self.active_position, 'entry_timestamp', None),
-                        'exit_order_id': getattr(self.active_position, 'exit_order_id', None),
-                        'exit_order_type': getattr(self.active_position, 'exit_order_type', None),
-                        'exit_requested_price': getattr(self.active_position, 'exit_requested_price', None),
-                        'exit_fill_price': getattr(self.active_position, 'exit_fill_price', None),
-                        'exit_slippage_pct': getattr(self.active_position, 'exit_slippage_pct', None),
-                        'exit_latency_ms': getattr(self.active_position, 'exit_latency_ms', None),
-                        'exit_timestamp': getattr(self.active_position, 'exit_timestamp', None),
-                        'entry_fee_usdt': getattr(self.active_position, 'entry_fee_usdt', None),
-                        'exit_fee_usdt': getattr(self.active_position, 'exit_fee_usdt', None),
-                        'total_fees_usdt': getattr(self.active_position, 'total_fees_usdt', None),
-                        'position_size_usdt': getattr(self.active_position, 'position_size_usdt', None),
-                        'position_size_contracts': getattr(self.active_position, 'position_size_contracts', None),
-                        'margin_mode': getattr(self.active_position, 'margin_mode', None),
-                        'margin_used': getattr(self.active_position, 'margin_used', None),
-                        'leverage_used': getattr(self.active_position, 'leverage_used', None),
-                        'liquidation_price': getattr(self.active_position, 'liquidation_price', None),
-                        'time_to_fill_entry_ms': getattr(self.active_position, 'time_to_fill_entry_ms', None),
-                        'time_to_fill_exit_ms': getattr(self.active_position, 'time_to_fill_exit_ms', None),
+                        "entry_order_id": getattr(
+                            self.active_position, "entry_order_id", None
+                        ),
+                        "entry_order_type": getattr(
+                            self.active_position, "entry_order_type", None
+                        ),
+                        "entry_requested_price": getattr(
+                            self.active_position, "entry_requested_price", None
+                        ),
+                        "entry_fill_price": getattr(
+                            self.active_position, "entry_fill_price", None
+                        ),
+                        "entry_slippage_pct": getattr(
+                            self.active_position, "entry_slippage_pct", None
+                        ),
+                        "entry_latency_ms": getattr(
+                            self.active_position, "entry_latency_ms", None
+                        ),
+                        "entry_timestamp": getattr(
+                            self.active_position, "entry_timestamp", None
+                        ),
+                        "exit_order_id": getattr(
+                            self.active_position, "exit_order_id", None
+                        ),
+                        "exit_order_type": getattr(
+                            self.active_position, "exit_order_type", None
+                        ),
+                        "exit_requested_price": getattr(
+                            self.active_position, "exit_requested_price", None
+                        ),
+                        "exit_fill_price": getattr(
+                            self.active_position, "exit_fill_price", None
+                        ),
+                        "exit_slippage_pct": getattr(
+                            self.active_position, "exit_slippage_pct", None
+                        ),
+                        "exit_latency_ms": getattr(
+                            self.active_position, "exit_latency_ms", None
+                        ),
+                        "exit_timestamp": getattr(
+                            self.active_position, "exit_timestamp", None
+                        ),
+                        "entry_fee_usdt": getattr(
+                            self.active_position, "entry_fee_usdt", None
+                        ),
+                        "exit_fee_usdt": getattr(
+                            self.active_position, "exit_fee_usdt", None
+                        ),
+                        "total_fees_usdt": getattr(
+                            self.active_position, "total_fees_usdt", None
+                        ),
+                        "position_size_usdt": getattr(
+                            self.active_position, "position_size_usdt", None
+                        ),
+                        "position_size_contracts": getattr(
+                            self.active_position, "position_size_contracts", None
+                        ),
+                        "margin_mode": getattr(
+                            self.active_position, "margin_mode", None
+                        ),
+                        "margin_used": getattr(
+                            self.active_position, "margin_used", None
+                        ),
+                        "leverage_used": getattr(
+                            self.active_position, "leverage_used", None
+                        ),
+                        "liquidation_price": getattr(
+                            self.active_position, "liquidation_price", None
+                        ),
+                        "time_to_fill_entry_ms": getattr(
+                            self.active_position, "time_to_fill_entry_ms", None
+                        ),
+                        "time_to_fill_exit_ms": getattr(
+                            self.active_position, "time_to_fill_exit_ms", None
+                        ),
                         # Nouvelles métadonnées LIVE
-                        'maker_fee_rate': getattr(self.active_position, 'maker_fee_rate', None),
-                        'taker_fee_rate': getattr(self.active_position, 'taker_fee_rate', None),
-                        'funding_rate_at_entry': getattr(self.active_position, 'funding_rate_at_entry', None),
-                        'funding_rate_at_exit': getattr(self.active_position, 'funding_rate_at_exit', None),
-                        'entry_api_response': getattr(self.active_position, 'entry_api_response', None),
-                        'exit_api_response': getattr(self.active_position, 'exit_api_response', None),
+                        "maker_fee_rate": getattr(
+                            self.active_position, "maker_fee_rate", None
+                        ),
+                        "taker_fee_rate": getattr(
+                            self.active_position, "taker_fee_rate", None
+                        ),
+                        "funding_rate_at_entry": getattr(
+                            self.active_position, "funding_rate_at_entry", None
+                        ),
+                        "funding_rate_at_exit": getattr(
+                            self.active_position, "funding_rate_at_exit", None
+                        ),
+                        "entry_api_response": getattr(
+                            self.active_position, "entry_api_response", None
+                        ),
+                        "exit_api_response": getattr(
+                            self.active_position, "exit_api_response", None
+                        ),
                         # 🔥 FIX: Ajouter ml_confidence au trade (même valeur que dans scan_logs)
-                        'ml_confidence': getattr(self.active_position, 'ml_confidence', None),
+                        "ml_confidence": getattr(
+                            self.active_position, "ml_confidence", None
+                        ),
                         # 🔥 FIX 19/12/2025: Ajouter PnL MEXC réel pour comparaison
-                        'mexc_actual_pnl_usdt': getattr(self.active_position, 'mexc_actual_pnl_usdt', None),
-                        'mexc_actual_pnl_pct': getattr(self.active_position, 'mexc_actual_pnl_pct', None)
+                        "mexc_actual_pnl_usdt": getattr(
+                            self.active_position, "mexc_actual_pnl_usdt", None
+                        ),
+                        "mexc_actual_pnl_pct": getattr(
+                            self.active_position, "mexc_actual_pnl_pct", None
+                        ),
                     }
 
                     # 🔥 SPRINT 1: Ajouter contexte Market Regime et Circuit Breaker
                     try:
                         from utils.effective_config import get_effective_value
                         from utils.effective_config import get_active_adjustments
+
                         # Toujours renseigner les valeurs effectives même si le régime selector est indisponible
-                        trade_data['entry_min_score_required'] = get_effective_value('min_score_required')
-                        trade_data['entry_effective_min_score'] = get_effective_value('min_score_required', symbol=self.active_position.symbol)
+                        trade_data["entry_min_score_required"] = get_effective_value(
+                            "min_score_required"
+                        )
+                        trade_data["entry_effective_min_score"] = get_effective_value(
+                            "min_score_required", symbol=self.active_position.symbol
+                        )
 
                         # Pair scorer (optionnel)
                         try:
-                            adj = get_active_adjustments().get('pair_scorer', {})
-                            symbol_adj = adj.get(self.active_position.symbol, {}) if isinstance(adj, dict) else {}
-                            trade_data['entry_pair_score_adjustment'] = symbol_adj.get('score_adjustment')
+                            adj = get_active_adjustments().get("pair_scorer", {})
+                            symbol_adj = (
+                                adj.get(self.active_position.symbol, {})
+                                if isinstance(adj, dict)
+                                else {}
+                            )
+                            trade_data["entry_pair_score_adjustment"] = symbol_adj.get(
+                                "score_adjustment"
+                            )
                         except Exception:
-                            trade_data['entry_pair_score_adjustment'] = None
+                            trade_data["entry_pair_score_adjustment"] = None
 
                         # Valeurs effectives additionnelles (optionnelles)
-                        trade_data['entry_atr_mult_sl'] = get_effective_value('atr_mult_sl')
-                        trade_data['entry_atr_mult_tp'] = get_effective_value('atr_mult_tp')
+                        trade_data["entry_atr_mult_sl"] = get_effective_value(
+                            "atr_mult_sl"
+                        )
+                        trade_data["entry_atr_mult_tp"] = get_effective_value(
+                            "atr_mult_tp"
+                        )
 
                         # 🔥 FIX 29/12: Enregistrer l'ATR réellement utilisé (blended + clampé)
-                        trade_data['entry_atr_pct_used'] = getattr(self.active_position, 'atr_pct_used', None)
-                        trade_data['entry_atr_blended'] = getattr(self.active_position, 'atr_blended', None)
-                        trade_data['entry_volume_multiplier'] = get_effective_value('volume_multiplier')
-                        trade_data['entry_rsi_filter_mode'] = get_effective_value('rsi_filter_mode')
-                        trade_data['entry_position_timeout'] = get_effective_value('position_timeout')
-                        trade_data['entry_optimal_atr_max_1m'] = get_effective_value('optimal_atr_max_1m')
-                        trade_data['entry_sl_exchange_percent'] = (
-                            getattr(self.active_position, 'entry_sl_exchange_percent', None)
-                            if self.active_position else None
+                        trade_data["entry_atr_pct_used"] = getattr(
+                            self.active_position, "atr_pct_used", None
                         )
-                        if trade_data['entry_sl_exchange_percent'] is None:
-                            trade_data['entry_sl_exchange_percent'] = get_effective_value('sl_exchange_percent')
+                        trade_data["entry_atr_blended"] = getattr(
+                            self.active_position, "atr_blended", None
+                        )
+                        trade_data["entry_volume_multiplier"] = get_effective_value(
+                            "volume_multiplier"
+                        )
+                        trade_data["entry_rsi_filter_mode"] = get_effective_value(
+                            "rsi_filter_mode"
+                        )
+                        trade_data["entry_position_timeout"] = get_effective_value(
+                            "position_timeout"
+                        )
+                        trade_data["entry_optimal_atr_max_1m"] = get_effective_value(
+                            "optimal_atr_max_1m"
+                        )
+                        trade_data["entry_sl_exchange_percent"] = (
+                            getattr(
+                                self.active_position, "entry_sl_exchange_percent", None
+                            )
+                            if self.active_position
+                            else None
+                        )
+                        if trade_data["entry_sl_exchange_percent"] is None:
+                            trade_data["entry_sl_exchange_percent"] = (
+                                get_effective_value("sl_exchange_percent")
+                            )
 
                         # Contexte régime (optionnel)
                         try:
                             from core.market_regime_selector import get_regime_selector
+
                             regime_selector = get_regime_selector()
                             regime_status = regime_selector.get_status()
-                            trade_data['entry_market_regime'] = regime_status.get('current_regime', 'UNKNOWN')
-                            trade_data['entry_market_regime_avg_atr'] = regime_status.get('avg_atr', 0)
-                            trade_data['entry_market_regime_avg_adx'] = regime_status.get('avg_adx', 0)
+                            trade_data["entry_market_regime"] = regime_status.get(
+                                "current_regime", "UNKNOWN"
+                            )
+                            trade_data["entry_market_regime_avg_atr"] = (
+                                regime_status.get("avg_atr", 0)
+                            )
+                            trade_data["entry_market_regime_avg_adx"] = (
+                                regime_status.get("avg_adx", 0)
+                            )
                         except Exception:
                             pass
                     except Exception as e:
@@ -4105,117 +5322,177 @@ class PositionManager:
                     # 🔥 FIX 10/12/2025: Ne récupérer l'état CB que s'il est activé
                     try:
                         from utils.effective_config import get_effective_value
-                        if get_effective_value('trading_circuit_breaker_enabled') or get_effective_value('trading_circuit_breaker_enabled') is None:
-                            from core.trading_circuit_breaker import get_trading_circuit_breaker
+
+                        if (
+                            get_effective_value("trading_circuit_breaker_enabled")
+                            or get_effective_value("trading_circuit_breaker_enabled")
+                            is None
+                        ):
+                            from core.trading_circuit_breaker import (
+                                get_trading_circuit_breaker,
+                            )
+
                             trading_cb = get_trading_circuit_breaker()
                             cb_status = trading_cb.get_status()
-                            trade_data['entry_cb_state'] = cb_status.get('state', 'ACTIVE')
-                            trade_data['entry_consecutive_losses'] = cb_status.get('consecutive_losses', 0)
-                            trade_data['entry_daily_pnl_pct'] = cb_status.get('daily_pnl_pct', 0)
-                            trade_data['entry_cb_score_boost'] = cb_status.get('score_boost', 0)
+                            trade_data["entry_cb_state"] = cb_status.get(
+                                "state", "ACTIVE"
+                            )
+                            trade_data["entry_consecutive_losses"] = cb_status.get(
+                                "consecutive_losses", 0
+                            )
+                            trade_data["entry_daily_pnl_pct"] = cb_status.get(
+                                "daily_pnl_pct", 0
+                            )
+                            trade_data["entry_cb_score_boost"] = cb_status.get(
+                                "score_boost", 0
+                            )
                         else:
-                            trade_data['entry_cb_state'] = 'DISABLED'
-                            trade_data['entry_consecutive_losses'] = 0
-                            trade_data['entry_daily_pnl_pct'] = 0
-                            trade_data['entry_cb_score_boost'] = 0
+                            trade_data["entry_cb_state"] = "DISABLED"
+                            trade_data["entry_consecutive_losses"] = 0
+                            trade_data["entry_daily_pnl_pct"] = 0
+                            trade_data["entry_cb_score_boost"] = 0
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer CB: {e}")
 
                     # Récupérer opportunity_id et scan_log_id si disponibles
-                    opportunity_id = getattr(self.active_position, '_opportunity_id', None)
-                    scan_log_id = getattr(self.active_position, '_scan_log_id', None)
-                    existing_trade_id = getattr(self.active_position, '_trade_id', None)
+                    opportunity_id = getattr(
+                        self.active_position, "_opportunity_id", None
+                    )
+                    scan_log_id = getattr(self.active_position, "_scan_log_id", None)
+                    existing_trade_id = getattr(self.active_position, "_trade_id", None)
 
                     # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
                     _active_pos_ref = self.active_position  # Capturer référence
                     try:
                         loop = asyncio.get_running_loop()
+
                         async def _log_close_trade_async():
                             try:
                                 trade_id = await pg_datalogger.log_trade_async(
                                     trade_data=trade_data,
                                     opportunity_id=opportunity_id,
                                     scan_log_id=scan_log_id,
-                                    session_id=getattr(self, 'session_id', None),
-                                    trade_id=existing_trade_id
+                                    session_id=getattr(self, "session_id", None),
+                                    trade_id=existing_trade_id,
                                 )
                                 if trade_id and _active_pos_ref:
-                                    logger.debug(f"📊 Trade loggé dans PostgreSQL: {_active_pos_ref.symbol} (ID: {trade_id})")
+                                    logger.debug(
+                                        f"📊 Trade loggé dans PostgreSQL: {_active_pos_ref.symbol} (ID: {trade_id})"
+                                    )
                                     _active_pos_ref._trade_id = trade_id
                             except Exception as e:
-                                logger.debug(f"Erreur log_trade_async close (non-bloquant): {e}")
+                                logger.debug(
+                                    f"Erreur log_trade_async close (non-bloquant): {e}"
+                                )
+
                         loop.create_task(_log_close_trade_async())
                         # Pour la suite du code, utiliser existing_trade_id comme fallback
                         trade_id = existing_trade_id
                     except RuntimeError:
                         # Pas de boucle événements, utiliser version synchrone en thread
                         import threading
+
                         def _log_close_sync():
                             try:
                                 tid = pg_datalogger.log_trade(
                                     trade_data=trade_data,
                                     opportunity_id=opportunity_id,
                                     scan_log_id=scan_log_id,
-                                    session_id=getattr(self, 'session_id', None),
-                                    trade_id=existing_trade_id
+                                    session_id=getattr(self, "session_id", None),
+                                    trade_id=existing_trade_id,
                                 )
                                 if tid and _active_pos_ref:
                                     _active_pos_ref._trade_id = tid
                             except Exception:
                                 pass
+
                         threading.Thread(target=_log_close_sync, daemon=True).start()
                         trade_id = existing_trade_id
 
                     if trade_id:
-                        logger.debug(f"📊 Trade scheduled pour PostgreSQL: {self.active_position.symbol} (ID: {trade_id})")
+                        logger.debug(
+                            f"📊 Trade scheduled pour PostgreSQL: {self.active_position.symbol} (ID: {trade_id})"
+                        )
 
                         # 🔥 ML AUTO-CALIBRATION: Mettre à jour les stats après chaque trade
                         try:
                             from ml.calibration import get_calibration_manager
+
                             calib_manager = get_calibration_manager()
 
                             # Récupérer les infos nécessaires
-                            ml_conf = getattr(self.active_position, 'ml_confidence', None)
-                            is_live = getattr(self.active_position, 'live_execution_mode', None) == 'LIVE'
-                            is_dry = self.live_order_manager.dry_run if self.live_order_manager else True
-                            trade_ts = datetime.fromtimestamp(
-                                self.active_position.start_time,
-                                tz=timezone.utc
-                            ) if self.active_position.start_time else datetime.now(timezone.utc)
+                            ml_conf = getattr(
+                                self.active_position, "ml_confidence", None
+                            )
+                            is_live = (
+                                getattr(
+                                    self.active_position, "live_execution_mode", None
+                                )
+                                == "LIVE"
+                            )
+                            is_dry = (
+                                self.live_order_manager.dry_run
+                                if self.live_order_manager
+                                else True
+                            )
+                            trade_ts = (
+                                datetime.fromtimestamp(
+                                    self.active_position.start_time, tz=timezone.utc
+                                )
+                                if self.active_position.start_time
+                                else datetime.now(timezone.utc)
+                            )
 
                             # 🔥 FIX: ml_confidence est stockée en décimal (0.51) mais calibration attend % (51)
                             # Convertir en pourcentage si la valeur est < 1 (décimal)
-                            ml_conf_pct = ml_conf * 100 if ml_conf and ml_conf < 1 else ml_conf
+                            ml_conf_pct = (
+                                ml_conf * 100 if ml_conf and ml_conf < 1 else ml_conf
+                            )
 
                             if ml_conf_pct and ml_conf_pct >= 30:
                                 calib_manager.update_calibration(
                                     direction=self.active_position.direction,
-                                    ml_confidence=float(ml_conf_pct),  # Passer en pourcentage
+                                    ml_confidence=float(
+                                        ml_conf_pct
+                                    ),  # Passer en pourcentage
                                     win=net_pnl_pct > 0,
                                     pnl_pct=net_pnl_pct,
                                     pnl_usdt=net_pnl_usdt,
                                     is_live=is_live,
                                     is_dry_run=is_dry,
-                                    trade_timestamp=trade_ts
+                                    trade_timestamp=trade_ts,
                                 )
-                                logger.debug(f"📊 Calibration ML mise à jour: {self.active_position.symbol} (conf={ml_conf_pct:.1f}%)")
+                                logger.debug(
+                                    f"📊 Calibration ML mise à jour: {self.active_position.symbol} (conf={ml_conf_pct:.1f}%)"
+                                )
                         except Exception as calib_err:
-                            logger.debug(f"Calibration update ignoré (non-bloquant): {calib_err}")
+                            logger.debug(
+                                f"Calibration update ignoré (non-bloquant): {calib_err}"
+                            )
 
                         # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detection
                         try:
-                            from core.ml import get_threshold_optimizer, get_drift_detector
+                            from core.ml import (
+                                get_threshold_optimizer,
+                                get_drift_detector,
+                            )
 
                             # Récupérer le contexte du trade
-                            trade_regime = getattr(self.active_position, '_market_regime', 'UNKNOWN')
-                            trade_session = getattr(self.active_position, '_trading_session', 'UNKNOWN')
-                            trade_hour = getattr(self.active_position, '_trade_hour', None)
+                            trade_regime = getattr(
+                                self.active_position, "_market_regime", "UNKNOWN"
+                            )
+                            trade_session = getattr(
+                                self.active_position, "_trading_session", "UNKNOWN"
+                            )
+                            trade_hour = getattr(
+                                self.active_position, "_trade_hour", None
+                            )
                             if trade_hour is None:
                                 trade_hour = datetime.now(timezone.utc).hour
                             trade_win = net_pnl_pct > 0
 
                             # 1. Update Threshold Optimizer
-                            if get_effective_value('threshold_optimizer_enabled'):
+                            if get_effective_value("threshold_optimizer_enabled"):
                                 threshold_optimizer = get_threshold_optimizer()
                                 if threshold_optimizer.enabled:
                                     threshold_optimizer.update(
@@ -4223,32 +5500,55 @@ class PositionManager:
                                         session=trade_session,
                                         hour=int(trade_hour),
                                         win=trade_win,
-                                        pnl=net_pnl_pct
+                                        pnl=net_pnl_pct,
                                     )
 
                             # 2. Update Drift Detector
-                            if get_effective_value('drift_detection_enabled') or get_effective_value('drift_detection_enabled') is None:
+                            if (
+                                get_effective_value("drift_detection_enabled")
+                                or get_effective_value("drift_detection_enabled")
+                                is None
+                            ):
                                 drift_detector = get_drift_detector()
                                 if drift_detector.enabled:
-                                    drift_result = drift_detector.update(pnl=net_pnl_pct, win=trade_win)
-                                    if drift_result.get('drift_detected'):
-                                        logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {self.active_position.symbol}!")
+                                    drift_result = drift_detector.update(
+                                        pnl=net_pnl_pct, win=trade_win
+                                    )
+                                    if drift_result.get("drift_detected"):
+                                        logger.warning(
+                                            f"⚠️ DRIFT DÉTECTÉ après trade {self.active_position.symbol}!"
+                                        )
 
                             phase2d_feedback_done = True
-                            logger.debug(f"📊 Phase 2D feedback: {trade_regime}/{trade_session} | Win: {trade_win}")
+                            logger.debug(
+                                f"📊 Phase 2D feedback: {trade_regime}/{trade_session} | Win: {trade_win}"
+                            )
                         except Exception as phase2d_err:
-                            logger.debug(f"Phase 2D feedback ignoré (non-bloquant): {phase2d_err}")
+                            logger.debug(
+                                f"Phase 2D feedback ignoré (non-bloquant): {phase2d_err}"
+                            )
 
                         # 🔥 PHASE 1C + 2A: Calcul What-If Régime + BE/Trailing automatique
                         try:
-                            from core.analysis.what_if_simulator import WhatIfSimulator, TradeData
+                            from core.analysis.what_if_simulator import (
+                                WhatIfSimulator,
+                                TradeData,
+                            )
 
                             # Calculer entry_atr_pct - préférer atr_pct_used (blendé/clampé) si disponible
-                            entry_atr_pct = getattr(self.active_position, 'atr_pct_used', None)
+                            entry_atr_pct = getattr(
+                                self.active_position, "atr_pct_used", None
+                            )
                             if not entry_atr_pct or entry_atr_pct <= 0:
                                 # Fallback: calculer depuis ATR brut
-                                if self.active_position.atr and self.active_position.entry:
-                                    entry_atr_pct = (self.active_position.atr / self.active_position.entry) * 100
+                                if (
+                                    self.active_position.atr
+                                    and self.active_position.entry
+                                ):
+                                    entry_atr_pct = (
+                                        self.active_position.atr
+                                        / self.active_position.entry
+                                    ) * 100
                                 else:
                                     entry_atr_pct = 0.2  # Valeur par défaut
 
@@ -4262,23 +5562,47 @@ class PositionManager:
                                 sl_price=self.active_position.sl,
                                 tp_price=self.active_position.tp,
                                 size_usdt=self.active_position.size,
-                                max_price=getattr(self.active_position, 'max_price_reached', exit_price),
-                                min_price=getattr(self.active_position, 'min_price_reached', exit_price),
-                                be_triggered=getattr(self.active_position, 'break_even_set', False),
-                                be_price_at_trigger=getattr(self.active_position, 'break_even_price', None),
-                                trailing_activated=getattr(self.active_position, 'trailing_active', False),
-                                trailing_final_sl=getattr(self.active_position, 'trailing_sl', None),
-                                atr_mult_sl=self.tpsl_config.atr_mult_sl if self.tpsl_config else 1.2,
-                                atr_mult_tp=self.tpsl_config.atr_mult_tp if self.tpsl_config else 2.2,
-                                entry_atr_pct=entry_atr_pct
+                                max_price=getattr(
+                                    self.active_position,
+                                    "max_price_reached",
+                                    exit_price,
+                                ),
+                                min_price=getattr(
+                                    self.active_position,
+                                    "min_price_reached",
+                                    exit_price,
+                                ),
+                                be_triggered=getattr(
+                                    self.active_position, "break_even_set", False
+                                ),
+                                be_price_at_trigger=getattr(
+                                    self.active_position, "break_even_price", None
+                                ),
+                                trailing_activated=getattr(
+                                    self.active_position, "trailing_active", False
+                                ),
+                                trailing_final_sl=getattr(
+                                    self.active_position, "trailing_sl", None
+                                ),
+                                atr_mult_sl=self.tpsl_config.atr_mult_sl
+                                if self.tpsl_config
+                                else 1.2,
+                                atr_mult_tp=self.tpsl_config.atr_mult_tp
+                                if self.tpsl_config
+                                else 2.2,
+                                entry_atr_pct=entry_atr_pct,
                             )
 
                             simulator = WhatIfSimulator()
 
                             # 1. What-If Régime
-                            regime_results = simulator.simulate_regime_scenarios(whatif_trade, atr_pct=entry_atr_pct)
+                            regime_results = simulator.simulate_regime_scenarios(
+                                whatif_trade, atr_pct=entry_atr_pct
+                            )
                             if regime_results:
-                                simulator.update_regime_whatif(str(trade_id), regime_results)
+                                simulator.update_regime_whatif(
+                                    str(trade_id), regime_results
+                                )
                                 logger.info(
                                     f"📊 What-If Régime: {self.active_position.symbol} | "
                                     f"Optimal: {regime_results.get('optimal_regime_retrospective', 'N/A')}"
@@ -4298,15 +5622,18 @@ class PositionManager:
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur logging PostgreSQL trade: {e}")
         except Exception as e:
-            logger.debug(f"Erreur initialisation PostgreSQL datalogger (non-bloquant): {e}")
+            logger.debug(
+                f"Erreur initialisation PostgreSQL datalogger (non-bloquant): {e}"
+            )
 
         # Logging existant (backend.ml.data_logger)
         try:
             from backend.ml.data_logger import DataLogger
+
             data_logger = DataLogger()
 
             if data_logger and data_logger.is_running:
-                trade_id = getattr(self.active_position, '_trade_id', None)
+                trade_id = getattr(self.active_position, "_trade_id", None)
 
                 if trade_id:
                     # Logger la sortie (non-blocking avec create_task)
@@ -4315,11 +5642,22 @@ class PositionManager:
                         if loop.is_running():
                             # 🔥 FIX 10/12/2025: Capturer les valeurs AVANT la task async
                             # car self.active_position sera None quand la task s'exécute
-                            pos_break_even_set = getattr(self.active_position, 'break_even_set', False)
-                            pos_partial_tp_sold = getattr(self.active_position, 'partial_tp_sold', False)
-                            pos_partial_profit_usdt = getattr(self.active_position, 'partial_profit_usdt', 0)
-                            pos_partial_tp_percent = getattr(self.active_position, 'partial_tp_percent', None)
-                            pos_tp_escalier_profits = getattr(self.active_position, 'tp_escalier_profits', []) or []
+                            pos_break_even_set = getattr(
+                                self.active_position, "break_even_set", False
+                            )
+                            pos_partial_tp_sold = getattr(
+                                self.active_position, "partial_tp_sold", False
+                            )
+                            pos_partial_profit_usdt = getattr(
+                                self.active_position, "partial_profit_usdt", 0
+                            )
+                            pos_partial_tp_percent = getattr(
+                                self.active_position, "partial_tp_percent", None
+                            )
+                            pos_tp_escalier_profits = (
+                                getattr(self.active_position, "tp_escalier_profits", [])
+                                or []
+                            )
 
                             # Créer une task non-bloquante
                             async def log_exit():
@@ -4328,25 +5666,39 @@ class PositionManager:
                                     exit_price=exit_price,
                                     exit_reason=reason,
                                     duration_seconds=float(duration),
-                                    pnl_pct=result['pnl_pct'],
-                                    pnl_usdt=result['pnl_usdt'],
-                                    gross_pnl_usdt=result['gross_pnl_usdt'],
-                                    slippage_pct=result['slippage_pct'],
-                                    slippage_usdt=result['slippage_usdt'],
-                                    fees_usdt=result['fees'],
-                                    net_pnl_usdt=result['net_pnl_usdt'],
-                                    net_pnl_pct=result['net_pnl_pct'],
+                                    pnl_pct=result["pnl_pct"],
+                                    pnl_usdt=result["pnl_usdt"],
+                                    gross_pnl_usdt=result["gross_pnl_usdt"],
+                                    slippage_pct=result["slippage_pct"],
+                                    slippage_usdt=result["slippage_usdt"],
+                                    fees_usdt=result["fees"],
+                                    net_pnl_usdt=result["net_pnl_usdt"],
+                                    net_pnl_pct=result["net_pnl_pct"],
                                     win=net_pnl_pct > 0,
                                     break_even_set=pos_break_even_set,
                                     partial_tp_executed=pos_partial_tp_sold,
-                                    partial_tp_profit=pos_partial_profit_usdt if pos_partial_tp_sold else None,
-                                    partial_tp_percent=pos_partial_tp_percent if pos_partial_tp_sold else None,
-                                    tp_escalier_levels_executed=len(pos_tp_escalier_profits),
-                                    tp_escalier_profits=sum(p.get('profit', 0) for p in pos_tp_escalier_profits),
-                                    trailing_stop_activated=(reason == 'TS'),
-                                    max_favorable_excursion=trade_data.get('max_pnl_reached'),
-                                    max_adverse_excursion=trade_data.get('min_pnl_reached')
+                                    partial_tp_profit=pos_partial_profit_usdt
+                                    if pos_partial_tp_sold
+                                    else None,
+                                    partial_tp_percent=pos_partial_tp_percent
+                                    if pos_partial_tp_sold
+                                    else None,
+                                    tp_escalier_levels_executed=len(
+                                        pos_tp_escalier_profits
+                                    ),
+                                    tp_escalier_profits=sum(
+                                        p.get("profit", 0)
+                                        for p in pos_tp_escalier_profits
+                                    ),
+                                    trailing_stop_activated=(reason == "TS"),
+                                    max_favorable_excursion=trade_data.get(
+                                        "max_pnl_reached"
+                                    ),
+                                    max_adverse_excursion=trade_data.get(
+                                        "min_pnl_reached"
+                                    ),
                                 )
+
                             loop.create_task(log_exit())
                         else:
                             # Pas de loop, créer un nouveau (ne devrait pas arriver car close_position est appelé depuis un contexte async)
@@ -4372,16 +5724,16 @@ class PositionManager:
 
         # 🔥 PHASE 8: Enregistrer trade pour sizing adaptatif
         self.record_trade_for_adaptive_sizing(
-            symbol=self.active_position.symbol,
-            pnl_pct=net_pnl_pct,
-            is_win=is_win
+            symbol=self.active_position.symbol, pnl_pct=net_pnl_pct, is_win=is_win
         )
 
         # Recovery Mode - Mettre à jour
         self.recovery_mode.update_after_trade(is_win=net_pnl_pct > 0)
         if self.recovery_mode.active:
             self.config.recovery_mode_active = True
-            self.config.recovery_mode_remaining_trades = self.recovery_mode.remaining_trades
+            self.config.recovery_mode_remaining_trades = (
+                self.recovery_mode.remaining_trades
+            )
         else:
             self.config.recovery_mode_active = False
             self.config.recovery_mode_remaining_trades = 0
@@ -4391,7 +5743,9 @@ class PositionManager:
 
         # Logger dans Analytics DB
         # 🔥 DEBUG: Log pour vérifier les valeurs avant enregistrement
-        logger.debug(f"💾 Enregistrement trade: net_pnl_pct={net_pnl_pct:.4f}%, net_pnl_usdt={net_pnl_usdt:.4f} USDT, slippage_pct={slippage_pct:.4f}%")
+        logger.debug(
+            f"💾 Enregistrement trade: net_pnl_pct={net_pnl_pct:.4f}%, net_pnl_usdt={net_pnl_usdt:.4f} USDT, slippage_pct={slippage_pct:.4f}%"
+        )
 
         # 🔥 FIX: Déterminer is_dry_run depuis live_order_manager si actif
         is_dry_run_mode = None
@@ -4403,44 +5757,50 @@ class PositionManager:
             exit_price=exit_price,
             reason=reason,
             pnl_data={
-                'pnl_pct': pnl_data['pnl_pct'],
-                'net_pnl': net_pnl_usdt,  # 🔥 FIX: net_pnl doit être en USDT
-                'net_pnl_pct': net_pnl_pct,  # 🔥 FIX: net_pnl_pct en pourcentage (après déduction des coûts)
-                'fees': pnl_data['fees'],
-                'slippage': slippage_pct,  # 🔥 FIX: Ajouter slippage en pourcentage
-                'slippage_pct': slippage_pct,  # Alias
-                'slippage_usdt': slippage_usdt,  # Slippage en USDT
-                'gross_pnl': pnl_data['pnl_usdt_gross']  # PnL brut en USDT
+                "pnl_pct": pnl_data["pnl_pct"],
+                "net_pnl": net_pnl_usdt,  # 🔥 FIX: net_pnl doit être en USDT
+                "net_pnl_pct": net_pnl_pct,  # 🔥 FIX: net_pnl_pct en pourcentage (après déduction des coûts)
+                "fees": pnl_data["fees"],
+                "slippage": slippage_pct,  # 🔥 FIX: Ajouter slippage en pourcentage
+                "slippage_pct": slippage_pct,  # Alias
+                "slippage_usdt": slippage_usdt,  # Slippage en USDT
+                "gross_pnl": pnl_data["pnl_usdt_gross"],  # PnL brut en USDT
             },
-            mode='LIVE' if self.live_order_manager else 'PAPER',
-            is_dry_run=is_dry_run_mode
+            mode="LIVE" if self.live_order_manager else "PAPER",
+            is_dry_run=is_dry_run_mode,
         )
 
         # 🔥 SPRINT 3: Effacer les ajustements locaux du trade
         from utils.effective_config import clear_local_trade_adjustments
+
         clear_local_trade_adjustments()
 
         # 🔥 POST-EXIT ANALYSIS: Démarrer le tracking des prix après clôture
         try:
             logger.warning(f"📊 Démarrage PostExit tracking pour {position.symbol}...")
             from core.post_exit import get_post_exit_manager
+
             post_exit_manager = get_post_exit_manager()
 
             # Récupérer trade_id (UUID string, requis pour sauvegarde DB)
-            db_trade_id = getattr(position, '_trade_id', None)
+            db_trade_id = getattr(position, "_trade_id", None)
             if not db_trade_id:
-                logger.warning(f"⚠️ PostExit: Pas de trade_id pour {position.symbol}, skip tracking")
+                logger.warning(
+                    f"⚠️ PostExit: Pas de trade_id pour {position.symbol}, skip tracking"
+                )
                 raise ValueError("trade_id manquant pour PostExit tracking")
-            logger.warning(f"📊 PostExit: trade_id={db_trade_id} (type={type(db_trade_id).__name__}), symbol={position.symbol}")
+            logger.warning(
+                f"📊 PostExit: trade_id={db_trade_id} (type={type(db_trade_id).__name__}), symbol={position.symbol}"
+            )
 
             # Params utilisés pour analyse
             used_params = {
-                'sl_pct': getattr(position, 'sl_percent_at_entry', None),
-                'tp_pct': get_effective_value('tp_percent'),
-                'be_trigger': get_effective_value('break_even_trigger'),
-                'trailing_trigger': get_effective_value('trailing_trigger_pnl'),
-                'trailing_min_distance': get_effective_value('trailing_min_distance'),
-                'partial_tp_pct': get_effective_value('partial_tp_percent'),
+                "sl_pct": getattr(position, "sl_percent_at_entry", None),
+                "tp_pct": get_effective_value("tp_percent"),
+                "be_trigger": get_effective_value("break_even_trigger"),
+                "trailing_trigger": get_effective_value("trailing_trigger_pnl"),
+                "trailing_min_distance": get_effective_value("trailing_min_distance"),
+                "partial_tp_pct": get_effective_value("partial_tp_percent"),
             }
 
             logger.debug(f"📊 PostExit: Appel start_tracking_sync...")
@@ -4456,11 +5816,14 @@ class PositionManager:
                 original_tp=position.tp,
                 entry_price=position.entry,
                 trade_duration_sec=float(duration),
-                used_params=used_params
+                used_params=used_params,
             )
             logger.warning(f"✅ PostExit tracking lancé pour {position.symbol}")
         except Exception as post_exit_err:
-            logger.warning(f"⚠️ PostExit tracking ignoré (non-bloquant): {post_exit_err}", exc_info=True)
+            logger.warning(
+                f"⚠️ PostExit tracking ignoré (non-bloquant): {post_exit_err}",
+                exc_info=True,
+            )
 
         # Réinitialiser position
         self.active_position = None
@@ -4472,26 +5835,32 @@ class PositionManager:
         )
 
         # 📢 NOTIFICATION: Position fermée
-        if hasattr(self, 'notification_manager') and self.notification_manager:
+        if hasattr(self, "notification_manager") and self.notification_manager:
             try:
                 notification_data = {
-                    'symbol': result['symbol'],
-                    'direction': result['direction'],
-                    'entry_price': result['entry'],
-                    'exit_price': result['exit'],
-                    'size_usdt': result['size'],
-                    'duration': result['duration'],
-                    'result': result  # Include full result for notification_manager
+                    "symbol": result["symbol"],
+                    "direction": result["direction"],
+                    "entry_price": result["entry"],
+                    "exit_price": result["exit"],
+                    "size_usdt": result["size"],
+                    "duration": result["duration"],
+                    "result": result,  # Include full result for notification_manager
                 }
                 # Appel async non-bloquant
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
                         loop.create_task(
-                            self.notification_manager.notify('position_closed', notification_data, priority='info')
+                            self.notification_manager.notify(
+                                "position_closed", notification_data, priority="info"
+                            )
                         )
                     else:
-                        asyncio.run(self.notification_manager.notify('position_closed', notification_data, priority='info'))
+                        asyncio.run(
+                            self.notification_manager.notify(
+                                "position_closed", notification_data, priority="info"
+                            )
+                        )
                 except RuntimeError:
                     # Pas de loop, ignorer notification
                     pass
@@ -4499,26 +5868,40 @@ class PositionManager:
                 logger.debug(f"Erreur envoi notification position_closed: {e}")
 
         # 📢 NOTIFICATION: Early invalidation (si applicable)
-        if reason == 'EARLY_INVALIDATION' and hasattr(self, 'notification_manager') and self.notification_manager:
+        if (
+            reason == "EARLY_INVALIDATION"
+            and hasattr(self, "notification_manager")
+            and self.notification_manager
+        ):
             try:
                 early_invalidation_data = {
-                    'symbol': result['symbol'],
-                    'direction': result['direction'],
-                    'entry_price': result['entry'],
-                    'exit_price': result['exit'],
-                    'pnl_pct': pnl_data['pnl_pct'],
-                    'duration': result['duration'],
-                    'reason': 'Invalidation précoce'
+                    "symbol": result["symbol"],
+                    "direction": result["direction"],
+                    "entry_price": result["entry"],
+                    "exit_price": result["exit"],
+                    "pnl_pct": pnl_data["pnl_pct"],
+                    "duration": result["duration"],
+                    "reason": "Invalidation précoce",
                 }
                 # Appel async non-bloquant
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
                         loop.create_task(
-                            self.notification_manager.notify('early_invalidation', early_invalidation_data, priority='warning')
+                            self.notification_manager.notify(
+                                "early_invalidation",
+                                early_invalidation_data,
+                                priority="warning",
+                            )
                         )
                     else:
-                        asyncio.run(self.notification_manager.notify('early_invalidation', early_invalidation_data, priority='warning'))
+                        asyncio.run(
+                            self.notification_manager.notify(
+                                "early_invalidation",
+                                early_invalidation_data,
+                                priority="warning",
+                            )
+                        )
                 except RuntimeError:
                     pass
             except Exception as e:
@@ -4527,22 +5910,27 @@ class PositionManager:
         # 🔥 OPT #17: Enregistrer cooldown post-trade
         try:
             from core.analyzer.advanced_filters import get_cooldown_manager
+
             cooldown_mgr = get_cooldown_manager()
-            cooldown_mgr.record_trade_close(result['symbol'], result['direction'])
-            logger.debug(f"⏱️ Cooldown enregistré pour {result['symbol']} {result['direction']}")
+            cooldown_mgr.record_trade_close(result["symbol"], result["direction"])
+            logger.debug(
+                f"⏱️ Cooldown enregistré pour {result['symbol']} {result['direction']}"
+            )
         except Exception as e:
             logger.debug(f"Erreur enregistrement cooldown: {e}")
 
         # 🔥 SPRINT 1: Enregistrer trade dans Trading Circuit Breaker
         # 🔥 FIX 10/12/2025: Ne pas enregistrer si le CB est désactivé
         try:
-            if get_effective_value('trading_circuit_breaker_enabled') or get_effective_value('trading_circuit_breaker_enabled') is None:
+            if (
+                get_effective_value("trading_circuit_breaker_enabled")
+                or get_effective_value("trading_circuit_breaker_enabled") is None
+            ):
                 from core.trading_circuit_breaker import get_trading_circuit_breaker
+
                 trading_cb = get_trading_circuit_breaker()
                 can_continue = trading_cb.record_trade(
-                    symbol=result['symbol'],
-                    pnl_pct=net_pnl_pct,
-                    pnl_usdt=net_pnl_usdt
+                    symbol=result["symbol"], pnl_pct=net_pnl_pct, pnl_usdt=net_pnl_usdt
                 )
                 if not can_continue:
                     logger.warning(
@@ -4550,7 +5938,9 @@ class PositionManager:
                         f"État: {trading_cb.state.value} | Raison: {trading_cb.pause_reason}"
                     )
             else:
-                logger.debug("Trading Circuit Breaker désactivé - trade non enregistré dans CB")
+                logger.debug(
+                    "Trading Circuit Breaker désactivé - trade non enregistré dans CB"
+                )
         except Exception as e:
             logger.debug(f"Erreur enregistrement Trading Circuit Breaker: {e}")
 
@@ -4561,64 +5951,94 @@ class PositionManager:
 
                 # Récupérer le contexte du trade (stocké lors de l'entrée)
                 # 🔥 FIX: Utiliser 'position' (snapshot avant fermeture) et non 'self.active_position' (qui est None ici)
-                market_regime = getattr(position, '_market_regime', None)
-                trading_session = getattr(position, '_trading_session', None)
-                trade_hour = getattr(position, '_trade_hour', None)
+                market_regime = getattr(position, "_market_regime", None)
+                trading_session = getattr(position, "_trading_session", None)
+                trade_hour = getattr(position, "_trade_hour", None)
 
                 # Si pas de contexte stocké, essayer de le recalculer
                 if not market_regime or not trading_session or trade_hour is None:
                     try:
                         from core.market_regime_selector import get_regime_selector
                         from utils.session_detector import get_current_session
+
                         regime_selector = get_regime_selector()
-                        market_regime = market_regime or (regime_selector.current_regime.value if regime_selector.current_regime else 'UNKNOWN')
+                        market_regime = market_regime or (
+                            regime_selector.current_regime.value
+                            if regime_selector.current_regime
+                            else "UNKNOWN"
+                        )
                         session_info = get_current_session()
-                        trading_session = trading_session or (session_info.get('name', 'UNKNOWN') if isinstance(session_info, dict) else 'UNKNOWN')
+                        trading_session = trading_session or (
+                            session_info.get("name", "UNKNOWN")
+                            if isinstance(session_info, dict)
+                            else "UNKNOWN"
+                        )
                         if trade_hour is None:
-                            trade_hour = int(session_info.get('hour_utc', datetime.now(timezone.utc).hour)) if isinstance(session_info, dict) else datetime.now(timezone.utc).hour
+                            trade_hour = (
+                                int(
+                                    session_info.get(
+                                        "hour_utc", datetime.now(timezone.utc).hour
+                                    )
+                                )
+                                if isinstance(session_info, dict)
+                                else datetime.now(timezone.utc).hour
+                            )
                     except Exception:
-                        market_regime = 'UNKNOWN'
-                        trading_session = 'UNKNOWN'
+                        market_regime = "UNKNOWN"
+                        trading_session = "UNKNOWN"
                         trade_hour = datetime.now(timezone.utc).hour
 
                 is_win = net_pnl_pct > 0
 
                 # 1. Mettre à jour Threshold Optimizer
-                if get_effective_value('threshold_optimizer_enabled'):
+                if get_effective_value("threshold_optimizer_enabled"):
                     try:
                         from core.ml import get_threshold_optimizer
+
                         optimizer = get_threshold_optimizer()
                         optimizer.update(
                             regime=market_regime,
                             session=trading_session,
                             hour=int(trade_hour),
                             win=is_win,
-                            pnl=net_pnl_pct
+                            pnl=net_pnl_pct,
                         )
-                        logger.debug(f"📊 Threshold Optimizer updated: {market_regime}/{trading_session} {'WIN' if is_win else 'LOSS'}")
+                        logger.debug(
+                            f"📊 Threshold Optimizer updated: {market_regime}/{trading_session} {'WIN' if is_win else 'LOSS'}"
+                        )
                     except Exception as opt_err:
                         logger.debug(f"⚠️ Erreur update Threshold Optimizer: {opt_err}")
 
                 # 2. Mettre à jour Drift Detector
-                if get_effective_value('drift_detection_enabled') or get_effective_value('drift_detection_enabled') is None:
+                if (
+                    get_effective_value("drift_detection_enabled")
+                    or get_effective_value("drift_detection_enabled") is None
+                ):
                     try:
                         from core.ml import get_drift_detector
+
                         detector = get_drift_detector()
                         drift_result = detector.update(pnl=net_pnl_pct, win=is_win)
 
-                        if drift_result.get('drift_detected'):
-                            logger.warning(f"⚠️ DRIFT DÉTECTÉ après trade {result['symbol']}! "
-                                          f"PnL drift: {drift_result.get('pnl_drift')}, "
-                                          f"WinRate drift: {drift_result.get('winrate_drift')}")
+                        if drift_result.get("drift_detected"):
+                            logger.warning(
+                                f"⚠️ DRIFT DÉTECTÉ après trade {result['symbol']}! "
+                                f"PnL drift: {drift_result.get('pnl_drift')}, "
+                                f"WinRate drift: {drift_result.get('winrate_drift')}"
+                            )
 
                             # Si drift détecté, reset le Threshold Optimizer
                             from utils.effective_config import get_effective_value
-                            if get_effective_value('threshold_optimizer_enabled'):
+
+                            if get_effective_value("threshold_optimizer_enabled"):
                                 try:
                                     from core.ml import get_threshold_optimizer
+
                                     optimizer = get_threshold_optimizer()
                                     optimizer.reset_all()
-                                    logger.warning("🔄 Threshold Optimizer RESET suite à drift détecté")
+                                    logger.warning(
+                                        "🔄 Threshold Optimizer RESET suite à drift détecté"
+                                    )
                                 except Exception:
                                     pass
                     except Exception as drift_err:
@@ -4633,39 +6053,57 @@ class PositionManager:
 
             # Préparer données pour What-If
             # 🔥 FIX: Utiliser 'position' (snapshot avant fermeture) et non 'self.active_position' (qui est None ici)
-            trade_id = getattr(position, '_trade_id', None)
+            trade_id = getattr(position, "_trade_id", None)
             if not trade_id:
-                logger.warning(f"⚠️ What-If ignoré: trade_id non disponible pour {result['symbol']}")
+                logger.warning(
+                    f"⚠️ What-If ignoré: trade_id non disponible pour {result['symbol']}"
+                )
             if trade_id:
                 whatif_data = {
-                    'id': trade_id,
-                    'symbol': result['symbol'],
-                    'direction': result['direction'],
-                    'entry_price': result['entry'],
-                    'exit_price': result['exit'],
-                    'sl': position.sl,
-                    'tp': position.tp,
-                    'size_usdt': position.size,
-                    'max_price_reached': getattr(position, 'max_price_reached', result['exit']),
-                    'min_price_reached': getattr(position, 'min_price_reached', result['exit']),
-                    'break_even_triggered': result.get('break_even_triggered', False),
-                    'break_even_price': result.get('break_even_price'),
-                    'trailing_stop_triggered': result.get('trailing_stop_triggered', False),
-                    'trailing_final_sl': result.get('trailing_final_sl'),
-                    'config_atr_mult_sl': get_effective_value('atr_mult_sl') or 1.2,
-                    'config_atr_mult_tp': get_effective_value('atr_mult_tp') or 2.2,
-                    'config_trailing_trigger_atr_mult': get_effective_value('trailing_trigger_atr_mult') or 1.5,
-                    'config_trailing_distance_atr_mult': get_effective_value('trailing_distance_atr_mult') or 0.8,
-                    'config_be_atr_mult': get_effective_value('break_even_atr_mult') or 1.0,
-                    'entry_atr_pct_1m': getattr(position, 'atr', 0) / result['entry'] * 100 if getattr(position, 'atr', None) else 0.2
+                    "id": trade_id,
+                    "symbol": result["symbol"],
+                    "direction": result["direction"],
+                    "entry_price": result["entry"],
+                    "exit_price": result["exit"],
+                    "sl": position.sl,
+                    "tp": position.tp,
+                    "size_usdt": position.size,
+                    "max_price_reached": getattr(
+                        position, "max_price_reached", result["exit"]
+                    ),
+                    "min_price_reached": getattr(
+                        position, "min_price_reached", result["exit"]
+                    ),
+                    "break_even_triggered": result.get("break_even_triggered", False),
+                    "break_even_price": result.get("break_even_price"),
+                    "trailing_stop_triggered": result.get(
+                        "trailing_stop_triggered", False
+                    ),
+                    "trailing_final_sl": result.get("trailing_final_sl"),
+                    "config_atr_mult_sl": get_effective_value("atr_mult_sl") or 1.2,
+                    "config_atr_mult_tp": get_effective_value("atr_mult_tp") or 2.2,
+                    "config_trailing_trigger_atr_mult": get_effective_value(
+                        "trailing_trigger_atr_mult"
+                    )
+                    or 1.5,
+                    "config_trailing_distance_atr_mult": get_effective_value(
+                        "trailing_distance_atr_mult"
+                    )
+                    or 0.8,
+                    "config_be_atr_mult": get_effective_value("break_even_atr_mult")
+                    or 1.0,
+                    "entry_atr_pct_1m": getattr(position, "atr", 0)
+                    / result["entry"]
+                    * 100
+                    if getattr(position, "atr", None)
+                    else 0.2,
                 }
 
                 # Lancer le calcul What-If (non-bloquant)
                 import threading
+
                 threading.Thread(
-                    target=process_trade_whatif,
-                    args=(whatif_data,),
-                    daemon=True
+                    target=process_trade_whatif, args=(whatif_data,), daemon=True
                 ).start()
                 logger.debug(f" What-If lancé pour trade {trade_id[:8]}...")
         except Exception as e:
@@ -4674,16 +6112,16 @@ class PositionManager:
         # Phase 2H.6: Log EXIT event
         # FIX: Utiliser fire-and-forget async pour ne pas bloquer l'event loop
         exit_sold_usdt = size_closed if size_closed is not None else None
-        if getattr(position, 'tp_escalier_enabled', False):
-            tp_remaining = getattr(position, 'tp_escalier_size_remaining', None)
-            position_size = getattr(position, 'size', None)
+        if getattr(position, "tp_escalier_enabled", False):
+            tp_remaining = getattr(position, "tp_escalier_size_remaining", None)
+            position_size = getattr(position, "size", None)
             if tp_remaining is not None and position_size is not None:
                 exit_sold_usdt = position_size * tp_remaining
         if exit_sold_usdt is None:
-            if getattr(position, 'partial_tp_sold', False):
-                exit_sold_usdt = getattr(position, 'size_remaining', None)
+            if getattr(position, "partial_tp_sold", False):
+                exit_sold_usdt = getattr(position, "size_remaining", None)
             else:
-                exit_sold_usdt = getattr(position, 'size', None)
+                exit_sold_usdt = getattr(position, "size", None)
         if exit_sold_usdt is None:
             exit_sold_usdt = 0.0
 
@@ -4691,73 +6129,82 @@ class PositionManager:
         if size_for_pct and exit_sold_usdt is not None:
             exit_sold_pct = (exit_sold_usdt / size_for_pct) * 100
 
-        exit_entry_price = getattr(position, 'entry', None) or exit_price or 1
-        exit_sold_contracts = getattr(position, 'size_remaining_contracts', None)
+        exit_entry_price = getattr(position, "entry", None) or exit_price or 1
+        exit_sold_contracts = getattr(position, "size_remaining_contracts", None)
         if exit_sold_contracts is None or exit_sold_contracts <= 0:
-            exit_sold_contracts = getattr(position, 'position_size_contracts', None)
-        if (exit_sold_contracts is None or exit_sold_contracts <= 0) and exit_entry_price and exit_sold_usdt is not None:
+            exit_sold_contracts = getattr(position, "position_size_contracts", None)
+        if (
+            (exit_sold_contracts is None or exit_sold_contracts <= 0)
+            and exit_entry_price
+            and exit_sold_usdt is not None
+        ):
             exit_sold_contracts = exit_sold_usdt / exit_entry_price
         exit_remaining_contracts = 0.0
 
         try:
             from core.postgresql_datalogger import get_pg_datalogger
+
             pg_logger = get_pg_datalogger()
-            trade_id = getattr(position, '_trade_id', None)
+            trade_id = getattr(position, "_trade_id", None)
             if pg_logger and trade_id:
                 try:
                     loop = asyncio.get_running_loop()
+
                     async def _log_exit_event():
                         try:
                             await pg_logger.log_trade_event_async(
                                 trade_id=trade_id,
-                                event_type='EXIT',
+                                event_type="EXIT",
                                 price_at_event=exit_price,
                                 pnl_pct_at_event=net_pnl_pct,
                                 pnl_usdt_at_event=net_pnl_usdt,
                                 details={
-                                    'reason': reason,
-                                    'duration_seconds': duration,
-                                    'gross_pnl_pct': result['gross_pnl_pct'],
-                                    'fees_usdt': result['fees'],
-                                    'sold_pct': exit_sold_pct,
-                                    'sold_usdt': exit_sold_usdt,
-                                    'remaining_usdt': 0.0,
-                                    'sold_qty': exit_sold_contracts,
-                                    'remaining_qty': exit_remaining_contracts,
-                                    'sold_contracts': exit_sold_contracts,
-                                    'remaining_contracts': exit_remaining_contracts
-                                }
+                                    "reason": reason,
+                                    "duration_seconds": duration,
+                                    "gross_pnl_pct": result["gross_pnl_pct"],
+                                    "fees_usdt": result["fees"],
+                                    "sold_pct": exit_sold_pct,
+                                    "sold_usdt": exit_sold_usdt,
+                                    "remaining_usdt": 0.0,
+                                    "sold_qty": exit_sold_contracts,
+                                    "remaining_qty": exit_remaining_contracts,
+                                    "sold_contracts": exit_sold_contracts,
+                                    "remaining_contracts": exit_remaining_contracts,
+                                },
                             )
                         except Exception:
                             pass
+
                     loop.create_task(_log_exit_event())
                 except RuntimeError:
                     # Pas de boucle événements, utiliser thread
                     import threading
+
                     def _log_sync():
                         try:
                             pg_logger.log_trade_event(
                                 trade_id=trade_id,
-                                event_type='EXIT',
+                                event_type="EXIT",
                                 price_at_event=exit_price,
                                 pnl_pct_at_event=net_pnl_pct,
                                 pnl_usdt_at_event=net_pnl_usdt,
                                 details={
-                                    'reason': reason,
-                                    'duration_seconds': duration,
-                                    'gross_pnl_pct': result['gross_pnl_pct'],
-                                    'fees_usdt': result['fees'],
-                                    'sold_pct': exit_sold_pct,
-                                    'sold_usdt': exit_sold_usdt,
-                                    'remaining_usdt': 0.0,
-                                    'sold_qty': exit_sold_contracts,
-                                    'remaining_qty': exit_remaining_contracts,
-                                    'sold_contracts': exit_sold_contracts,
-                                    'remaining_contracts': exit_remaining_contracts
-                                }
+                                    "reason": reason,
+                                    "duration_seconds": duration,
+                                    "gross_pnl_pct": result["gross_pnl_pct"],
+                                    "fees_usdt": result["fees"],
+                                    "sold_pct": exit_sold_pct,
+                                    "sold_usdt": exit_sold_usdt,
+                                    "remaining_usdt": 0.0,
+                                    "sold_qty": exit_sold_contracts,
+                                    "remaining_qty": exit_remaining_contracts,
+                                    "sold_contracts": exit_sold_contracts,
+                                    "remaining_contracts": exit_remaining_contracts,
+                                },
                             )
                         except Exception:
                             pass
+
                     threading.Thread(target=_log_sync, daemon=True).start()
         except Exception:
             pass
@@ -4767,9 +6214,9 @@ class PositionManager:
     def update_price_cache(self, symbol: str, price: float, data: Any = None):
         """Mettre à jour le cache de prix"""
         self.price_cache[symbol] = {
-            'price': price,
-            'timestamp': datetime.now().timestamp() * 1000,
-            'data': data
+            "price": price,
+            "timestamp": datetime.now().timestamp() * 1000,
+            "data": data,
         }
 
     def get_cached_price(self, symbol: str, max_age_ms: int = 20000) -> Optional[float]:
@@ -4778,9 +6225,9 @@ class PositionManager:
             return None
 
         cache = self.price_cache[symbol]
-        age = datetime.now().timestamp() * 1000 - cache['timestamp']
+        age = datetime.now().timestamp() * 1000 - cache["timestamp"]
 
         if max_age_ms > 0 and age < max_age_ms:
-            return cache['price']
+            return cache["price"]
 
         return None

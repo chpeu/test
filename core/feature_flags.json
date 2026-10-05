@@ -6,7 +6,7 @@
       "description": "Utiliser TestablePositionManager au lieu de PositionManager legacy",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-30T06:51:59.783510",
+      "updated_at": "2026-10-05T22:33:55.323183",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": true,
@@ -16,9 +16,9 @@
       "name": "use_testable_analyzer",
       "enabled": true,
       "description": "Utiliser TestableAnalyzer au lieu de TechnicalAnalyzer legacy",
-      "rollout_percentage": 100.0,
+      "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-23T13:33:49.342153",
+      "updated_at": "2026-03-29T14:57:37.238409",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": true,
@@ -66,7 +66,7 @@
       "description": "Comparer r\u00e9sultats legacy vs nouveau",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-30T06:51:59.786509",
+      "updated_at": "2026-10-05T22:33:55.324460",
       "environment": "development",
       "dependencies": [],
       "rollback_on_error": false,
@@ -78,7 +78,7 @@
       "description": "Activer A/B testing progressif",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-23T11:11:04.890291",
+      "updated_at": "2026-03-29T14:07:07.116129",
       "environment": "staging",
       "dependencies": [],
       "rollback_on_error": true,
@@ -90,7 +90,7 @@
       "description": "Monitoring des m\u00e9triques et performances",
       "rollout_percentage": 0.0,
       "created_at": "2026-01-23T11:11:04.890291",
-      "updated_at": "2026-01-30T06:51:59.728382",
+      "updated_at": "2026-10-05T22:33:55.299016",
       "environment": "all",
       "dependencies": [],
       "rollback_on_error": false,
@@ -119,7 +119,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.684189"
+          "timestamp": "2026-10-05T22:33:55.273552"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -128,7 +128,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.690263"
+          "timestamp": "2026-10-05T22:33:55.276768"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -137,7 +137,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-30T06:51:59.693776"
+          "timestamp": "2026-10-05T22:33:55.278200"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -146,7 +146,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.699916"
+          "timestamp": "2026-10-05T22:33:55.280774"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -155,7 +155,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.704045"
+          "timestamp": "2026-10-05T22:33:55.282904"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -164,7 +164,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.708177"
+          "timestamp": "2026-10-05T22:33:55.284625"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -173,7 +173,7 @@
           "old_percentage": 0.0,
           "new_percentage": 50.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.714324"
+          "timestamp": "2026-10-05T22:33:55.287944"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -182,7 +182,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.733951"
+          "timestamp": "2026-10-05T22:33:55.301533"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -191,7 +191,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.738010"
+          "timestamp": "2026-10-05T22:33:55.303714"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -200,7 +200,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-30T06:51:59.740521"
+          "timestamp": "2026-10-05T22:33:55.305072"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -209,7 +209,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-30T06:51:59.745050"
+          "timestamp": "2026-10-05T22:33:55.306487"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -218,7 +218,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-30T06:51:59.748199"
+          "timestamp": "2026-10-05T22:33:55.307884"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -227,7 +227,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "EMERGENCY: Metrics threshold exceeded",
-          "timestamp": "2026-01-30T06:51:59.751704"
+          "timestamp": "2026-10-05T22:33:55.309453"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -236,7 +236,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.754214"
+          "timestamp": "2026-10-05T22:33:55.310763"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -245,7 +245,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.759223"
+          "timestamp": "2026-10-05T22:33:55.313350"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -254,7 +254,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.763778"
+          "timestamp": "2026-10-05T22:33:55.314706"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -263,7 +263,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.767307"
+          "timestamp": "2026-10-05T22:33:55.316815"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -272,7 +272,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.770821"
+          "timestamp": "2026-10-05T22:33:55.318349"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -281,7 +281,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.774836"
+          "timestamp": "2026-10-05T22:33:55.320411"
         },
         {
           "flag_name": "use_testable_position_manager",
@@ -290,18 +290,18 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.786509"
+          "timestamp": "2026-10-05T22:33:55.324446"
         }
       ],
       "success_rate": 0.0,
       "error_rate": 1.0,
-      "avg_processing_time": 0.0,
-      "last_request_id": "req_20260130_065159_3",
+      "avg_processing_time": 4.9e-05,
+      "last_request_id": "req_20261005_223355_3",
       "last_success": false,
-      "last_updated": "2026-01-30T06:51:59.749198",
+      "last_updated": "2026-10-05T22:33:55.308117",
       "performance_delta": -0.05,
       "rollout_paused": true,
-      "pause_timestamp": "2026-01-30T06:51:59.678068",
+      "pause_timestamp": "2026-10-05T22:33:55.271015",
       "rollout_history": [
         {
           "from_percentage": 0.0,
@@ -542,6 +542,121 @@
           "from_percentage": 0.0,
           "to_percentage": 10.0,
           "timestamp": "2026-01-30T06:51:59.680575"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T17:52:09.963761"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T18:15:14.691593"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T18:45:48.833663"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T18:51:35.184708"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T18:57:34.097734"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T19:03:24.011553"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T19:09:08.310968"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T19:14:59.440049"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T19:21:08.929160"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-28T19:30:29.255466"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-29T09:26:14.208657"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-29T13:06:48.328465"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-29T14:07:01.578032"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-03-29T20:58:20.283930"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T21:57:33.096050"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:04:46.668519"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:19:14.520994"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:20:15.803918"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:22:04.508473"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:22:40.988859"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:23:16.214627"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:27:43.024388"
+        },
+        {
+          "from_percentage": 0.0,
+          "to_percentage": 10.0,
+          "timestamp": "2026-10-05T22:33:55.272307"
         }
       ]
     },
@@ -549,21 +664,12 @@
       "changes": [
         {
           "flag_name": "comparison_mode",
-          "old_state": true,
-          "new_state": false,
-          "old_percentage": 0,
-          "new_percentage": 0,
-          "reason": "Test cleanup",
-          "timestamp": "2026-01-28T21:55:29.941781"
-        },
-        {
-          "flag_name": "comparison_mode",
           "old_state": false,
           "new_state": true,
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T21:55:30.069487"
+          "timestamp": "2026-10-05T22:22:40.976077"
         },
         {
           "flag_name": "comparison_mode",
@@ -572,7 +678,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T21:55:30.138563"
+          "timestamp": "2026-10-05T22:22:40.981644"
         },
         {
           "flag_name": "comparison_mode",
@@ -581,16 +687,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T21:55:30.541954"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-28T22:24:05.093894"
+          "timestamp": "2026-10-05T22:22:40.992402"
         },
         {
           "flag_name": "comparison_mode",
@@ -599,7 +696,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T22:24:05.160761"
+          "timestamp": "2026-10-05T22:22:40.995613"
         },
         {
           "flag_name": "comparison_mode",
@@ -608,7 +705,16 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T22:24:05.285945"
+          "timestamp": "2026-10-05T22:22:41.032320"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-10-05T22:23:16.201841"
         },
         {
           "flag_name": "comparison_mode",
@@ -617,7 +723,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T22:24:05.347071"
+          "timestamp": "2026-10-05T22:23:16.207517"
         },
         {
           "flag_name": "comparison_mode",
@@ -626,25 +732,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T22:24:05.760764"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-29T05:53:49.449589"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-29T12:42:57.196256"
+          "timestamp": "2026-10-05T22:23:16.217816"
         },
         {
           "flag_name": "comparison_mode",
@@ -653,7 +741,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.207986"
+          "timestamp": "2026-10-05T22:23:16.221805"
         },
         {
           "flag_name": "comparison_mode",
@@ -662,7 +750,16 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.228799"
+          "timestamp": "2026-10-05T22:23:16.263570"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-10-05T22:27:43.012091"
         },
         {
           "flag_name": "comparison_mode",
@@ -671,7 +768,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.237378"
+          "timestamp": "2026-10-05T22:27:43.017276"
         },
         {
           "flag_name": "comparison_mode",
@@ -680,16 +777,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.317032"
-        },
-        {
-          "flag_name": "comparison_mode",
-          "old_state": false,
-          "new_state": true,
-          "old_percentage": 0.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-30T06:51:59.654428"
+          "timestamp": "2026-10-05T22:27:43.027666"
         },
         {
           "flag_name": "comparison_mode",
@@ -698,7 +786,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.665520"
+          "timestamp": "2026-10-05T22:27:43.031583"
         },
         {
           "flag_name": "comparison_mode",
@@ -707,7 +795,16 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.688206"
+          "timestamp": "2026-10-05T22:27:43.073867"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-10-05T22:33:55.259527"
         },
         {
           "flag_name": "comparison_mode",
@@ -716,7 +813,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.695777"
+          "timestamp": "2026-10-05T22:33:55.265075"
         },
         {
           "flag_name": "comparison_mode",
@@ -725,7 +822,25 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.776951"
+          "timestamp": "2026-10-05T22:33:55.275600"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": true,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "Test cleanup",
+          "timestamp": "2026-10-05T22:33:55.279596"
+        },
+        {
+          "flag_name": "comparison_mode",
+          "old_state": false,
+          "new_state": true,
+          "old_percentage": 0.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-10-05T22:33:55.321594"
         }
       ]
     },
@@ -734,11 +849,20 @@
         {
           "flag_name": "monitoring_enabled",
           "old_state": true,
+          "new_state": true,
+          "old_percentage": 100.0,
+          "new_percentage": 100.0,
+          "reason": "",
+          "timestamp": "2026-10-05T22:19:14.537406"
+        },
+        {
+          "flag_name": "monitoring_enabled",
+          "old_state": true,
           "new_state": false,
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-27T23:57:40.357909"
+          "timestamp": "2026-10-05T22:19:14.539934"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -747,7 +871,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T00:07:12.527741"
+          "timestamp": "2026-10-05T22:20:15.792063"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -756,7 +880,7 @@
           "old_percentage": 100.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T00:07:12.833636"
+          "timestamp": "2026-10-05T22:20:15.816786"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -765,7 +889,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T00:07:12.889687"
+          "timestamp": "2026-10-05T22:20:15.819283"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -774,7 +898,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T06:03:35.529867"
+          "timestamp": "2026-10-05T22:22:04.495709"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -783,7 +907,7 @@
           "old_percentage": 100.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T06:03:35.867381"
+          "timestamp": "2026-10-05T22:22:04.520738"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -792,7 +916,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T06:03:35.926988"
+          "timestamp": "2026-10-05T22:22:04.534165"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -801,7 +925,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T21:55:29.879198"
+          "timestamp": "2026-10-05T22:22:40.977330"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -810,7 +934,7 @@
           "old_percentage": 100.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T21:55:30.232476"
+          "timestamp": "2026-10-05T22:22:41.002423"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -819,7 +943,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T21:55:30.284621"
+          "timestamp": "2026-10-05T22:22:41.015817"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -828,7 +952,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T22:24:05.107945"
+          "timestamp": "2026-10-05T22:23:16.203041"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -837,7 +961,7 @@
           "old_percentage": 100.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-28T22:24:05.446384"
+          "timestamp": "2026-10-05T22:23:16.228537"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -846,7 +970,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-28T22:24:05.493640"
+          "timestamp": "2026-10-05T22:23:16.242099"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -855,7 +979,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T05:53:49.452094"
+          "timestamp": "2026-10-05T22:27:43.013331"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -864,16 +988,7 @@
           "old_percentage": 100.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-29T12:42:57.198801"
-        },
-        {
-          "flag_name": "monitoring_enabled",
-          "old_state": true,
-          "new_state": true,
-          "old_percentage": 100.0,
-          "new_percentage": 100.0,
-          "reason": "",
-          "timestamp": "2026-01-29T12:42:57.251541"
+          "timestamp": "2026-10-05T22:27:43.038551"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -882,7 +997,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-29T12:42:57.270650"
+          "timestamp": "2026-10-05T22:27:43.052154"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -891,7 +1006,7 @@
           "old_percentage": 0.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.656933"
+          "timestamp": "2026-10-05T22:33:55.260717"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -900,7 +1015,7 @@
           "old_percentage": 100.0,
           "new_percentage": 100.0,
           "reason": "",
-          "timestamp": "2026-01-30T06:51:59.712243"
+          "timestamp": "2026-10-05T22:33:55.286764"
         },
         {
           "flag_name": "monitoring_enabled",
@@ -909,7 +1024,7 @@
           "old_percentage": 0,
           "new_percentage": 0,
           "reason": "Test cleanup",
-          "timestamp": "2026-01-30T06:51:59.731448"
+          "timestamp": "2026-10-05T22:33:55.300353"
         }
       ]
     },
@@ -921,8 +1036,179 @@
           "new_state": false,
           "old_percentage": 0,
           "new_percentage": 0,
-          "reason": "Baseline establishment",
-          "timestamp": "2026-01-23T11:11:32.943064"
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 10.0/100",
+          "timestamp": "2026-03-29T12:20:54.384964"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T12:25:54.437434"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T12:30:54.507537"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T12:35:54.572453"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T12:40:54.642478"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T12:53:13.251622"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T13:06:56.400546"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 50.0/100",
+          "timestamp": "2026-03-29T13:27:26.528528"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 30.0/100",
+          "timestamp": "2026-03-29T13:32:26.593443"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 10.0/100",
+          "timestamp": "2026-03-29T13:37:26.660213"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T13:42:26.698784"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T13:47:26.737436"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T13:52:26.776884"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T14:07:07.116129"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 50.0/100",
+          "timestamp": "2026-03-29T14:27:37.155509"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 30.0/100",
+          "timestamp": "2026-03-29T14:32:37.170597"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 10.0/100",
+          "timestamp": "2026-03-29T14:37:37.183290"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T14:42:37.198659"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T14:47:37.212104"
+        },
+        {
+          "flag_name": "use_testable_analyzer",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+          "timestamp": "2026-03-29T14:52:37.227863"
         }
       ]
     },
@@ -938,13 +1224,85 @@
           "timestamp": "2026-01-23T11:11:32.945577"
         }
       ]
+    },
+    "ab_testing_enabled": {
+      "changes": [
+        {
+          "flag_name": "ab_testing_enabled",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T11:22:38.783726"
+        },
+        {
+          "flag_name": "ab_testing_enabled",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T11:50:24.171679"
+        },
+        {
+          "flag_name": "ab_testing_enabled",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T13:06:56.429813"
+        },
+        {
+          "flag_name": "ab_testing_enabled",
+          "old_state": false,
+          "new_state": false,
+          "old_percentage": 0,
+          "new_percentage": 0,
+          "reason": "EMERGENCY: Test rollback",
+          "timestamp": "2026-03-29T14:07:07.122783"
+        }
+      ]
     }
   },
   "rollback_history": [
     {
       "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.272567",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T13:47:26.720604",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T13:47:26.737436",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T13:52:26.760376",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T13:52:26.776884",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T13:57:26.798237",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -952,7 +1310,135 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.287220",
+      "timestamp": "2026-03-29T14:07:01.567702",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Test rollback",
+      "timestamp": "2026-03-29T14:07:07.114435",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Test rollback",
+      "timestamp": "2026-03-29T14:07:07.116129",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "ab_testing_enabled",
+      "reason": "Test rollback",
+      "timestamp": "2026-03-29T14:07:07.122783",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 50.0/100",
+      "timestamp": "2026-03-29T14:27:37.149105",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 50.0/100",
+      "timestamp": "2026-03-29T14:27:37.155509",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 30.0/100",
+      "timestamp": "2026-03-29T14:32:37.163643",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 30.0/100",
+      "timestamp": "2026-03-29T14:32:37.170597",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 10.0/100",
+      "timestamp": "2026-03-29T14:37:37.178754",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 10.0/100",
+      "timestamp": "2026-03-29T14:37:37.183290",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:42:37.193886",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:42:37.198659",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:47:37.209286",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:47:37.212104",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:52:37.222638",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_analyzer",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:52:37.227863",
+      "previous_state": false,
+      "previous_percentage": 0.0,
+      "type": "EMERGENCY"
+    },
+    {
+      "flag_name": "use_testable_position_manager",
+      "reason": "Auto-rollback: Score de sant\u00e9 critique: 0.0/100",
+      "timestamp": "2026-03-29T14:57:37.238409",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -960,7 +1446,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.314815",
+      "timestamp": "2026-03-29T20:58:20.277415",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -968,7 +1454,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.372012",
+      "timestamp": "2026-10-05T21:57:33.092326",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -976,7 +1462,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.377547",
+      "timestamp": "2026-10-05T22:04:46.665106",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -984,7 +1470,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.381672",
+      "timestamp": "2026-10-05T22:19:14.516593",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -992,7 +1478,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-27T23:57:40.385678",
+      "timestamp": "2026-10-05T22:20:15.800677",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1000,7 +1486,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.548351",
+      "timestamp": "2026-10-05T22:22:04.505293",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1008,7 +1494,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.618324",
+      "timestamp": "2026-10-05T22:22:40.985555",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1016,7 +1502,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.737767",
+      "timestamp": "2026-10-05T22:23:16.204856",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1024,7 +1510,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.940749",
+      "timestamp": "2026-10-05T22:23:16.211287",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1032,7 +1518,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.956422",
+      "timestamp": "2026-10-05T22:23:16.220504",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1040,7 +1526,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.973602",
+      "timestamp": "2026-10-05T22:23:16.246775",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1048,7 +1534,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T00:07:12.989830",
+      "timestamp": "2026-10-05T22:23:16.248243",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1056,7 +1542,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:35.555484",
+      "timestamp": "2026-10-05T22:23:16.249708",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1064,7 +1550,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:35.647585",
+      "timestamp": "2026-10-05T22:23:16.251178",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1072,7 +1558,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:35.766010",
+      "timestamp": "2026-10-05T22:27:43.014814",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1080,7 +1566,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:35.982512",
+      "timestamp": "2026-10-05T22:27:43.020930",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1088,7 +1574,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:36.000554",
+      "timestamp": "2026-10-05T22:27:43.030252",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1096,7 +1582,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:36.017219",
+      "timestamp": "2026-10-05T22:27:43.057049",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1104,7 +1590,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T06:03:36.041419",
+      "timestamp": "2026-10-05T22:27:43.058558",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1112,7 +1598,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:29.903408",
+      "timestamp": "2026-10-05T22:27:43.059983",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1120,7 +1606,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:29.983248",
+      "timestamp": "2026-10-05T22:27:43.061431",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1128,7 +1614,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:30.116891",
+      "timestamp": "2026-10-05T22:33:55.262572",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1136,7 +1622,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:30.334545",
+      "timestamp": "2026-10-05T22:33:55.268929",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1144,7 +1630,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:30.352893",
+      "timestamp": "2026-10-05T22:33:55.278212",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1152,7 +1638,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:30.375724",
+      "timestamp": "2026-10-05T22:33:55.305084",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1160,7 +1646,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T21:55:30.392849",
+      "timestamp": "2026-10-05T22:33:55.306499",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1168,7 +1654,7 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.125106",
+      "timestamp": "2026-10-05T22:33:55.307896",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
@@ -1176,171 +1662,11 @@
     {
       "flag_name": "use_testable_position_manager",
       "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.205813",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.328950",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.561738",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.581251",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.602794",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-28T22:24:05.621412",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T05:53:49.457636",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.203321",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.216585",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.234828",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.281206",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.285210",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.288225",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-29T12:42:57.291312",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.660975",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.674555",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.693776",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.740521",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.745050",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.748199",
-      "previous_state": false,
-      "previous_percentage": 0.0,
-      "type": "EMERGENCY"
-    },
-    {
-      "flag_name": "use_testable_position_manager",
-      "reason": "Metrics threshold exceeded",
-      "timestamp": "2026-01-30T06:51:59.751704",
+      "timestamp": "2026-10-05T22:33:55.309465",
       "previous_state": false,
       "previous_percentage": 0.0,
       "type": "EMERGENCY"
     }
   ],
-  "last_saved": "2026-01-30T06:51:59.786509"
+  "last_saved": "2026-10-05T22:33:55.324495"
 }
