@@ -2,9 +2,11 @@ name: Tests & Coverage
 
 on:
   push:
-    branches: [ main, dev, claude/* ]
+    # claude2 est la branche par défaut du dépôt : sans elle, aucun run sur la branche principale
+    branches: [ claude2, main, dev, claude/* ]
   pull_request:
-    branches: [ main ]
+    # Les PR sont ouvertes vers la branche par défaut (claude2), pas vers main qui n'existe pas
+    branches: [ claude2, main, dev ]
 
 jobs:
   test:
@@ -12,15 +14,15 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python 3.11
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -39,7 +41,8 @@ jobs:
 
     - name: Upload coverage to Codecov (optional)
       if: success()
-      uses: codecov/codecov-action@v3
+      continue-on-error: true
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: unittests
