@@ -7,7 +7,16 @@ from typing import Optional, Dict
 from utils.logger import get_logger
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 
 async def calculate_trend_data(
@@ -83,5 +92,5 @@ async def calculate_trend_data(
             'bonus': bonus
         }
     except Exception as e:
-        logger.warning(f"⚠️ Erreur calcul trend_data pour {symbol} ({timeframe}): {e}")
+        _get_logger().warning(f"⚠️ Erreur calcul trend_data pour {symbol} ({timeframe}): {e}")
         return None

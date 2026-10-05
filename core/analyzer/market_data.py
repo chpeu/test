@@ -9,7 +9,16 @@ from config import TRADING_CONFIG
 from utils.logger import get_logger
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 ORDERBOOK_LONG_MIN_RATIO = 1.1
 ORDERBOOK_SHORT_MAX_RATIO = 0.95
@@ -40,7 +49,7 @@ async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
 
         # 🔥 FIX: Vérifier que orderbook n'est pas None et contient bids/asks
         if orderbook is None:
-            # 🔥 FIX: Ne pas logger ici car WebSocketLogHandler capture déjà logger.error et envoie au frontend
+            # 🔥 FIX: Ne pas logger ici car WebSocketLogHandler capture déjà _get_logger().error et envoie au frontend
             # Le log sera envoyé automatiquement via WebSocketLogHandler
             return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'ERROR'}
         
@@ -59,20 +68,50 @@ async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
         # Seuil dynamique selon mode TP/SL
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
 
+        max_spread_override = TRADING_CONFIG.get('max_spread_pct')
+        max_spread_fixe = TRADING_CONFIG.get('max_spread_pct_fixe')
+        max_spread_atr = TRADING_CONFIG.get('max_spread_pct_atr')
+
+        try:
+            max_spread_override = float(max_spread_override) if max_spread_override is not None else None
+        except (TypeError, ValueError):
+            max_spread_override = None
+
+        try:
+            max_spread_fixe = float(max_spread_fixe) if max_spread_fixe is not None else None
+        except (TypeError, ValueError):
+            max_spread_fixe = None
+
+        try:
+            max_spread_atr = float(max_spread_atr) if max_spread_atr is not None else None
+        except (TypeError, ValueError):
+            max_spread_atr = None
+
         if tp_sl_mode == 'FIXE':
-            max_spread = 0.03  # 0.03% pour TP +0.25%
+            if max_spread_fixe is not None:
+                max_spread = max_spread_fixe
+            elif max_spread_override is not None:
+                max_spread = max_spread_override
+            else:
+                max_spread = 0.03  # 0.03% pour TP +0.25%
         else:
-            max_spread = 0.06  # 0.06% pour TP ATR
+            if max_spread_atr is not None:
+                max_spread = max_spread_atr
+            elif max_spread_override is not None:
+                max_spread = max_spread_override
+            else:
+                max_spread = 0.06  # 0.06% pour TP ATR
 
         valid = spread_pct <= max_spread
 
         # Quality scoring
-        if spread_pct < 0.01:
-            quality = 'EXCELLENT'
-        elif spread_pct < 0.015:
-            quality = 'GOOD'
-        elif spread_pct < max_spread:
-            quality = 'ACCEPTABLE'
+        if valid:
+            if spread_pct < 0.01:
+                quality = 'EXCELLENT'
+            elif spread_pct < 0.015:
+                quality = 'GOOD'
+            else:
+                quality = 'ACCEPTABLE'
         else:
             quality = 'POOR'
 
@@ -93,9 +132,9 @@ async def check_spread(client, symbol: str, spread_cache: Dict) -> Dict:
 
     except Exception as e:
         error_msg = f"❌ Erreur check spread {symbol}: {e}"
-        # 🔥 FIX: logger.error est capturé par WebSocketLogHandler et envoyé au frontend automatiquement
+        # 🔥 FIX: _get_logger().error est capturé par WebSocketLogHandler et envoyé au frontend automatiquement
         # Pas besoin d'envoyer manuellement via websocket_manager.emit (cela créerait un doublon)
-        logger.error(error_msg)
+        _get_logger().error(error_msg)
         return {'valid': False, 'spread_pct': 999, 'max_allowed': 0.03, 'quality': 'ERROR'}
 
 
@@ -129,7 +168,7 @@ async def check_orderbook_imbalance(
         orderbook = await client.fetch_order_book(symbol, limit=10)
 
         if orderbook is None:
-            logger.warning(f"⚠️ Orderbook None pour {symbol}, retour valeur par défaut")
+            _get_logger().warning(f"⚠️ Orderbook None pour {symbol}, retour valeur par défaut")
             return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}
 
         bids = orderbook.get('bids', [])[:10] if orderbook.get('bids') else []
@@ -193,7 +232,7 @@ async def check_orderbook_imbalance(
             else:
                 quality = 'POOR'
 
-        logger.debug(
+        _get_logger().debug(
             f"📊 {symbol} Orderbook: Ratio={ratio:.2f} "
             f"({'✅' if valid else '❌'} for {direction}), Quality={quality}"
         )
@@ -216,6 +255,6 @@ async def check_orderbook_imbalance(
         return result
 
     except Exception as e:
-        logger.error(f"❌ Erreur check orderbook {symbol}: {e}")
+        _get_logger().error(f"❌ Erreur check orderbook {symbol}: {e}")
         # En cas d'erreur, accepter (éviter rejets systématiques)
         return {'valid': True, 'ratio': 1.0, 'quality': 'UNKNOWN', 'bid_value': 0, 'ask_value': 0}

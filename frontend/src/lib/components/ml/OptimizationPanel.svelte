@@ -528,12 +528,18 @@
 			</div>
 
 			<div class="params-grid">
-				{#each Object.entries(bestParams.params) as [key, value]}
-					<div class="param-item">
-						<span class="param-key">{key}</span>
-						<span class="param-value">{value}</span>
+				{#if bestParams && bestParams.params}
+					{#each Object.entries(bestParams.params) as [key, value]}
+						<div class="param-item">
+							<span class="param-key">{key}</span>
+							<span class="param-value">{value}</span>
+						</div>
+					{/each}
+				{:else}
+					<div class="no-params">
+						Aucun paramètre à afficher
 					</div>
-				{/each}
+				{/if}
 			</div>
 		</div>
 	{/if}

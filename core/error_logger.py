@@ -1,0 +1,233 @@
+"""
+Error Logger - Intercepte et log les erreurs vers PostgreSQL
+Trade Cursor v7.0
+"""
+
+import logging
+import traceback
+from typing import Optional, Dict, Any
+from functools import wraps
+import queue
+import threading
+
+logger = logging.getLogger(__name__)
+
+
+_error_log_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue(maxsize=1000)
+_error_log_worker_started = False
+_error_log_worker_lock = threading.Lock()
+
+
+def _ensure_error_log_worker_started() -> None:
+    global _error_log_worker_started
+    if _error_log_worker_started:
+        return
+    with _error_log_worker_lock:
+        if _error_log_worker_started:
+            return
+
+        def _worker():
+            while True:
+                payload = _error_log_queue.get()
+                try:
+                    if isinstance(payload, dict):
+                        _log_error_to_db_sync(**payload)
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        _error_log_queue.task_done()
+                    except Exception:
+                        pass
+
+        thread = threading.Thread(target=_worker, name="error_logger_db_worker", daemon=True)
+        thread.start()
+        _error_log_worker_started = True
+
+
+def _log_error_to_db_sync(
+    error_type: str,
+    error_message: str,
+    error_stack: Optional[str] = None,
+    symbol: Optional[str] = None,
+    context: Optional[Dict] = None
+):
+    """
+    Logger une erreur dans la table scan_errors via PostgreSQL DataLogger
+    
+    Args:
+        error_type: Type d'erreur (ERROR, CRITICAL, WARNING)
+        error_message: Message d'erreur
+        error_stack: Stack trace complète
+        symbol: Symbole concerné (optionnel)
+        context: Contexte additionnel (optionnel)
+    """
+    try:
+        from core.callbacks.scanner_loop import get_pg_datalogger
+        pg_datalogger = get_pg_datalogger()
+        
+        if pg_datalogger and pg_datalogger.enabled:
+            pg_datalogger.log_error(
+                error_type=error_type,
+                error_message=error_message,
+                error_stack=error_stack,
+                symbol=symbol,
+                scan_context=context
+            )
+    except Exception as e:
+        logger.debug(f"Impossible de logger l'erreur vers DB: {e}")
+
+
+def log_error_to_db(
+    error_type: str,
+    error_message: str,
+    error_stack: Optional[str] = None,
+    symbol: Optional[str] = None,
+    context: Optional[Dict] = None
+):
+    try:
+        _ensure_error_log_worker_started()
+        payload: Dict[str, Any] = {
+            'error_type': error_type,
+            'error_message': error_message,
+            'error_stack': error_stack,
+            'symbol': symbol,
+            'context': context
+        }
+        _error_log_queue.put_nowait(payload)
+    except queue.Full:
+        pass
+    except Exception:
+        pass
+
+
+def with_error_logging(error_type: str = "ERROR", symbol_arg: Optional[str] = None):
+    """
+    Décorateur pour logger automatiquement les erreurs vers scan_errors
+    
+    Args:
+        error_type: Type d'erreur (ERROR, CRITICAL, WARNING)
+        symbol_arg: Nom de l'argument contenant le symbole (ex: 'symbol')
+    
+    Usage:
+        @with_error_logging(error_type="CRITICAL", symbol_arg="symbol")
+        def my_function(symbol: str):
+            ...
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                # Extraire le symbole si spécifié
+                symbol = None
+                if symbol_arg:
+                    # Chercher dans kwargs
+                    symbol = kwargs.get(symbol_arg)
+                    # Si pas trouvé, chercher dans args via signature
+                    if not symbol and args:
+                        try:
+                            import inspect
+                            sig = inspect.signature(func)
+                            params = list(sig.parameters.keys())
+                            if symbol_arg in params:
+                                idx = params.index(symbol_arg)
+                                if idx < len(args):
+                                    symbol = args[idx]
+                        except:
+                            pass
+                
+                # Logger vers DB
+                log_error_to_db(
+                    error_type=error_type,
+                    error_message=str(e),
+                    error_stack=traceback.format_exc(),
+                    symbol=symbol,
+                    context={'function': func.__name__}
+                )
+                
+                # Re-raise l'exception
+                raise
+        
+        return wrapper
+    return decorator
+
+
+class ErrorLoggerHandler(logging.Handler):
+    """
+    Handler logging.Handler personnalisé qui envoie les erreurs vers scan_errors
+    
+    Usage:
+        import logging
+        from core.error_logger import ErrorLoggerHandler
+        
+        logger = logging.getLogger(__name__)
+        logger.addHandler(ErrorLoggerHandler(level=logging.ERROR))
+    """
+    
+    def __init__(self, level=logging.ERROR):
+        super().__init__(level=level)
+    
+    def emit(self, record: logging.LogRecord):
+        """Appelé à chaque log >= level"""
+        try:
+            try:
+                record_name = getattr(record, 'name', '') or ''
+                if record_name.startswith('core.postgresql_datalogger') or record_name.startswith('core.error_logger'):
+                    return
+            except Exception:
+                pass
+
+            # Mapper les niveaux Python vers nos types
+            level_map = {
+                logging.CRITICAL: 'CRITICAL',
+                logging.ERROR: 'ERROR',
+                logging.WARNING: 'WARNING'
+            }
+            
+            error_type = level_map.get(record.levelno, 'ERROR')
+            
+            # Extraire le symbole du message si présent (format: "BTC/USDT: error...")
+            # 🔥 FIX: Logique plus robuste pour éviter de capturer du texte comme symbole
+            symbol = None
+            msg = record.getMessage()
+            if ':' in msg:
+                potential_part = msg.split(':')[0].strip()
+                # Un symbole ne contient généralement pas d'espaces et a une structure spécifique
+                if '/' in potential_part and ' ' not in potential_part:
+                    if 'USDT' in potential_part or 'BTC' in potential_part or 'ETH' in potential_part:
+                        # Nettoyer d'éventuels emojis au début
+                        clean_symbol = ''.join(c for c in potential_part if c.isalnum() or c in '/:_')
+                        if clean_symbol:
+                            symbol = clean_symbol
+            
+            # Si le symbole est trop long pour la DB (VARCHAR(100)), le tronquer
+            if symbol and len(symbol) > 100:
+                symbol = symbol[:100]
+            
+            # Stack trace si disponible
+            error_stack = None
+            if record.exc_info:
+                error_stack = ''.join(traceback.format_exception(*record.exc_info))
+            
+            # Contexte
+            context = {
+                'logger': record.name,
+                'module': record.module,
+                'function': record.funcName,
+                'line': record.lineno
+            }
+            
+            # Logger vers DB
+            log_error_to_db(
+                error_type=error_type,
+                error_message=msg,
+                error_stack=error_stack,
+                symbol=symbol,
+                context=context
+            )
+            
+        except Exception:
+            # Ne pas crasher si le logging échoue
+            self.handleError(record)

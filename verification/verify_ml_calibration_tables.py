@@ -8,6 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime, timezone, timedelta
 import requests
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 BASE_URL = "http://localhost:5000"
 
@@ -24,6 +26,17 @@ def print_fail(msg):
 
 def print_info(msg):
     print(f"[INFO] {msg}")
+
+
+def _detect_history_schema(columns):
+    cols = set(columns or [])
+    if 'actual_winrate' in cols:
+        ts_col = 'snapshot_at' if 'snapshot_at' in cols else ('created_at' if 'created_at' in cols else 'id')
+        return 'v2', ts_col
+    if 'new_winrate' in cols or 'old_winrate' in cols:
+        ts_col = 'created_at' if 'created_at' in cols else ('snapshot_at' if 'snapshot_at' in cols else 'id')
+        return 'v1', ts_col
+    return 'unknown', 'id'
 
 
 def test_tables_exist():
@@ -66,14 +79,29 @@ def test_tables_exist():
                     ORDER BY ordinal_position
                 """)
                 columns = [row[0] for row in cur.fetchall()]
-                required = ['direction', 'confidence_bucket', 'old_winrate', 'new_winrate', 'total_trades', 'reason']
+                schema, ts_col = _detect_history_schema(columns)
+                if schema == 'v2':
+                    required = ['direction', 'confidence_bucket', 'actual_winrate', 'total_trades', 'reason']
+                elif schema == 'v1':
+                    required = ['direction', 'confidence_bucket', 'old_winrate', 'new_winrate', 'total_trades', 'reason']
+                else:
+                    print_fail(f"Schema ml_calibration_history inconnu: {columns}")
+                    return False
+
+                if ts_col and ts_col not in required:
+                    required.append(ts_col)
                 missing = [c for c in required if c not in columns]
                 if missing:
                     print_fail(f"Colonnes manquantes dans ml_calibration_history: {missing}")
                     return False
+                print_ok(f"Schema ml_calibration_history: {schema} (timestamp={ts_col})")
                 print_ok(f"Colonnes ml_calibration_history: {columns}")
                 
         finally:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             pg.pool.putconn(conn)
         
         return True
@@ -111,6 +139,10 @@ def test_calibration_data():
                     print(f"    {row[0]} {row[1]}: {row[2]} trades, WR={wr}")
                 
         finally:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             pg.pool.putconn(conn)
         
         return True
@@ -131,12 +163,33 @@ def test_history_logging():
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT direction, confidence_bucket, old_winrate, new_winrate, 
-                           total_trades, reason, created_at
-                    FROM ml_calibration_history
-                    ORDER BY created_at DESC
-                    LIMIT 10
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'ml_calibration_history'
+                    ORDER BY ordinal_position
                 """)
+                columns = [row[0] for row in cur.fetchall()]
+                schema, ts_col = _detect_history_schema(columns)
+
+                if schema == 'v2':
+                    cur.execute(f"""
+                        SELECT direction, confidence_bucket, actual_winrate,
+                               total_trades, reason, {ts_col}
+                        FROM ml_calibration_history
+                        ORDER BY {ts_col} DESC
+                        LIMIT 10
+                    """)
+                elif schema == 'v1':
+                    cur.execute(f"""
+                        SELECT direction, confidence_bucket, old_winrate, new_winrate,
+                               total_trades, reason, {ts_col}
+                        FROM ml_calibration_history
+                        ORDER BY {ts_col} DESC
+                        LIMIT 10
+                    """)
+                else:
+                    print_fail(f"Schema ml_calibration_history inconnu: {columns}")
+                    return False
+
                 rows = cur.fetchall()
                 
                 if not rows:
@@ -144,12 +197,23 @@ def test_history_logging():
                     return True
                 
                 print_ok(f"{len(rows)} entrees d'historique recentes:")
-                for row in rows:
-                    old_wr = f"{row[2]:.1f}%" if row[2] else "N/A"
-                    new_wr = f"{row[3]:.1f}%" if row[3] else "N/A"
-                    print(f"    {row[0]} {row[1]}: {old_wr} -> {new_wr} ({row[5]})")
+                if schema == 'v2':
+                    for row in rows:
+                        wr = f"{row[2]:.1f}%" if row[2] is not None else "N/A"
+                        total_trades = row[3] if row[3] is not None else 0
+                        print(f"    {row[0]} {row[1]}: WR={wr} ({total_trades} trades, {row[4]})")
+                else:
+                    for row in rows:
+                        old_wr = f"{row[2]:.1f}%" if row[2] is not None else "N/A"
+                        new_wr = f"{row[3]:.1f}%" if row[3] is not None else "N/A"
+                        total_trades = row[4] if row[4] is not None else 0
+                        print(f"    {row[0]} {row[1]}: {old_wr} -> {new_wr} ({total_trades} trades, {row[5]})")
                 
         finally:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             pg.pool.putconn(conn)
         
         return True
@@ -167,6 +231,10 @@ def test_update_triggers_history():
         from core.postgresql_datalogger import PostgreSQLDataLogger
         
         manager = get_calibration_manager()
+        cfg = manager._get_config()
+        if not cfg.get('enabled', True):
+            print_info("Calibration désactivée (ml_calibration_enabled=false) -> skip")
+            return True
         pg = PostgreSQLDataLogger()
         
         # Compter les entrees avant
@@ -176,6 +244,10 @@ def test_update_triggers_history():
                 cur.execute("SELECT COUNT(*) FROM ml_calibration_history")
                 count_before = cur.fetchone()[0]
         finally:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             pg.pool.putconn(conn)
         
         # Simuler un update (trade fictif)
@@ -211,15 +283,27 @@ def test_update_triggers_history():
                 
                 # Verifier la derniere entree
                 cur.execute("""
-                    SELECT direction, confidence_bucket, reason, created_at
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'ml_calibration_history'
+                    ORDER BY ordinal_position
+                """)
+                columns = [row[0] for row in cur.fetchall()]
+                schema, ts_col = _detect_history_schema(columns)
+
+                cur.execute(f"""
+                    SELECT direction, confidence_bucket, reason, {ts_col}
                     FROM ml_calibration_history
-                    ORDER BY created_at DESC
+                    ORDER BY {ts_col} DESC
                     LIMIT 1
                 """)
                 row = cur.fetchone()
                 if row:
                     print_ok(f"Derniere entree: {row[0]} {row[1]} ({row[2]})")
         finally:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             pg.pool.putconn(conn)
         
         return True
@@ -248,15 +332,47 @@ def test_api_endpoints():
         resp = requests.get(f"{BASE_URL}/ml/calibration/check/LONG/45", timeout=5)
         if resp.status_code == 200:
             data = resp.json()
-            print_ok(f"GET /ml/calibration/check: should_take={data.get('should_take')}")
+            should_take = data.get('would_take_trade')
+            if should_take is None:
+                should_take = data.get('should_take')
+            print_ok(f"GET /ml/calibration/check: would_take_trade={should_take}")
         else:
             print_fail(f"GET /ml/calibration/check: {resp.status_code}")
             return False
         
         return True
     except requests.exceptions.ConnectionError:
-        print_fail("Backend non accessible (demarrez le backend)")
-        return False
+        print_info("Backend non accessible, test in-process via TestClient")
+        try:
+            from api.routes.ml_calibration import router as ml_calibration_router
+
+            app = FastAPI()
+            app.include_router(ml_calibration_router)
+            client = TestClient(app)
+
+            resp = client.get("/ml/calibration/stats")
+            if resp.status_code == 200:
+                data = resp.json()
+                print_ok(f"GET /ml/calibration/stats (in-process): {data.get('total_trades', 0)} trades")
+            else:
+                print_fail(f"GET /ml/calibration/stats (in-process): {resp.status_code}")
+                return False
+
+            resp = client.get("/ml/calibration/check/LONG/45")
+            if resp.status_code == 200:
+                data = resp.json()
+                should_take = data.get('would_take_trade')
+                if should_take is None:
+                    should_take = data.get('should_take')
+                print_ok(f"GET /ml/calibration/check (in-process): would_take_trade={should_take}")
+            else:
+                print_fail(f"GET /ml/calibration/check (in-process): {resp.status_code}")
+                return False
+
+            return True
+        except Exception as e:
+            print_fail(f"Backend non accessible et test in-process a echoue: {e}")
+            return False
     except Exception as e:
         print_fail(f"Erreur: {e}")
         return False

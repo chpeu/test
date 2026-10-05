@@ -28,10 +28,11 @@ def load_live_config() -> Dict[str, Any]:
         'dry_run': True,
         'api_key_mexc': '',
         'api_secret_mexc': '',
+        'browser_token_mexc': os.getenv('MEXC_BROWSER_TOKEN', ''),
         'max_slippage_pct': 0.15,
         'max_latency_ms': 1000,
         'max_pnl_discrepancy_pct': 20,
-        'default_leverage': 10  # 🔥 FUTURES: Levier par défaut (1-125x)
+        'default_leverage': 1   # 🔥 FUTURES: Levier par défaut (1-125x)
     }
 
     if not LIVE_CONFIG_FILE.exists():
@@ -58,6 +59,91 @@ def save_live_config(config: Dict[str, Any]) -> bool:
         return False
 
 
+def get_live_trading_status() -> Dict[str, Any]:
+    """Compatibilité tests: statut live trading (sync)."""
+    config = load_live_config()
+    return {
+        "trading_mode": config.get("trading_mode", "PAPER"),
+        "dry_run": config.get("dry_run", True),
+        "max_slippage_pct": config.get("max_slippage_pct", 0.15),
+        "max_latency_ms": config.get("max_latency_ms", 1000),
+        "max_pnl_discrepancy_pct": config.get("max_pnl_discrepancy_pct", 20),
+        "default_leverage": config.get("default_leverage", 1),
+    }
+
+
+@router.post("/reconcile-mexc")
+async def run_mexc_reconciliation():
+    """
+    Exécute le script de réconciliation MEXC vs DB
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+    
+    script_path = Path("verification/reconcile_exchange_export_vs_db.py")
+    excel_path = Path("export mexc.xlsx")
+    output_csv = Path("verification/reconcile_mexc_vs_db_agg.csv")
+    
+    if not excel_path.exists():
+        return JSONResponse({
+            "success": False,
+            "error": "Fichier 'export mexc.xlsx' introuvable à la racine."
+        }, status_code=404)
+        
+    try:
+        # Exécuter la commande
+        cmd = [
+            sys.executable, str(script_path),
+            "--file", str(excel_path),
+            "--mexc-fr-orders",
+            "--output-csv", str(output_csv),
+            "--sheet", "Feuil3",
+            "--auto-time-offset",
+            "--time-tolerance-seconds", "3600"
+        ]
+        
+        process = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        
+        if process.returncode != 0:
+            logger.error(f"Erreur réconciliation: {process.stderr}")
+            return JSONResponse({
+                "success": False,
+                "error": f"Erreur lors de l'exécution du script: {process.stderr}"
+            }, status_code=500)
+            
+        # Lire le résultat du CSV pour le renvoyer
+        import pandas as pd
+        if output_csv.exists():
+            df = pd.read_csv(output_csv)
+            # On ne renvoie que les colonnes intéressantes
+            results = df.to_dict(orient="records")
+            return JSONResponse({
+                "success": True,
+                "output": process.stdout,
+                "results": results,
+                "summary": {
+                    "total_mismatches": len(df),
+                    "mean_pnl_diff": float(df["pnl_diff_usdt"].mean()) if not df.empty else 0,
+                    "max_size_diff": float(df["size_diff_ratio"].max()) if not df.empty else 0
+                }
+            })
+        else:
+            return JSONResponse({
+                "success": True,
+                "output": process.stdout,
+                "results": [],
+                "message": "Aucun écart détecté."
+            })
+            
+    except Exception as e:
+        logger.error(f"Exception pendant réconciliation: {e}")
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+
 @router.get("/stats")
 async def get_live_stats():
     """
@@ -71,7 +157,14 @@ async def get_live_stats():
         config = load_live_config()
 
         # Récupérer stats depuis LiveOrderManager si actif
-        from main import live_order_manager
+        from core.state_manager import get_state_manager
+
+        state = get_state_manager()
+        live_order_manager = state.get_live_order_manager()
+        if not live_order_manager:
+            from main import live_order_manager as legacy_live_order_manager
+
+            live_order_manager = legacy_live_order_manager
 
         if live_order_manager:
             stats = live_order_manager.get_stats()
@@ -195,6 +288,8 @@ async def get_live_config():
             config_safe['api_key_mexc'] = '***' + config_safe['api_key_mexc'][-4:] if len(config_safe['api_key_mexc']) > 4 else '***'
         if config_safe.get('api_secret_mexc'):
             config_safe['api_secret_mexc'] = '***'
+        if config_safe.get('browser_token_mexc'):
+            config_safe['browser_token_mexc'] = '***' + config_safe['browser_token_mexc'][-4:] if len(config_safe['browser_token_mexc']) > 4 else '***'
 
         return JSONResponse({
             'success': True,
@@ -230,6 +325,8 @@ async def update_live_config(data: Dict[str, Any]):
             config['api_key_mexc'] = data['api_key_mexc']
         if 'api_secret_mexc' in data and data['api_secret_mexc']:
             config['api_secret_mexc'] = data['api_secret_mexc']
+        if 'browser_token_mexc' in data and data['browser_token_mexc']:
+            config['browser_token_mexc'] = data['browser_token_mexc']
         if 'max_slippage_pct' in data:
             config['max_slippage_pct'] = float(data['max_slippage_pct'])
         if 'max_latency_ms' in data:
@@ -253,8 +350,8 @@ async def update_live_config(data: Dict[str, Any]):
             if config.get('api_key_mexc') and config.get('api_secret_mexc'):
                 import main
                 from config import TRADING_CONFIG
-                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 10))
-                browser_token = TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
+                default_leverage = config.get('default_leverage', TRADING_CONFIG.get('default_leverage', 1))
+                browser_token = config.get('browser_token_mexc') or TRADING_CONFIG.get('mexc_browser_token') or os.getenv('MEXC_BROWSER_TOKEN', '').strip()
                 use_bypass_mode = TRADING_CONFIG.get('use_bypass_mode', True)
 
                 if use_bypass_mode and not browser_token:
@@ -266,7 +363,7 @@ async def update_live_config(data: Dict[str, Any]):
                     if hasattr(main.notification_manager, 'telegram_notifier'):
                         telegram_notif = main.notification_manager.telegram_notifier
 
-                main.live_order_manager = LiveOrderManagerFutures(
+                lom = LiveOrderManagerFutures(
                     api_key=config['api_key_mexc'],
                     api_secret=config['api_secret_mexc'],
                     browser_token=browser_token if browser_token else None,
@@ -277,6 +374,12 @@ async def update_live_config(data: Dict[str, Any]):
                     enable_circuit_breaker=True,       # 🔥 v7.3: Circuit Breaker actif
                     circuit_breaker_threshold=5        # 🔥 v7.3: 5 échecs → ouverture circuit
                 )
+                
+                # 🔥 SYNC: Update both StateManager and main module
+                from core.state_manager import get_state_manager
+                get_state_manager().set_live_order_manager(lom)
+                main.live_order_manager = lom
+                
                 logger.info(
                     f"✅ LiveOrderManagerFutures réinitialisé | "
                     f"Mode: {'DRY_RUN' if config['dry_run'] else 'LIVE RÉEL'} | "
@@ -440,6 +543,8 @@ async def reset_circuit_breaker():
             'status_after': status_after
         })
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Erreur réinitialisation Circuit Breaker: {e}")
         raise HTTPException(status_code=500, detail=str(e))

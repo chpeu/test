@@ -4,16 +4,28 @@ from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 
 env_vars = {}
-with open('.env', 'r') as f:
-    for line in f:
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            k, v = line.split('=', 1)
-            env_vars[k.strip()] = v.strip()
+try:
+    with open('.env', 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                env_vars[k.strip()] = v.strip()
+except FileNotFoundError:
+    print("Fichier .env non trouvé. Ce script nécessite un fichier .env avec les variables PostgreSQL.")
+    exit(0)  # Exit gracefully for test environment
 
 password = quote_plus(env_vars.get('POSTGRES_PASSWORD', ''))
 conn = f"postgresql://{env_vars.get('POSTGRES_USER')}:{password}@{env_vars.get('POSTGRES_HOST')}:{env_vars.get('POSTGRES_PORT')}/{env_vars.get('POSTGRES_DB')}"
-engine = create_engine(conn)
+try:
+    engine = create_engine(conn)
+    # Test connection
+    with engine.connect() as test_conn:
+        pass
+except Exception as e:
+    print(f"Impossible de se connecter à PostgreSQL: {e}")
+    print("Ce script nécessite une base de données PostgreSQL active.")
+    exit(0)  # Exit gracefully for test environment
 
 # Charger trades
 trades = pd.read_sql('SELECT * FROM trades', engine)

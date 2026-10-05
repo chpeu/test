@@ -2,6 +2,14 @@
 Core modules for Trade Cursor
 """
 from .indicators import Indicators
+import sys
+import os
+
+# Ajouter le répertoire racine au path si nécessaire
+root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
 from .scanner import ScalabilityScanner
 # Import TechnicalAnalyzer depuis le fichier analyzer.py (pas le package analyzer/)
 import importlib.util

@@ -219,6 +219,21 @@ class TestCalculateCurrentPerformance:
             # Exception is acceptable for NaN data
             pass
 
+    def test_calculate_performance_trims_mismatched_lengths(self, detector):
+        pytest.importorskip('sklearn')
+
+        predictions_df = pd.DataFrame({
+            'predicted_pnl': [1.0, 2.0, 3.0, 4.0],
+            'timestamp': [datetime.now()] * 4,
+        })
+        actuals_df = pd.DataFrame({
+            'actual_pnl': [1.1, 2.1],
+            'timestamp': [datetime.now()] * 2,
+        })
+
+        metrics = detector.calculate_current_performance(predictions_df, actuals_df)
+        assert metrics.predictions_count == 2
+
 
 class TestDetectDrift:
     """Tests detect_drift()"""
@@ -360,6 +375,11 @@ class TestGetSeverity:
 
         assert severity is None
 
+    def test_severity_unknown_metric_returns_none(self, detector):
+        # Metric inconnue => thresholds {} => None
+        severity = detector._get_severity('unknown', 999)
+        assert severity is None
+
 
 class TestShouldRetrain:
     """Tests should_retrain()"""
@@ -426,6 +446,39 @@ class TestShouldRetrain:
         should_retrain = detector.should_retrain(alerts)
 
         assert should_retrain is False
+
+    def test_should_retrain_more_than_two_medium(self, detector):
+        alerts = [
+            DriftAlert(
+                metric_name='m1',
+                current_value=0.0,
+                baseline_value=0.0,
+                drift_magnitude=0.0,
+                severity='medium',
+                detected_at=datetime.now(),
+                message='m1'
+            ),
+            DriftAlert(
+                metric_name='m2',
+                current_value=0.0,
+                baseline_value=0.0,
+                drift_magnitude=0.0,
+                severity='medium',
+                detected_at=datetime.now(),
+                message='m2'
+            ),
+            DriftAlert(
+                metric_name='m3',
+                current_value=0.0,
+                baseline_value=0.0,
+                drift_magnitude=0.0,
+                severity='medium',
+                detected_at=datetime.now(),
+                message='m3'
+            ),
+        ]
+
+        assert detector.should_retrain(alerts) is True
 
     def test_should_not_retrain_no_alerts(self, detector):
         """Test pas de retrain sans alertes"""
@@ -558,6 +611,116 @@ class TestEdgeCases:
         )
 
         alerts = detector.detect_drift(current_metrics)
-
-        # Pas d'alertes (amélioration n'est pas un drift)
+        # Avec des prédictions parfaites, il ne devrait pas y avoir d'alertes
         assert len(alerts) == 0
+
+
+def test_load_baseline_from_postgres_exception_path(monkeypatch):
+    """Test lignes 124-126: exception dans load_baseline_from_postgres"""
+    from optimization.monitoring_v2 import ModelDriftDetector
+    
+    def boom():
+        raise RuntimeError('Database connection failed')
+    
+    monkeypatch.setattr('core.postgresql_datalogger.PostgreSQLDataLogger', boom)
+    
+    detector = ModelDriftDetector()
+    result = detector.load_baseline_from_postgres()
+    assert result is False
+
+
+def test_monitor_model_performance_function():
+    """Test lignes 430-461: fonction monitor_model_performance complète"""
+    import pandas as pd
+    from optimization.monitoring_v2 import monitor_model_performance
+    
+    predictions = pd.DataFrame({
+        'predicted_pnl': [0.1, 0.2, -0.1, 0.05]
+    })
+    actuals = pd.DataFrame({
+        'actual_pnl': [0.12, 0.18, -0.08, 0.03]
+    })
+    
+    # Test avec save_report=False pour éviter l'I/O
+    report = monitor_model_performance(predictions, actuals, save_report=False)
+    
+    # Le format réel retourné par get_drift_report
+    assert 'current' in report
+    assert 'drift' in report
+    assert 'recommendation' in report
+
+
+def test_monitor_model_performance_with_alerts(monkeypatch):
+    """Test avec alerts pour couvrir les lignes 447-454"""
+    import pandas as pd
+    from optimization.monitoring_v2 import monitor_model_performance, DriftAlert, ModelPerformanceMetrics
+    from datetime import datetime
+    
+    class MockDetector:
+        def calculate_current_performance(self, pred, act):
+            return ModelPerformanceMetrics(
+                r2_score=0.5, mae=0.3, mse=0.1, predictions_count=50,
+                profitable_pct=40.0, avg_error=0.02, 
+                timestamp=datetime.now(),
+                period_start=datetime.now(), 
+                period_end=datetime.now()
+            )
+            
+        def detect_drift(self, metrics):
+            return [DriftAlert('r2_score', 0.5, 0.8, -0.3, 'critical', datetime.now(), 'R² très faible')]
+            
+        def get_drift_report(self, metrics, alerts):
+            return {
+                'current_metrics': metrics,
+                'alerts': alerts,
+                'recommendation': {'should_retrain': True}
+            }
+            
+        def save_report_to_file(self, report):
+            pass
+    
+    def mock_get_detector():
+        return MockDetector()
+    
+    monkeypatch.setattr('optimization.monitoring_v2.get_drift_detector', mock_get_detector)
+    
+    predictions = pd.DataFrame({'predicted_pnl': [0.1, 0.2]})
+    actuals = pd.DataFrame({'actual_pnl': [0.5, 0.6]})
+    
+    report = monitor_model_performance(predictions, actuals, save_report=True)
+    assert report['recommendation']['should_retrain'] is True
+
+
+def test_monitor_model_performance_exception_handling(monkeypatch):
+    """Test lignes 459-461: exception dans monitor_model_performance"""
+    import pandas as pd
+    from optimization.monitoring_v2 import monitor_model_performance
+    
+    def boom():
+        raise RuntimeError('Monitoring failed')
+    
+    monkeypatch.setattr('optimization.monitoring_v2.get_drift_detector', boom)
+    
+    predictions = pd.DataFrame({'predicted_pnl': [0.1]})
+    actuals = pd.DataFrame({'actual_pnl': [0.1]})
+    
+    try:
+        monitor_model_performance(predictions, actuals)
+        assert False, "Should have raised exception"
+    except RuntimeError as e:
+        assert "Monitoring failed" in str(e)
+
+
+def test_get_drift_detector_singleton():
+    """Test lignes 407-411: get_drift_detector singleton"""
+    from optimization.monitoring_v2 import get_drift_detector
+    
+    # Reset singleton
+    import optimization.monitoring_v2
+    optimization.monitoring_v2._drift_detector_instance = None
+    
+    detector1 = get_drift_detector()
+    detector2 = get_drift_detector()
+    
+    assert detector1 is detector2
+    assert detector1 is not None

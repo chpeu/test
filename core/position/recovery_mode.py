@@ -32,6 +32,18 @@ class RecoveryModeConfig:
     ])
 
 
+@dataclass
+class RecoveryState:
+    """Snapshot structuré de l'état Recovery (usage shadow / refactor)."""
+    active: bool
+    level: Optional[int]
+    loss_streak: int
+    min_score_boost: float
+    position_size_mult: float
+    confluence_forced: bool
+    remaining_trades: int
+
+
 class RecoveryModeManager:
     """Gestionnaire Recovery Mode"""
 
@@ -71,6 +83,31 @@ class RecoveryModeManager:
                 applicable_level = {**level, 'level': i + 1}
 
         return applicable_level
+
+    def get_state(self, loss_streak: int, use_active_flag: bool = True) -> RecoveryState:
+        """
+        Construire un snapshot RecoveryState sans modifier la logique existante.
+
+        Args:
+            loss_streak: Nombre de pertes consécutives
+            use_active_flag: True = active basé sur self.active (comportement actuel)
+        """
+        level = self.get_recovery_level(loss_streak)
+        active = self.active if use_active_flag else bool(level)
+        min_score_boost = level.get('min_score_boost', 0.0) if level else 0.0
+        position_size_mult = level.get('position_size_reduction', 1.0) if level else 1.0
+        confluence_forced = level.get('confluence_forced', False) if level else False
+        remaining_trades = self.remaining_trades if active else 0
+
+        return RecoveryState(
+            active=active,
+            level=level.get('level') if level else None,
+            loss_streak=loss_streak,
+            min_score_boost=min_score_boost,
+            position_size_mult=position_size_mult,
+            confluence_forced=confluence_forced,
+            remaining_trades=remaining_trades
+        )
 
     def activate(self, loss_streak: int) -> Optional[Dict]:
         """

@@ -1157,53 +1157,6 @@
 	</section>
 
 	<!-- Filtrage ML -->
-	<section class="variable-section">
-		<h3>🎯 Filtrage ML GradientBoosting</h3>
-		<p class="section-desc">
-			Activez le filtre pour bloquer automatiquement les trades avec faible probabilité de succès.
-		</p>
-
-		<div class="variable-item toggle-item">
-			<div class="var-header">
-				<label for="gb_filter_enabled">
-					<span class="var-name">Activer Filtrage GradientBoosting</span>
-					<span class="var-desc">Bloquer les trades avec confiance &lt; seuil</span>
-				</label>
-			</div>
-			<label class="toggle">
-				<input
-					type="checkbox"
-					id="gb_filter_enabled"
-					bind:checked={config.gb_filter_enabled}
-					on:change={() => triggerAutoSave('gb_filter_enabled', config.gb_filter_enabled ? 'Activé' : 'Désactivé')}
-				/>
-				<span class="toggle-slider"></span>
-			</label>
-		</div>
-
-		<div class="variable-item" class:disabled={!config.gb_filter_enabled}>
-			<div class="var-header">
-				<label for="gb_min_confidence">
-					<span class="var-name">Seuil de Confiance Minimum</span>
-					<span class="var-desc">Probabilité minimale de WIN pour accepter le trade (25-80%, pas: 1%)</span>
-				</label>
-			</div>
-			<div class="slider-container">
-				<input
-					type="range"
-					id="gb_min_confidence"
-					min="0.25"
-					max="0.80"
-					step="0.01"
-					bind:value={config.gb_min_confidence}
-					on:change={() => triggerAutoSave('gb_min_confidence', Math.round(config.gb_min_confidence * 100) + '%')}
-					disabled={!config.gb_filter_enabled}
-				/>
-				<span class="slider-value">{Math.round(config.gb_min_confidence * 100)}%</span>
-			</div>
-		</div>
-	</section>
-
 	<!-- Métriques -->
 	<section class="variable-section metrics-section">
 		<h3>📊 Métriques du Modèle GradientBoosting</h3>
@@ -1249,7 +1202,7 @@
 	<section class="variable-section trades-stats-section">
 		<h3>🔢 Données ML Disponibles</h3>
 		<p class="section-desc">
-			Nombre de trades utilisables pour l'entraînement ML après filtrage (exclusion des trades manuels et configs différentes).
+			Trades utilisables pour l'entraînement ML: <strong>LIVE uniquement</strong>, <strong>mode ATR</strong>, <strong>exits propres (TP/SL/TS)</strong>.
 		</p>
 		
 		{#if loadingTradesStats}
@@ -1265,22 +1218,30 @@
 				</div>
 				
 				<div class="stat-card excluded">
-					<span class="stat-icon">🚫</span>
+					<span class="stat-icon">🔴</span>
 					<div class="stat-content">
-						<span class="stat-value">-{mlTradesStats.manual_excluded || 0}</span>
-						<span class="stat-label">Manuels exclus</span>
+						<span class="stat-value">-{mlTradesStats.dryrun_excluded || 0}</span>
+						<span class="stat-label">Dry-run exclus</span>
 					</div>
 				</div>
 				
 				<div class="stat-card excluded">
 					<span class="stat-icon">⚙️</span>
 					<div class="stat-content">
-						<span class="stat-value">-{mlTradesStats.different_config_excluded || 0}</span>
-						<span class="stat-label">Configs différentes</span>
+						<span class="stat-value">-{mlTradesStats.non_atr_excluded || 0}</span>
+						<span class="stat-label">Non-ATR exclus</span>
 					</div>
 				</div>
 				
-				<div class="stat-card final" class:good={mlTradesStats.config_filtered_trades >= 500} class:warning={mlTradesStats.config_filtered_trades < 500}>
+				<div class="stat-card excluded">
+					<span class="stat-icon">🚫</span>
+					<div class="stat-content">
+						<span class="stat-value">-{mlTradesStats.bad_exits_excluded || 0}</span>
+						<span class="stat-label">MANUAL/STAGNATION</span>
+					</div>
+				</div>
+				
+				<div class="stat-card final" class:good={mlTradesStats.config_filtered_trades >= 300} class:warning={mlTradesStats.config_filtered_trades < 300}>
 					<span class="stat-icon">✅</span>
 					<div class="stat-content">
 						<span class="stat-value">{mlTradesStats.config_filtered_trades?.toLocaleString() || 0}</span>
@@ -1357,7 +1318,7 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_learning_rate" min="0.01" max="0.3" step="0.01" bind:value={config.gb_learning_rate} on:change={() => triggerAutoSave('gb_learning_rate', config.gb_learning_rate.toFixed(2))} />
+						<input type="range" id="gb_learning_rate" min="0.01" max="0.3" step="0.01" bind:value={config.gb_learning_rate} on:change={() => triggerAutoSave('gb_learning_rate', config.gb_learning_rate)} />
 						<span class="slider-value">{config.gb_learning_rate.toFixed(2)}</span>
 					</div>
 				</div>
@@ -1385,7 +1346,7 @@
 						</label>
 					</div>
 					<div class="slider-container">
-						<input type="range" id="gb_l2_regularization" min="0.1" max="2.0" step="0.1" bind:value={config.gb_l2_regularization} on:change={() => triggerAutoSave('gb_l2_regularization', config.gb_l2_regularization.toFixed(1))} />
+						<input type="range" id="gb_l2_regularization" min="0.1" max="2.0" step="0.1" bind:value={config.gb_l2_regularization} on:change={() => triggerAutoSave('gb_l2_regularization', config.gb_l2_regularization)} />
 						<span class="slider-value">{(config.gb_l2_regularization || 0.5).toFixed(1)}</span>
 					</div>
 				</div>
@@ -1393,32 +1354,14 @@
 		</div>
 	</section>
 
-	<!-- Calibration ML -->
-	<section class="variable-section">
-		<h3>⚖️ Calibration ML Auto-Adaptative</h3>
+	<!-- Paramètres Calibration ML Avancés (toggle + winrate dans Config ML) -->
+	<section class="variable-section" class:disabled={!config.ml_calibration_enabled}>
+		<h3>⚖️ Paramètres Calibration ML Avancés</h3>
 		<p class="section-desc">
-			Ajuste automatiquement la confiance ML en fonction du WinRate réel observé par bucket.
+			Paramètres avancés de calibration. Activez la calibration dans l'onglet Config ML.
 		</p>
 
-		<div class="variable-item toggle-item">
-			<div class="var-header">
-				<label for="ml_calibration_enabled">
-					<span class="var-name">Activer Calibration Auto</span>
-					<span class="var-desc">Recalibrer la confiance ML avec les résultats réels</span>
-				</label>
-			</div>
-			<label class="toggle">
-				<input
-					type="checkbox"
-					id="ml_calibration_enabled"
-					bind:checked={config.ml_calibration_enabled}
-					on:change={() => triggerAutoSave('ml_calibration_enabled', config.ml_calibration_enabled ? 'Activé' : 'Désactivé')}
-				/>
-				<span class="toggle-slider"></span>
-			</label>
-		</div>
-
-		<div class="subsection-grid" class:disabled={!config.ml_calibration_enabled}>
+		<div class="subsection-grid">
 			<div class="subsection-card">
 				<h4>⚖️ Pondération des Trades</h4>
 				
@@ -1464,7 +1407,7 @@
 			</div>
 
 			<div class="subsection-card">
-				<h4>⏳ Paramètres Temporels & Seuils</h4>
+				<h4>⏳ Paramètres Temporels</h4>
 				
 				<div class="variable-item">
 					<div class="var-header">
@@ -1477,7 +1420,7 @@
 						<input 
 							type="range" 
 							id="ml_calib_decay_days" 
-							min="7" max="60" step="1" 
+							min="3" max="60" step="1" 
 							bind:value={config.ml_calib_decay_days} 
 							on:change={() => triggerAutoSave('ml_calib_decay_days', config.ml_calib_decay_days)} 
 							disabled={!config.ml_calibration_enabled}
@@ -1503,26 +1446,6 @@
 							disabled={!config.ml_calibration_enabled}
 						/>
 						<span class="slider-value">{config.ml_calib_min_trades}</span>
-					</div>
-				</div>
-
-				<div class="variable-item">
-					<div class="var-header">
-						<label for="ml_calib_min_winrate">
-							<span class="var-name">WinRate Min</span>
-							<span class="var-desc">Seuil WR calibré pour accepter (30-60%)</span>
-						</label>
-					</div>
-					<div class="slider-container">
-						<input 
-							type="range" 
-							id="ml_calib_min_winrate" 
-							min="30" max="60" step="1" 
-							bind:value={config.ml_calib_min_winrate} 
-							on:change={() => triggerAutoSave('ml_calib_min_winrate', config.ml_calib_min_winrate + '%')} 
-							disabled={!config.ml_calibration_enabled}
-						/>
-						<span class="slider-value">{config.ml_calib_min_winrate}%</span>
 					</div>
 				</div>
 			</div>
@@ -2911,7 +2834,7 @@
 	/* 🔢 Stats Trades ML */
 	.trades-stats-grid {
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(5, 1fr);
 		gap: 12px;
 		margin-bottom: 16px;
 	}
@@ -3007,6 +2930,12 @@
 		color: #fca5a5;
 	}
 
+	@media (max-width: 1200px) {
+		.trades-stats-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	
 	@media (max-width: 768px) {
 		.trades-stats-grid {
 			grid-template-columns: repeat(2, 1fr);

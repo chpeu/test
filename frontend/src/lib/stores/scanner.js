@@ -42,11 +42,13 @@ export const avgVolume = derived(topPairs, $pairs => {
 
 // Actions
 export function startScanning() {
+	console.log('🔍 [SCANNER-STORE] startScanning() appelé - état sera mis à true');
 	isScanning.set(true);
 	scanProgress.set(0);
 }
 
 export function stopScanning() {
+	console.log('🔍 [SCANNER-STORE] stopScanning() appelé - état sera mis à false');
 	isScanning.set(false);
 	scanProgress.set(100);
 }

@@ -1,0 +1,11 @@
+{
+  "headless": true,
+  "check_interval": 300,
+  "auto_login": false,
+  "credentials": {
+    "username": "",
+    "password": ""
+  },
+  "browser": "chrome",
+  "token_validity_hours": 24
+}

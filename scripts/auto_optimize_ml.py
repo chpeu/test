@@ -15,6 +15,10 @@ Usage:
 
 import os
 import sys
+
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 import json
 import argparse
 import warnings
@@ -28,11 +32,13 @@ import numpy as np
 import pandas as pd
 import joblib
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
     accuracy_score, f1_score, roc_auc_score, precision_score, recall_score,
     confusion_matrix, classification_report
 )
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
+from sklearn.preprocessing import RobustScaler
 
 warnings.filterwarnings('ignore')
 
@@ -61,6 +67,7 @@ class MLAutoOptimizer:
         self.best_metrics = None
         self.threshold_analysis = None
         self.optimization_history = []
+        self._engineered_df = None
         
     def _emit_progress(self, progress: int, message: str):
         """Émet un message de progression parsable par le backend."""
@@ -82,6 +89,8 @@ class MLAutoOptimizer:
             timeframe_days=timeframe_days,
             min_trades=min_trades
         )
+
+        self._engineered_df = dataset.engineered_df
         
         self.X = dataset.X
         self.y = dataset.y
@@ -406,6 +415,37 @@ class MLAutoOptimizer:
         }
         joblib.dump(model_data, model_path)
         print(f"  Modele: {model_path}")
+
+        if self._engineered_df is None:
+            raise ValueError("Données sources manquantes pour construire le preprocessor")
+
+        selected_features = list(self.best_config['feature_names'])
+        X_raw = self._engineered_df[selected_features].copy()
+
+        bool_cols = X_raw.select_dtypes(include=['bool']).columns
+        if len(bool_cols) > 0:
+            X_raw[bool_cols] = X_raw[bool_cols].astype(int)
+
+        imputer = SimpleImputer(strategy='median')
+        X_imputed = imputer.fit_transform(X_raw.values)
+
+        scaler = RobustScaler()
+        scaler.fit(X_imputed)
+
+        preprocessor = {
+            'scaler': scaler,
+            'imputer': imputer,
+            'feature_names': selected_features,
+            'scaler_type': 'RobustScaler'
+        }
+
+        preprocessor_paths = [
+            self.output_dir / "best_classifier_preprocessor.pkl",
+            self.output_dir / "gradient_boosting_optimized_preprocessor.pkl",
+        ]
+        for preprocessor_path in preprocessor_paths:
+            joblib.dump(preprocessor, preprocessor_path)
+            print(f"  Preprocessor: {preprocessor_path}")
         
         # Metadata JSON
         metadata_path = self.output_dir / "best_classifier_metadata.json"

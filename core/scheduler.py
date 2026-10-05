@@ -8,6 +8,7 @@ Scheduler pour les boucles automatiques
 
 import asyncio
 import logging
+import time
 from typing import Optional, Callable
 from datetime import datetime
 
@@ -39,13 +40,36 @@ class Scheduler:
     def set_scalability_refresh_callback(self, callback: Callable):
         """Définir callback pour scalability refresh (appelé toutes les 90s)"""
         self.scalability_refresh_callback = callback
+
+    def _attach_task_monitor(self, name: str, task: asyncio.Task) -> None:
+        """Ajouter un callback de monitoring pour tracer les arrêts inattendus."""
+        def _on_done(done_task: asyncio.Task) -> None:
+            try:
+                if done_task.cancelled():
+                    logger.warning(f"⚠️ Tâche '{name}' annulée")
+                    return
+                exc = done_task.exception()
+                if exc:
+                    logger.error(f"❌ Tâche '{name}' arrêtée avec erreur: {exc}", exc_info=exc)
+                else:
+                    logger.warning(f"⚠️ Tâche '{name}' terminée sans exception (arrêt inattendu)")
+            except Exception:
+                logger.error(f"❌ Erreur monitoring tâche '{name}'", exc_info=True)
+
+        task.add_done_callback(_on_done)
     
     async def _scanner_loop(self):
         """Boucle scanner - toutes les 45 secondes"""
+        logger.info("📡 Boucle scanner démarrée")
         while self.is_running:
             try:
                 if self.scanner_callback:
+                    logger.info("🔍 Exécution du callback scanner...")
+                    start_ts = time.monotonic()
                     await self.scanner_callback()
+                    duration_s = time.monotonic() - start_ts
+                    if duration_s > 5.0:
+                        logger.warning("⚠️ Scanner callback lent: %.2fs", duration_s)
                 
                 # Attendre 45 secondes
                 await asyncio.sleep(45)
@@ -55,6 +79,7 @@ class Scheduler:
     
     async def _position_check_loop(self):
         """Boucle position check - toutes les 0.1 secondes (optimisé pour scalping ultra-rapide)"""
+        logger.info("🛡️ Boucle position check démarrée")
         while self.is_running:
             try:
                 if self.position_check_callback:
@@ -69,38 +94,57 @@ class Scheduler:
     
     async def _scalability_refresh_loop(self):
         """Boucle scalability refresh - toutes les 90 secondes"""
+        logger.info("📊 Boucle scalability refresh démarrée")
+        # 🔥 FIX: Ne pas attendre 60s au démarrage pour que le régime soit détecté immédiatement
+        # (L'attente initiale causait une confusion sur l'automatisme du régime)
+        
         while self.is_running:
             try:
                 if self.scalability_refresh_callback:
+                    logger.info("📊 Exécution du callback scalability refresh...")
+                    start_ts = time.monotonic()
                     await self.scalability_refresh_callback()
+                    duration_s = time.monotonic() - start_ts
+                    if duration_s > 5.0:
+                        logger.warning("⚠️ Scalability refresh lent: %.2fs", duration_s)
                 
-                # Attendre 90 secondes
-                await asyncio.sleep(90)
+                # Attendre l'intervalle défini (adaptatif basé sur volatilité)
+                try:
+                    from core.callbacks.scalability_refresh import get_current_interval
+                    interval = get_current_interval()
+                except ImportError:
+                    interval = 90
+                
+                await asyncio.sleep(interval)
             except Exception as e:
                 logger.error(f"Erreur dans scalability refresh loop: {e}")
-                await asyncio.sleep(10)  # Attendre un peu avant de réessayer
+                await asyncio.sleep(10)
     
     def start(self):
         """Démarrer toutes les boucles"""
         if self.is_running:
-            logger.warning("Scheduler déjà démarré")
+            logger.warning("⚠️ Scheduler déjà démarré, skip start()")
             return
         
         self.is_running = True
+        logger.info("🚀 Démarrage des boucles du Scheduler...")
         
         # Démarrer scanner loop
         if self.scanner_callback:
             self.scanner_task = asyncio.create_task(self._scanner_loop())
+            self._attach_task_monitor("scanner_loop", self.scanner_task)
             logger.info("✅ Scanner loop démarré (45s)")
         
         # Démarrer position check loop
         if self.position_check_callback:
             self.position_check_task = asyncio.create_task(self._position_check_loop())
+            self._attach_task_monitor("position_check_loop", self.position_check_task)
             logger.info("✅ Position check loop démarré (0.1s)")
         
         # Démarrer scalability refresh loop
         if self.scalability_refresh_callback:
             self.scalability_refresh_task = asyncio.create_task(self._scalability_refresh_loop())
+            self._attach_task_monitor("scalability_refresh_loop", self.scalability_refresh_task)
             logger.info("✅ Scalability refresh loop démarré (90s)")
     
     def stop(self):

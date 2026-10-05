@@ -2,9 +2,18 @@
 	import { isScanning } from '$lib/stores/scanner';
 	import { botPhase, getPhaseMessage } from '$lib/stores/botPhase';
 	import { activePosition } from '$lib/stores/position';
+	import { onMount } from 'svelte';
+	import { logMode, quietMode, setLogMode } from '$lib/stores/quietMode';
 
 	let loading = false;
 	let rebooting = false;
+	let quietLoading = false;
+
+	// 🔧 FIX: S'assurer que loading est toujours false au démarrage
+	onMount(() => {
+		loading = false;
+		rebooting = false;
+	});
 
 	// 🔥 NOUVEAU: Calculer le message de statut dynamique
 	$: statusMessage = (() => {
@@ -26,7 +35,14 @@
 
 	async function startBot() {
 		try {
+			console.log('🔍 [BOTCONTROLS] startBot called');
 			loading = true;
+			// 🔧 PROTECTION: Timeout automatique pour éviter loading bloqué
+			const timeoutId = setTimeout(() => {
+				loading = false;
+				console.warn('⚠️ Timeout startBot - loading forcé à false');
+			}, 10000); // 10 secondes max
+
 			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
 
@@ -34,8 +50,10 @@
 				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
 
+			console.log('🔍 [BOTCONTROLS] Sending start_scanner command');
 			await sendCommandViaWS('start_scanner', {});
 			console.log('✅ Bot started via WebSocket');
+			clearTimeout(timeoutId);
 		} catch (err) {
 			console.error('❌ Error starting bot:', err);
 			alert(`❌ Erreur: ${err.message || 'Impossible de démarrer le scanner'}`);
@@ -46,7 +64,14 @@
 
 	async function stopBot() {
 		try {
+			console.log('🔍 [BOTCONTROLS] stopBot called');
 			loading = true;
+			// 🔧 PROTECTION: Timeout automatique pour éviter loading bloqué
+			const timeoutId = setTimeout(() => {
+				loading = false;
+				console.warn('⚠️ Timeout stopBot - loading forcé à false');
+			}, 10000); // 10 secondes max
+
 			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
 			const ws = getWebSocket();
 
@@ -54,8 +79,10 @@
 				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
 			}
 
+			console.log('🔍 [BOTCONTROLS] Sending stop_scanner command');
 			await sendCommandViaWS('stop_scanner', {});
 			console.log('✅ Bot stopped via WebSocket');
+			clearTimeout(timeoutId);
 		} catch (err) {
 			console.error('❌ Error stopping bot:', err);
 			alert(`❌ Erreur: ${err.message || 'Impossible d\'arrêter le scanner'}`);
@@ -94,6 +121,44 @@
 			rebooting = false;
 		}
 	}
+
+	const MODE_LABELS = {
+		logs: '🔊 Logs',
+		quiet: '🔕 Quiet',
+		debug: '🐛 Debug'
+	};
+
+	function getNextMode(current) {
+		if (current === 'logs') return 'quiet';
+		if (current === 'quiet') return 'debug';
+		return 'logs';
+	}
+
+	async function toggleLogMode() {
+		if (quietLoading) return;
+		try {
+			quietLoading = true;
+			const { getWebSocket, sendCommandViaWS } = await import('$lib/utils/websocket');
+			const ws = getWebSocket();
+
+			if (!ws || !ws.connected) {
+				throw new Error('WebSocket non connecté. Veuillez attendre la connexion.');
+			}
+
+			const targetMode = getNextMode($logMode || 'logs');
+			const result = await sendCommandViaWS('set_log_mode', { mode: targetMode });
+			if (result && result.log_mode) {
+				setLogMode(result.log_mode);
+			} else {
+				setLogMode(targetMode);
+			}
+		} catch (err) {
+			console.error('❌ Error toggling log mode:', err);
+			alert(`❌ Erreur: ${err.message || 'Impossible de changer le mode log'}`);
+		} finally {
+			quietLoading = false;
+		}
+	}
 </script>
 
 <div class="bot-controls" data-debug-name="botControls">
@@ -107,6 +172,16 @@
 				data-debug-name="botControls.rebootButton"
 			>
 				{rebooting ? '♻️ Rebooting...' : 'Reboot backend'}
+			</button>
+			<button
+				class="btn-quiet"
+				class:active={$quietMode}
+				class:debug={$logMode === 'debug'}
+				on:click={toggleLogMode}
+				disabled={quietLoading}
+				data-debug-name="botControls.quietModeButton"
+			>
+				{quietLoading ? '⏳ Logs...' : (MODE_LABELS[$logMode] || '🔊 Logs')}
 			</button>
 		</div>
 		<div class="bot-status" class:active={$isScanning} data-debug-name="isScanning">
@@ -261,6 +336,34 @@
 	}
 
 	.btn-reboot:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn-quiet {
+		padding: 8px 12px;
+		border-radius: 8px;
+		border: 1px solid #5cc8ff;
+		background: rgba(92, 200, 255, 0.15);
+		color: #5cc8ff;
+		font-size: 13px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.btn-quiet:hover:not(:disabled) {
+		background: rgba(92, 200, 255, 0.3);
+		transform: translateY(-1px);
+	}
+
+	.btn-quiet.active {
+		background: rgba(92, 200, 255, 0.4);
+		border-color: #9be0ff;
+		color: #e6f7ff;
+	}
+
+	.btn-quiet:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}

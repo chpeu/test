@@ -79,15 +79,13 @@ class TestFetchWithRetry:
     @pytest.mark.asyncio
     async def test_max_attempts_exceeded(self):
         """Test échec après max tentatives"""
-        from tenacity import RetryError
-
         mock_func = AsyncMock(
             side_effect=ConnectionError("Always fails")
         )
 
         # Devrait échouer après max_attempts (défini dans RETRY_CONFIG)
-        # Note: tenacity lève RetryError, pas l'exception originale
-        with pytest.raises(RetryError):
+        # Note: avec reraise=True, tenacity re-lève l'exception originale
+        with pytest.raises(ConnectionError, match="Always fails"):
             await fetch_with_retry(mock_func)
 
         # Devrait avoir essayé plusieurs fois
@@ -148,18 +146,16 @@ class TestFetchWithRetry:
 
     @pytest.mark.asyncio
     async def test_retry_preserves_exception_type(self):
-        """Test que le type d'exception est préservé dans RetryError"""
-        from tenacity import RetryError
-
+        """Test que le type d'exception est préservé après retries"""
         original_error = TimeoutError("Custom timeout message")
         mock_func = AsyncMock(side_effect=original_error)
 
-        # tenacity lève RetryError qui contient l'exception originale
-        with pytest.raises(RetryError) as exc_info:
+        # Avec reraise=True, tenacity re-lève directement l'exception originale
+        with pytest.raises(TimeoutError, match="Custom timeout message"):
             await fetch_with_retry(mock_func)
 
-        # Vérifier que l'exception originale est préservée dans RetryError
-        assert isinstance(exc_info.value.last_attempt.exception(), TimeoutError)
+        # Vérifier que plusieurs tentatives ont été effectuées
+        assert mock_func.call_count > 1
 
 
 class TestIntegration:

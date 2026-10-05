@@ -1,12 +1,279 @@
 """
 Système de logging pour Trade Cursor
 """
+import asyncio
+import contextlib
 import logging
 import sys
 import os
+import weakref
+import time
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from config import DEBUG_ENABLED
+
+
+_ws_log_handlers = weakref.WeakSet()
+
+# Log mode globals
+LOG_MODE = "logs"  # logs | quiet | debug
+LOG_MODE_VALUES = ("logs", "quiet", "debug")
+
+# Quiet mode globals (compat)
+QUIET_MODE = False
+QUIET_MODE_LOGGERS = (
+    "api.routes.websocket",
+    "core.websocket_manager",
+    "core.callbacks.scanner_loop",
+)
+QUIET_MODE_TAGS = (
+    "[WS-DEBUG]",
+    "[WS-PING]",
+    "[WS-STATUS]",
+    "[WS-COMMAND]",
+    "[DEBUG-SCAN]",
+    "[WEBSOCKET-PONG",
+    "[WEBSOCKET-FIX]",
+    "[WEBSOCKET-MONITOR]",
+)
+QUIET_MODE_EVENT_KEYWORDS = (
+    "pnl",
+    "profit",
+    "loss",
+    "gain",
+    "entrée",
+    "sortie",
+    "entry",
+    "exit",
+    "fermeture",
+    "fermée",
+    "fermé",
+    "ouverte",
+    "ouvert",
+    "ouverture",
+    "closed",
+    "close",
+    "opened",
+    "open",
+    " tp ",
+    " tp:",
+    " tp=",
+    " sl ",
+    " sl:",
+    " sl=",
+    "stop loss",
+    "take profit",
+    "break-even",
+    "break even",
+    "trailing",
+    "order",
+    "filled",
+    "exécut",
+    "execution",
+    "liquidat",
+    "signal",
+    "setup",
+    "opportun",
+    "config",
+    "connecté",
+    "déconnect",
+    "disconnect",
+    "connected",
+    "reboot",
+    "redémarr",
+    "restart",
+    "circuit breaker",
+    "pause trading",
+    "resume trading",
+)
+QUIET_MODE_SCANNER_KEYWORDS = ("scanner", "scan")
+QUIET_MODE_SCANNER_ACTIONS = (
+    "start",
+    "stop",
+    "démarr",
+    "arrêt",
+    "pause",
+    "resume",
+    "lancé",
+    "lancement",
+    "stopp",
+    "initial",
+)
+QUIET_MODE_NOISE_KEYWORDS = (
+    "ping",
+    "pong",
+    "health",
+    "heartbeat",
+    "requête entrante",
+    "réponse:",
+    "response:",
+    "request",
+    "diagnostic",
+    "[status-broadcast]",
+    "websocket",
+    "ws-",
+    "status broadcast",
+    "scalability refresh",
+    "refresh loop",
+    "loop tick",
+    "initialis",
+    "initialized",
+    "bootstrap",
+    "startup",
+)
+_quiet_mode_prev_levels = {}
+_log_mode_prev_levels = {}
+_log_mode_prev_handler_levels = {}
+
+
+class QuietModeFilter(logging.Filter):
+    """Filtre global pour réduire la verbosité quand quiet mode est actif."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not QUIET_MODE:
+            return True
+        if record.levelno >= logging.WARNING:
+            return True
+        try:
+            message = record.getMessage() or ""
+        except Exception:
+            message = ""
+        lower_message = message.lower()
+        if message and any(tag.lower() in lower_message for tag in QUIET_MODE_TAGS):
+            return False
+
+        if _is_quiet_event_message(lower_message):
+            return True
+
+        if any(record.name.startswith(prefix) for prefix in QUIET_MODE_LOGGERS):
+            return False
+        if _has_quiet_noise(lower_message):
+            return False
+        return False
+
+
+_quiet_mode_filter = QuietModeFilter()
+
+
+def _install_quiet_mode_filter(target_logger: logging.Logger) -> None:
+    if _quiet_mode_filter not in target_logger.filters:
+        target_logger.addFilter(_quiet_mode_filter)
+    for handler in target_logger.handlers:
+        if _quiet_mode_filter not in handler.filters:
+            handler.addFilter(_quiet_mode_filter)
+
+
+def _apply_quiet_logger_levels(enabled: bool) -> None:
+    for logger_name in QUIET_MODE_LOGGERS:
+        target = logging.getLogger(logger_name)
+        if enabled:
+            if logger_name not in _quiet_mode_prev_levels:
+                _quiet_mode_prev_levels[logger_name] = target.level
+            target.setLevel(logging.WARNING)
+        else:
+            if logger_name in _quiet_mode_prev_levels:
+                target.setLevel(_quiet_mode_prev_levels.pop(logger_name))
+
+
+def _is_quiet_event_message(message: str) -> bool:
+    if not message:
+        return False
+    if any(keyword in message for keyword in QUIET_MODE_EVENT_KEYWORDS):
+        return True
+    if any(keyword in message for keyword in QUIET_MODE_SCANNER_KEYWORDS):
+        return any(action in message for action in QUIET_MODE_SCANNER_ACTIONS)
+    return False
+
+
+def _has_quiet_noise(message: str) -> bool:
+    if not message:
+        return False
+    return any(keyword in message for keyword in QUIET_MODE_NOISE_KEYWORDS)
+
+
+def _apply_log_mode_levels(mode: str) -> None:
+    target_loggers = [logging.getLogger(), logging.getLogger("TradeCursor")]
+    if mode == "debug":
+        for target in target_loggers:
+            if target not in _log_mode_prev_levels:
+                _log_mode_prev_levels[target] = target.level
+            target.setLevel(logging.DEBUG)
+            for handler in target.handlers:
+                if handler not in _log_mode_prev_handler_levels:
+                    _log_mode_prev_handler_levels[handler] = handler.level
+                handler.setLevel(logging.DEBUG)
+        return
+
+    for target, level in list(_log_mode_prev_levels.items()):
+        try:
+            target.setLevel(level)
+        except Exception:
+            pass
+    _log_mode_prev_levels.clear()
+    for handler, level in list(_log_mode_prev_handler_levels.items()):
+        try:
+            handler.setLevel(level)
+        except Exception:
+            pass
+    _log_mode_prev_handler_levels.clear()
+
+
+class SafeRotatingFileHandler(RotatingFileHandler):
+    """RotatingFileHandler sécurisé pour Windows qui gère les PermissionError"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._rollover_failed = False
+        self._last_rollover_attempt = 0
+        self._rollover_retry_delay = 3600  # Retry après 1h si rotation échoue
+    
+    def doRollover(self):
+        """Rotation sécurisée qui ne crash pas sur PermissionError"""
+        try:
+            # Marquer qu'on tente une rotation
+            self._last_rollover_attempt = time.time()
+            
+            # Essayer la rotation standard
+            super().doRollover()
+            
+            # Si succès, reset le flag d'échec
+            self._rollover_failed = False
+            
+        except (PermissionError, OSError) as e:
+            # Si rotation échoue, marquer l'échec et continuer à logger
+            self._rollover_failed = True
+            
+            # Log l'erreur vers stderr pour éviter les boucles
+            print(f"⚠️ Rotation logs échouée (continuant sans rotation): {e}", 
+                  file=sys.stderr, flush=True)
+            
+            # Le fichier existant continuera à être utilisé
+            # Pas de crash, juste pas de rotation
+        except Exception as e:
+            # Autres erreurs inattendues
+            self._rollover_failed = True
+            print(f"🔴 Erreur rotation logs inattendue: {e}", 
+                  file=sys.stderr, flush=True)
+    
+    def shouldRollover(self, record):
+        """Décider si rotation est nécessaire, en tenant compte des échecs précédents"""
+        # Si rotation a échoué récemment, ne pas réessayer immédiatement
+        if (self._rollover_failed and 
+            time.time() - self._last_rollover_attempt < self._rollover_retry_delay):
+            return False
+        
+        # Sinon, utiliser la logique standard
+        return super().shouldRollover(record)
+
+
+class _NonClosingStreamHandler(logging.StreamHandler):
+    def close(self):
+        try:
+            self.flush()
+        except Exception:
+            pass
+        logging.Handler.close(self)
+
 
 # 🔥 FIX: Handler personnalisé pour envoyer les logs au frontend
 class WebSocketLogHandler(logging.Handler):
@@ -15,15 +282,53 @@ class WebSocketLogHandler(logging.Handler):
     def __init__(self):
         super().__init__()
         self.ws_manager = None
+        self._tasks = set()
+        self._closing = False
+        self._max_in_flight_tasks = 200
+        _ws_log_handlers.add(self)
     
     def set_ws_manager(self, ws_manager):
         """Définir le websocket manager"""
         self.ws_manager = ws_manager
+
+    async def drain(self, timeout: float = 1.0) -> None:
+        self._closing = True
+        tasks = [t for t in list(self._tasks) if not t.done()]
+        if not tasks:
+            self._tasks.clear()
+            return
+
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        if pending:
+            with contextlib.suppress(Exception):
+                await asyncio.gather(*pending, return_exceptions=True)
+
+        self._tasks.difference_update(done)
+        self._tasks.difference_update(pending)
+
+    def close(self):
+        self._closing = True
+        for task in list(self._tasks):
+            try:
+                if not task.done():
+                    task.cancel()
+            except Exception:
+                pass
+        self._tasks.clear()
+        super().close()
     
     def emit(self, record):
-        """Envoyer le log au frontend"""
+        """Envoyer le log au frontend et stocker les erreurs de façon persistante"""
         try:
             if not self.ws_manager:
+                return
+
+            if self._closing:
+                return
+
+            if len(self._tasks) >= self._max_in_flight_tasks:
                 return
             
             # Convertir le niveau de logging en string
@@ -35,6 +340,20 @@ class WebSocketLogHandler(logging.Handler):
                 logging.CRITICAL: 'CRITICAL'
             }
             level = level_map.get(record.levelno, 'INFO')
+            
+            # 🔥 NEW: Stocker les erreurs de façon persistante
+            if level in ['ERROR', 'CRITICAL']:
+                try:
+                    from utils.error_history import get_error_history
+                    error_history = get_error_history()
+                    message_with_colors = record.getMessage()
+                    error_history.add_error(
+                        level=level,
+                        message=message_with_colors,
+                        raw_message=message_with_colors
+                    )
+                except Exception as e:
+                    print(f"⚠️ Erreur sauvegarde erreur: {e}", file=sys.stderr)
             
             # 🔥 FIX: Formater le message avec le ColoredFormatter pour préserver les couleurs ANSI et emojis
             # Utiliser le formatter pour obtenir les couleurs ANSI
@@ -70,25 +389,53 @@ class WebSocketLogHandler(logging.Handler):
             }
             
             # Envoyer via WebSocket (asynchrone, fire-and-forget)
-            import asyncio
+            # 🔥 FIX: Utiliser call_soon_threadsafe avec une coroutine simplifiée
             try:
                 loop = asyncio.get_running_loop()
                 
-                async def send_log_safe():
-                    try:
-                        await asyncio.wait_for(
-                            self.ws_manager.emit('log', entry),
-                            timeout=1.0  # Timeout court pour éviter blocage
-                        )
-                    except (asyncio.TimeoutError, asyncio.CancelledError):
-                        pass  # Ignorer silencieusement
-                    except Exception:
-                        pass  # Ignorer les erreurs d'envoi
+                # Vérifier que le loop est actif et pas en shutdown
+                if not loop.is_running() or loop.is_closed():
+                    return
                 
-                # Créer la tâche avec gestion d'erreur
-                task = loop.create_task(send_log_safe())
-                # Supprimer la référence pour éviter les warnings
-                task.add_done_callback(lambda t: None)
+                # Vérifier si shutdown est en cours via le module shutdown
+                try:
+                    from core.shutdown import get_shutdown_manager
+                    shutdown_mgr = get_shutdown_manager()
+                    if shutdown_mgr and shutdown_mgr.is_shutting_down:
+                        return  # Ne pas créer de nouvelles tasks pendant shutdown
+                except Exception:
+                    pass  # Module non disponible, continuer
+                
+                # Utiliser ensure_future avec une coroutine simple sans gather
+                async def send_log_direct():
+                    try:
+                        # Appel direct via ws_manager.emit pour cohérence de format
+                        if self.ws_manager:
+                            await asyncio.wait_for(self.ws_manager.emit('log', entry), timeout=1.0)
+                    except asyncio.CancelledError:
+                        pass  # Normal pendant shutdown
+                    except asyncio.TimeoutError:
+                        pass  # Timeout, ignorer
+                    except Exception:
+                        pass  # Ignorer toutes les erreurs
+                
+                # Créer la tâche avec un nom pour le debugging
+                task = loop.create_task(send_log_direct(), name=f"websocket_log_{id(entry)}")
+
+                # Meilleure gestion du cleanup des tâches
+                def cleanup_task(t):
+                    try:
+                        self._tasks.discard(t)
+                        if not t.cancelled():
+                            exc = t.exception()
+                            if exc and not isinstance(exc, (asyncio.CancelledError, asyncio.TimeoutError)):
+                                # Ne pas logger ici pour éviter les boucles infinies
+                                pass
+                    except Exception:
+                        pass
+
+                self._tasks.add(task)
+                task.add_done_callback(cleanup_task)
             except RuntimeError:
                 # Pas de loop en cours, ignorer
                 pass
@@ -130,15 +477,28 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     Returns:
         Logger configuré
     """
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
-    
-    # Éviter les doublons
-    if logger.handlers:
-        return logger
+    try:
+        if os.name == 'nt':
+            if sys.stdout is sys.__stdout__ and hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            if sys.stderr is sys.__stderr__ and hasattr(sys.stderr, 'reconfigure'):
+                sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+    global logger
+    log = logging.getLogger(name)
+    log.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
+
+    for handler in list(log.handlers):
+        try:
+            log.removeHandler(handler)
+            handler.close()
+        except Exception:
+            pass
     
     # Handler pour console
-    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler = _NonClosingStreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
     
     # Format avec timestamp et couleurs
@@ -148,26 +508,26 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
     )
     console_handler.setFormatter(formatter)
     
-    logger.addHandler(console_handler)
+    log.addHandler(console_handler)
     
     # 🔥 NOUVEAU: File handler pour sauvegarder les logs WARNING/ERROR/CRITICAL
     if log_to_file:
         try:
             # Créer le dossier logs/ s'il n'existe pas
             log_dir = 'logs'
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
+            os.makedirs(log_dir, exist_ok=True)
             
-            # RotatingFileHandler avec rotation à 10 MB, 5 fichiers max
-            file_handler = RotatingFileHandler(
+            # 🔥 FIX Windows: Utilisez RotatingFileHandler avec gestion robuste des erreurs
+            # TimedRotatingFileHandler cause des PermissionError sur Windows
+            file_handler = SafeRotatingFileHandler(
                 os.path.join(log_dir, 'app.log'),
-                maxBytes=10*1024*1024,  # 10 MB
-                backupCount=5,  # Garder 5 fichiers de rotation
-                encoding='utf-8'
+                maxBytes=10*1024*1024,  # 10 MB par fichier
+                backupCount=5,          # Garder 5 fichiers de backup
+                encoding='utf-8',
+                delay=True              # 🔥 KEY: delay=True évite la création immédiate
             )
             
-            # 🎯 Niveau WARNING+ uniquement (optimisé pour production)
-            file_handler.setLevel(logging.WARNING)
+            file_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else logging.INFO)
             
             # Format sans couleurs ANSI pour fichier
             file_formatter = logging.Formatter(
@@ -175,9 +535,10 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
                 datefmt='%Y-%m-%d %H:%M:%S'
             )
             file_handler.setFormatter(file_formatter)
-            
-            logger.addHandler(file_handler)
-            logger.info(f"✅ File logging activé: {os.path.join(log_dir, 'app.log')} (niveau WARNING+)")
+
+            if isinstance(file_handler, logging.Handler):
+                log.addHandler(file_handler)
+            log.info(f"✅ File logging activé: {os.path.join(log_dir, 'app.log')} (niveau WARNING+)")
         except Exception as e:
             logger.warning(f"⚠️ Impossible d'activer file logging: {e}")
     
@@ -186,13 +547,29 @@ def setup_logger(name: str = "TradeCursor", level: int = logging.INFO, ws_manage
         ws_handler = WebSocketLogHandler()
         ws_handler.set_ws_manager(ws_manager)
         ws_handler.setLevel(logging.DEBUG if DEBUG_ENABLED else level)
-        logger.addHandler(ws_handler)
+        if isinstance(ws_handler, logging.Handler):
+            log.addHandler(ws_handler)
+
+    _install_quiet_mode_filter(log)
     
-    return logger
+    logger = log
+    return log
+
+
+async def drain_websocket_log_handlers(timeout: float = 1.0) -> None:
+    for handler in list(_ws_log_handlers):
+        try:
+            await handler.drain(timeout=timeout)
+        except Exception:
+            pass
 
 
 # Logger global
 _logger: logging.Logger = None
+
+
+# Exposé pour patching dans les tests
+logger: logging.Logger = logging.getLogger("TradeCursor")
 
 
 def get_logger() -> logging.Logger:
@@ -201,6 +578,34 @@ def get_logger() -> logging.Logger:
     if _logger is None:
         _logger = setup_logger()
     return _logger
+
+
+def set_log_mode(mode: str) -> str:
+    """Définir le mode de log (logs | quiet | debug)."""
+    global LOG_MODE, QUIET_MODE
+    normalized = (mode or "").strip().lower()
+    if normalized not in LOG_MODE_VALUES:
+        normalized = "logs"
+    LOG_MODE = normalized
+    QUIET_MODE = normalized == "quiet"
+    _install_quiet_mode_filter(logging.getLogger())
+    _install_quiet_mode_filter(logging.getLogger("TradeCursor"))
+    _apply_quiet_logger_levels(QUIET_MODE)
+    _apply_log_mode_levels(LOG_MODE)
+    return LOG_MODE
+
+
+def get_log_mode() -> str:
+    return LOG_MODE
+
+
+def apply_quiet_mode(enabled: bool) -> None:
+    """Activer/désactiver le quiet mode pour les logs."""
+    set_log_mode("quiet" if enabled else "logs")
+
+
+def is_quiet_mode() -> bool:
+    return QUIET_MODE
 
 
 

@@ -47,6 +47,13 @@ def load_api_keys() -> Dict[str, dict]:
 API_KEYS = load_api_keys()
 
 
+def validate_token(token: str) -> bool:
+    """Compatibilité tests: valider un token/API key (bool)."""
+    if not token:
+        return False
+    return token in API_KEYS
+
+
 async def verify_api_key(api_key: str = Security(api_key_header)) -> dict:
     """
     Vérifie l'API key et retourne les informations de l'utilisateur

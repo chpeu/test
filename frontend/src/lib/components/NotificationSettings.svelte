@@ -246,7 +246,6 @@
 								<input
 									type="checkbox"
 									bind:checked={telegramEnabled}
-									disabled
 									data-debug-name="telegramEnabled"
 								/>
 								<span class="toggle-slider" data-debug-name="telegramEnabled.slider"></span>

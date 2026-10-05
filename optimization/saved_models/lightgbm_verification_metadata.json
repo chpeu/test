@@ -1,0 +1,220 @@
+{
+  "model_name": "lightgbm_verification",
+  "model_type": "LightGBM_Temporal",
+  "version": "1.0",
+  "model_params": {
+    "n_estimators": 50,
+    "max_depth": -1,
+    "learning_rate": 0.05,
+    "num_leaves": 31,
+    "min_child_samples": 20,
+    "reg_alpha": 0.0,
+    "reg_lambda": 0.0,
+    "subsample": 1.0,
+    "colsample_bytree": 1.0,
+    "scale_pos_weight": 0.6261682242990654,
+    "random_state": 42,
+    "objective": "binary",
+    "metric": "binary_logloss",
+    "verbose": -1
+  },
+  "metrics": {
+    "train": {
+      "accuracy": 0.6666666666666666,
+      "precision": 0.6601307189542484,
+      "recall": 0.9439252336448598,
+      "f1": 0.7769230769230769,
+      "roc_auc": 0.5839029153298926,
+      "brier": 0.2332481612379406
+    },
+    "validation": {
+      "accuracy": 0.56,
+      "precision": 0.5789473684210527,
+      "recall": 0.7857142857142857,
+      "f1": 0.6666666666666666,
+      "roc_auc": 0.5292207792207791,
+      "brier": 0.24526315789473685
+    },
+    "test": {
+      "accuracy": 0.56,
+      "precision": 0.5581395348837209,
+      "recall": 0.8888888888888888,
+      "f1": 0.6857142857142857,
+      "roc_auc": 0.5314009661835748,
+      "brier": 0.24746537396121884
+    },
+    "gaps": {
+      "accuracy": 0.10666666666666658,
+      "roc_auc": 0.05250194914631778
+    }
+  },
+  "feature_importance": [
+    {
+      "feature": "di_gap_1m",
+      "importance": 0.3333333333333333
+    },
+    {
+      "feature": "rsi_change_1m",
+      "importance": 0.16666666666666666
+    },
+    {
+      "feature": "adx_5m",
+      "importance": 0.16666666666666666
+    },
+    {
+      "feature": "book_depth_ratio",
+      "importance": 0.16666666666666666
+    },
+    {
+      "feature": "macd_momentum_5m",
+      "importance": 0.16666666666666666
+    },
+    {
+      "feature": "strong_trend_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "rsi_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_surge",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_atr_max_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_spike_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "ema_aligned",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_spread",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_none",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_recovery_mode",
+      "importance": 0.0
+    },
+    {
+      "feature": "di_plus_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "breakout_passed_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_orderbook",
+      "importance": 0.0
+    },
+    {
+      "feature": "ema_diff_pct_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "session_asia",
+      "importance": 0.0
+    },
+    {
+      "feature": "reject_wick_filter",
+      "importance": 0.0
+    },
+    {
+      "feature": "macd_momentum_1m",
+      "importance": 0.0
+    },
+    {
+      "feature": "di_gap_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_divergence",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_min_score_required",
+      "importance": 0.0
+    },
+    {
+      "feature": "volume_ratio_5m",
+      "importance": 0.0
+    },
+    {
+      "feature": "imbalance_normalized",
+      "importance": 0.0
+    },
+    {
+      "feature": "volatility_ratio",
+      "importance": 0.0
+    },
+    {
+      "feature": "is_weekend",
+      "importance": 0.0
+    },
+    {
+      "feature": "config_snr_threshold",
+      "importance": 0.0
+    },
+    {
+      "feature": "atr_optimal_passed_5m",
+      "importance": 0.0
+    }
+  ],
+  "training_info": {
+    "timeframe_days": 60,
+    "min_trades": 50,
+    "total_samples": 249,
+    "train_samples": 174,
+    "val_samples": 25,
+    "test_samples": 50,
+    "training_time_seconds": 0.388634,
+    "trained_at": "2025-12-11T21:13:24.635578",
+    "filter_marginal_trades": true,
+    "selected_features": [
+      "strong_trend_5m",
+      "rsi_change_1m",
+      "rsi_1m",
+      "volume_surge",
+      "di_gap_1m",
+      "config_atr_max_5m",
+      "volume_spike_5m",
+      "ema_aligned",
+      "reject_spread",
+      "adx_5m",
+      "reject_none",
+      "reject_recovery_mode",
+      "di_plus_5m",
+      "breakout_passed_5m",
+      "reject_orderbook",
+      "ema_diff_pct_1m",
+      "session_asia",
+      "reject_wick_filter",
+      "macd_momentum_1m",
+      "di_gap_5m",
+      "book_depth_ratio",
+      "macd_momentum_5m",
+      "volume_divergence",
+      "config_min_score_required",
+      "volume_ratio_5m",
+      "imbalance_normalized",
+      "volatility_ratio",
+      "is_weekend",
+      "config_snr_threshold",
+      "atr_optimal_passed_5m"
+    ]
+  },
+  "paths": {
+    "model": "optimization\\saved_models\\lightgbm_verification.pkl",
+    "preprocessor": "optimization\\saved_models\\lightgbm_verification_preprocessor.pkl"
+  }
+}

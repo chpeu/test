@@ -110,7 +110,6 @@ class TestScheduler:
         await asyncio.sleep(0.2)
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="RecursionError: mock asyncio.sleep creates infinite loop")
     async def test_scanner_loop_execution(self):
         """Test exécution boucle scanner"""
         scheduler = Scheduler()
@@ -125,26 +124,23 @@ class TestScheduler:
         scheduler.set_scanner_callback(scanner_callback)
 
         # Mock sleep pour accélérer
+        real_sleep = asyncio.sleep
         with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
             async def fast_sleep(seconds):
-                if scheduler.is_running and seconds == 45:
-                    await asyncio.sleep(0.01)  # Très court
-                else:
-                    await asyncio.sleep(0.01)
+                await real_sleep(0)
 
             mock_sleep.side_effect = fast_sleep
 
             scheduler.start()
 
             # Attendre que les callbacks soient appelés
-            await asyncio.sleep(0.1)
+            await real_sleep(0.1)
             scheduler.stop()
 
             # Le callback devrait avoir été appelé au moins une fois
             assert call_count >= 1
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="RecursionError: mock asyncio.sleep creates infinite loop")
     async def test_position_check_loop_execution(self):
         """Test exécution boucle position check"""
         scheduler = Scheduler()
@@ -159,26 +155,23 @@ class TestScheduler:
         scheduler.set_position_check_callback(position_callback)
 
         # Mock sleep pour accélérer
+        real_sleep = asyncio.sleep
         with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
             async def fast_sleep(seconds):
-                if scheduler.is_running and seconds == 0.1:
-                    await asyncio.sleep(0.01)
-                else:
-                    await asyncio.sleep(0.01)
+                await real_sleep(0)
 
             mock_sleep.side_effect = fast_sleep
 
             scheduler.start()
 
             # Attendre que les callbacks soient appelés
-            await asyncio.sleep(0.1)
+            await real_sleep(0.1)
             scheduler.stop()
 
             # Le callback devrait avoir été appelé plusieurs fois
             assert call_count >= 1
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="RecursionError: mock asyncio.sleep creates infinite loop")
     async def test_scalability_refresh_loop_execution(self):
         """Test exécution boucle scalability refresh"""
         scheduler = Scheduler()
@@ -193,26 +186,23 @@ class TestScheduler:
         scheduler.set_scalability_refresh_callback(scalability_callback)
 
         # Mock sleep pour accélérer
+        real_sleep = asyncio.sleep
         with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
             async def fast_sleep(seconds):
-                if scheduler.is_running and seconds == 90:
-                    await asyncio.sleep(0.01)
-                else:
-                    await asyncio.sleep(0.01)
+                await real_sleep(0)
 
             mock_sleep.side_effect = fast_sleep
 
             scheduler.start()
 
             # Attendre que les callbacks soient appelés
-            await asyncio.sleep(0.1)
+            await real_sleep(0.1)
             scheduler.stop()
 
             # Le callback devrait avoir été appelé au moins une fois
             assert call_count >= 1
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="RecursionError: mock asyncio.sleep creates infinite loop")
     async def test_scanner_loop_error_handling(self):
         """Test gestion erreurs dans scanner loop"""
         scheduler = Scheduler()
@@ -228,16 +218,17 @@ class TestScheduler:
         scheduler.set_scanner_callback(failing_callback)
 
         # Mock sleep pour accélérer
+        real_sleep = asyncio.sleep
         with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
             async def fast_sleep(seconds):
-                await asyncio.sleep(0.01)
+                await real_sleep(0)
 
             mock_sleep.side_effect = fast_sleep
 
             scheduler.start()
 
             # Attendre que l'erreur soit gérée
-            await asyncio.sleep(0.2)
+            await real_sleep(0.2)
             scheduler.stop()
 
             # Le callback devrait avoir été appelé malgré l'erreur
@@ -281,7 +272,6 @@ class TestSchedulerIntegration:
     """Tests d'intégration pour Scheduler"""
 
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="RecursionError: mock asyncio.sleep creates infinite loop")
     async def test_all_loops_running_concurrently(self):
         """Test toutes les boucles tournent en parallèle"""
         scheduler = Scheduler()
@@ -307,16 +297,17 @@ class TestSchedulerIntegration:
         scheduler.set_scalability_refresh_callback(scalability_cb)
 
         # Mock sleep pour accélérer toutes les boucles
+        real_sleep = asyncio.sleep
         with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
             async def fast_sleep(seconds):
-                await asyncio.sleep(0.01)
+                await real_sleep(0)
 
             mock_sleep.side_effect = fast_sleep
 
             scheduler.start()
 
             # Laisser tourner un peu
-            await asyncio.sleep(0.2)
+            await real_sleep(0.2)
             scheduler.stop()
 
             # Toutes les boucles devraient avoir été appelées

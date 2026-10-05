@@ -7,10 +7,13 @@
 	import FeatureImportance from './FeatureImportance.svelte';
 	import ModelsOverview from './ModelsOverview.svelte';
 	import LivePredictions from './LivePredictions.svelte';
+	import CorrelationAnalytics from './CorrelationAnalytics.svelte';
+	import EVAnalysisModal from './EVAnalysisModal.svelte';
 
 	let activeSubTab = 'dashboard';
 	let loading = true;
 	let error = null;
+	let showEVAnalysis = false;
 
 	onMount(async () => {
 		try {
@@ -40,7 +43,13 @@
 	<div class="ml-header">
 		<h1>🤖 Machine Learning</h1>
 		<p class="subtitle">Collecte de données, Feature Engineering & Modèles Prédictifs</p>
+		<button class="ev-analysis-btn" on:click={() => showEVAnalysis = true}>
+			📊 Analyse EV
+		</button>
 	</div>
+
+	<!-- EV Analysis Modal -->
+	<EVAnalysisModal bind:show={showEVAnalysis} />
 
 	{#if loading}
 		<div class="loading">
@@ -69,6 +78,8 @@
 				<FeatureImportance tradesCount={$mlStats.trades_count} />
 			{:else if activeSubTab === 'models'}
 				<ModelsOverview tradesCount={$mlStats.trades_count} />
+			{:else if activeSubTab === 'correlations'}
+				<CorrelationAnalytics />
 			{:else if activeSubTab === 'exploratory'}
 				<div class="coming-soon">
 					<h3>📊 Analyse Exploratoire</h3>
@@ -102,6 +113,24 @@
 		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
+	}
+
+	.ev-analysis-btn {
+		margin-top: 1rem;
+		padding: 0.6rem 1.2rem;
+		background: linear-gradient(135deg, #667eea, #764ba2);
+		color: white;
+		border: none;
+		border-radius: 8px;
+		font-weight: 600;
+		font-size: 0.9rem;
+		cursor: pointer;
+		transition: transform 0.2s, box-shadow 0.2s;
+	}
+
+	.ev-analysis-btn:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 	}
 
 	.subtitle {

@@ -10,19 +10,27 @@ import sys
 import os
 import asyncio
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.position_manager import PositionManager, PositionConfig
 
-# Load TechnicalAnalyzer directly from core.analyzer module file
+# Load TechnicalAnalyzer directly from core.analyzer module file (lazy load to avoid blocking)
 import importlib.util
-spec = importlib.util.spec_from_file_location(
-    "analyzer",
-    os.path.join(os.path.dirname(__file__), '..', 'core', 'analyzer.py')
-)
-analyzer_mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(analyzer_mod)
-TechnicalAnalyzer = analyzer_mod.TechnicalAnalyzer
+analyzer_mod = None
+TechnicalAnalyzer = None
+
+def _load_analyzer_module():
+    """Lazy load analyzer module to avoid blocking at import time"""
+    global analyzer_mod, TechnicalAnalyzer
+    if analyzer_mod is None:
+        spec = importlib.util.spec_from_file_location(
+            "analyzer",
+            os.path.join(os.path.dirname(__file__), '..', 'core', 'analyzer.py')
+        )
+        analyzer_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(analyzer_mod)
+        TechnicalAnalyzer = analyzer_mod.TechnicalAnalyzer
 
 
 # ============================================================================
@@ -87,6 +95,214 @@ class TestPositionManager:
         assert position.direction == 'SHORT'
         assert position.sl > 50000.0  # SL above entry for SHORT
         assert position.tp < 50000.0  # TP below entry for SHORT
+
+    def test_open_position_atr_mode_entry_shift_slippage_short(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=51000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=2.0,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = True
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        position = manager.open_position(
+            symbol='BTC/USDT:USDT',
+            direction='SHORT',
+            entry=50000.0,
+            size=1000.0,
+            atr=200.0,
+            atr5m=250.0,
+            confirmed_by='EMAs + RSI + MACD'
+        )
+
+        assert position is not None
+        assert position.entry == pytest.approx(order_result.filled_price)
+        assert position.sl > position.entry
+        assert position.tp < position.entry
+
+    def test_open_position_atr_mode_entry_shift_slippage_long(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=49000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=-2.0,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = True
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        position = manager.open_position(
+            symbol='BTC/USDT:USDT',
+            direction='LONG',
+            entry=50000.0,
+            size=1000.0,
+            atr=200.0,
+            atr5m=250.0,
+            confirmed_by='EMAs + RSI + MACD'
+        )
+
+        assert position is not None
+        assert position.entry == pytest.approx(order_result.filled_price)
+        assert position.sl < position.entry
+        assert position.tp > position.entry
+
+    def test_open_position_atr_mode_entry_shift_resync_short(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=50000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=None,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = False
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+            def get_position(self, symbol, prefer_ccxt=True):
+                return {
+                    'entry_price': 51000.0,
+                    'tokens': 0.0,
+                    'contracts': 0.0,
+                    'contract_size': 1.0,
+                }
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        with patch.dict('config.TRADING_CONFIG', {'live_entry_sync_delay_sec': 0}, clear=False), \
+             patch.object(PositionManager, '_schedule_position_sync', return_value=None):
+            position = manager.open_position(
+                symbol='BTC/USDT:USDT',
+                direction='SHORT',
+                entry=50000.0,
+                size=1000.0,
+                atr=200.0,
+                atr5m=250.0,
+                confirmed_by='EMAs + RSI + MACD'
+            )
+
+        assert position is not None
+        assert position.entry == pytest.approx(51000.0)
+        assert position.sl > position.entry
+        assert position.tp < position.entry
+
+    def test_open_position_atr_mode_entry_shift_resync_long(self):
+        config = PositionConfig(use_atr=True, atr_mult_tp=2.5, atr_mult_sl=1.5)
+
+        order_result = SimpleNamespace(
+            success=True,
+            order_id="test_order",
+            filled_price=50000.0,
+            filled_amount=0.02,
+            filled_size_usdt=1000.0,
+            actual_pnl_usdt=None,
+            actual_fees_usdt=None,
+            actual_slippage_pct=None,
+            balance_after=None,
+            error_message=None,
+            latency_ms=0.0,
+            executed_at=None,
+            leverage=1,
+            liquidation_price=None,
+            margin_used=None,
+            min_contract_amount=None,
+            contract_size=1.0,
+        )
+
+        class FakeLiveOrderManager:
+            dry_run = False
+            default_leverage = 1
+
+            def open_position(self, symbol, direction, entry_price, size_usdt, leverage=1, bot_sl_price=None):
+                return order_result
+
+            def get_position(self, symbol, prefer_ccxt=True):
+                return {
+                    'entry_price': 49000.0,
+                    'tokens': 0.0,
+                    'contracts': 0.0,
+                    'contract_size': 1.0,
+                }
+
+        manager = PositionManager(config=config, live_order_manager=FakeLiveOrderManager())
+
+        with patch.dict('config.TRADING_CONFIG', {'live_entry_sync_delay_sec': 0}, clear=False), \
+             patch.object(PositionManager, '_schedule_position_sync', return_value=None):
+            position = manager.open_position(
+                symbol='BTC/USDT:USDT',
+                direction='LONG',
+                entry=50000.0,
+                size=1000.0,
+                atr=200.0,
+                atr5m=250.0,
+                confirmed_by='EMAs + RSI + MACD'
+            )
+
+        assert position is not None
+        assert position.entry == pytest.approx(49000.0)
+        assert position.sl < position.entry
+        assert position.tp > position.entry
 
     def test_calculate_position_size_base(self):
         """Test position size calculation"""
@@ -292,8 +508,9 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_calculate_trend_data(self, mock_client):
         """Test trend data calculation"""
-        with patch('api.mexc.get_mexc_client', return_value=mock_client), \
-             patch('api.price_provider.get_price_provider'):
+        _load_analyzer_module()
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
             analyzer.client = mock_client
 
@@ -306,8 +523,9 @@ class TestTechnicalAnalyzer:
 
     def test_check_volume_quality_good(self):
         """Test volume quality check with good volume"""
-        with patch('api.mexc.get_mexc_client'), \
-             patch('api.price_provider.get_price_provider'):
+        _load_analyzer_module()
+        with patch.object(analyzer_mod, 'get_mexc_client'), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
 
             result = analyzer.check_volume_quality(
@@ -322,8 +540,9 @@ class TestTechnicalAnalyzer:
 
     def test_check_volume_quality_low(self):
         """Test volume quality check with low volume"""
-        with patch('api.mexc.get_mexc_client'), \
-             patch('api.price_provider.get_price_provider'):
+        _load_analyzer_module()
+        with patch.object(analyzer_mod, 'get_mexc_client'), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
 
             result = analyzer.check_volume_quality(
@@ -338,8 +557,9 @@ class TestTechnicalAnalyzer:
 
     def test_calculate_position_size(self):
         """Test position size calculation"""
-        with patch('api.mexc.get_mexc_client'), \
-             patch('api.price_provider.get_price_provider'):
+        _load_analyzer_module()
+        with patch.object(analyzer_mod, 'get_mexc_client'), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
 
             setup = {
@@ -359,27 +579,46 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_timeframe_no_data(self, mock_client):
         """Test analyze_timeframe when no price data available"""
+        # Lazy load analyzer module to avoid blocking at import time
+        _load_analyzer_module()
+        
         mock_client_no_data = AsyncMock()
         mock_client_no_data.fetch_ohlcv = AsyncMock(return_value=[])
 
-        with patch('api.mexc.get_mexc_client', return_value=mock_client_no_data), \
-             patch('api.price_provider.get_price_provider') as mock_provider:
-            mock_provider_instance = Mock()
-            mock_provider_instance.get_price = AsyncMock(return_value=None)
-            mock_provider.return_value = mock_provider_instance
+        # Mock price provider
+        mock_provider_instance = Mock()
+        mock_provider_instance.get_price = AsyncMock(return_value=None)
 
-            analyzer = TechnicalAnalyzer()
+        # Mock state manager (retourner directement le price provider mocké)
+        mock_state_manager = Mock()
+        mock_state_manager.get_price_provider.return_value = mock_provider_instance
+        
+        # Mock indicators
+        mock_indicators = Mock()
+
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client_no_data), \
+             patch('api.price_provider.get_price_provider', return_value=mock_provider_instance), \
+             patch('core.state_manager.get_state_manager', return_value=mock_state_manager), \
+             patch('core.indicators.Indicators', return_value=mock_indicators), \
+             patch('utils.effective_config.get_effective_value', return_value={}):
+
+            # Bypass __init__ to avoid heavy/async side effects during tests
+            analyzer = TechnicalAnalyzer.__new__(TechnicalAnalyzer)
             analyzer.client = mock_client_no_data
+            analyzer.indicators = mock_indicators
+            analyzer.price_provider = mock_provider_instance
+            analyzer._spread_cache = {}
+            analyzer._orderbook_cache = {}
+            analyzer.correlation_filter = None
 
             result = await analyzer.analyze_timeframe('BTC/USDT', '1m')
-
             assert result is None
 
     @pytest.mark.asyncio
     async def test_analyze_pair_no_positions(self):
         """Test analyze_pair with no active positions"""
-        with patch('api.mexc.get_mexc_client') as mock_get_client, \
-             patch('api.price_provider.get_price_provider') as mock_get_provider:
+        with patch.object(analyzer_mod, 'get_mexc_client') as mock_get_client, \
+             patch.object(analyzer_mod, 'get_price_provider') as mock_get_provider:
 
             # Setup mocks
             mock_client = AsyncMock()
@@ -409,8 +648,8 @@ class TestTechnicalAnalyzer:
     @pytest.mark.asyncio
     async def test_close_analyzer(self, mock_client):
         """Test closing analyzer"""
-        with patch('api.mexc.get_mexc_client', return_value=mock_client), \
-             patch('api.price_provider.get_price_provider'):
+        with patch.object(analyzer_mod, 'get_mexc_client', return_value=mock_client), \
+             patch.object(analyzer_mod, 'get_price_provider'):
             analyzer = TechnicalAnalyzer()
             analyzer.client = mock_client
 

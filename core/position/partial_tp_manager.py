@@ -98,7 +98,7 @@ class PartialTPManager:
         }
 
     @staticmethod
-    def update_sl_after_partial_tp(position: Dict[str, Any]) -> float:
+    def update_sl_after_partial_tp(position: Dict[str, Any], current_price: Optional[float] = None) -> float:
         """
         Déplacer SL à break-even après TP partiel
 
@@ -108,10 +108,35 @@ class PartialTPManager:
         Returns:
             Nouveau SL (entry)
         """
+        from config import TRADING_CONFIG
         entry = position['entry']
-        position['sl'] = entry
+        direction = position.get('direction', 'LONG')
+        current_sl = position.get('sl', entry)
+        if current_sl is None:
+            current_sl = entry
+
+        lock_in_pct = float(TRADING_CONFIG.get('partial_tp_be_lock_in_pct', 0.0) or 0.0)
+        lock_in_pct = max(0.0, min(0.50, lock_in_pct))
+
+        if direction == 'LONG':
+            target_sl = entry * (1.0 + (lock_in_pct / 100.0))
+            if current_price is not None and target_sl >= current_price:
+                target_sl = current_price * 0.9999
+            if target_sl > current_sl:
+                position['sl'] = target_sl
+            else:
+                position['sl'] = current_sl
+        else:
+            target_sl = entry * (1.0 - (lock_in_pct / 100.0))
+            if current_price is not None and target_sl <= current_price:
+                target_sl = current_price * 1.0001
+            if target_sl < current_sl:
+                position['sl'] = target_sl
+            else:
+                position['sl'] = current_sl
+
         position['break_even_set'] = True
 
-        logger.info(f"🛡️ SL déplacé à Break-even après TP partiel: {entry:.8f}")
+        logger.info(f"🛡️ SL déplacé à Break-even après TP partiel: {position['sl']:.8f}")
 
-        return entry
+        return float(position['sl'])

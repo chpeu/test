@@ -32,8 +32,7 @@ def calculate_technical_indicators(klines: List, symbol: str) -> Optional[Dict]:
         
         # Calculer RSI
         rsi_1m = calculate_rsi(df['close'], period=14)
-        rsi_5m_values = calculate_rsi(df['close'].iloc[::5], period=14)  # Simuler 5m
-        rsi_5m = rsi_5m_values.iloc[-1] if len(rsi_5m_values) > 0 else 50
+        rsi_5m = calculate_rsi(df['close'].iloc[::5], period=14)  # Simuler 5m
         
         # Calculer MACD
         macd_1m = calculate_macd(df['close'])
@@ -215,6 +214,10 @@ def calculate_technical_indicators(klines: List, symbol: str) -> Optional[Dict]:
         for key, value in features.items():
             if pd.isna(value) or np.isinf(value):
                 features[key] = 0
+            elif isinstance(value, (np.integer, np.floating)):
+                features[key] = value.item()
+            elif isinstance(value, np.bool_):
+                features[key] = bool(value)
         
         return features
         
@@ -336,15 +339,18 @@ async def get_ml_prediction_for_opportunity(
         # 🔥 NOUVEAU: Utiliser le predictor optimisé (GradientBoosting 64-69% accuracy)
         if model_name in ["optimized", "gradientboosting", "best"]:
             from optimization.predictor_optimized import predict_trade
+            from optimization.gb_feature_builder import build_gb_features
             
-            should_trade, confidence = predict_trade(features, threshold=0.5)
+            gb_features = build_gb_features(best_setup=features)
+            should_trade, confidence = predict_trade(gb_features, threshold=0.5)
             
             return {
                 'prediction': 'win' if should_trade else 'loss',
                 'confidence': confidence,
                 'model': 'GradientBoosting_Optimized',
                 'symbol': symbol,
-                'scan_id': scan_id
+                'scan_id': scan_id,
+                'features': gb_features
             }
         
         # Fallback: ancien predictor XGBoost V1
@@ -357,7 +363,10 @@ async def get_ml_prediction_for_opportunity(
             scan_id=scan_id,
             log_to_db=True
         )
-        
+
+        if isinstance(prediction, dict) and 'features' not in prediction:
+            prediction['features'] = features
+
         return prediction
         
     except Exception as e:

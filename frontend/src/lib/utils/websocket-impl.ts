@@ -17,6 +17,13 @@ export interface WebSocketMessage {
     result?: any;
     error?: string;
     timestamp?: number;
+    ping_id?: number;
+    client_ts?: number;
+    connection_id?: number;
+    client_id?: string;
+    session_id?: string;
+    context?: any;
+    response_id?: string;
 }
 
 export interface CommandCallback {
@@ -40,34 +47,163 @@ export class BidirectionalWebSocket {
     private pingInterval: number | null = null;
     private reconnectTimeout: number | null = null;
     private rooms: Set<string> = new Set();
+    private clientId: string | null = null;
+    private serverConnectionId: number | null = null;
+    private lastPongAt: number | null = null;
+    private lastRttMs: number | null = null;
+    private clientPingIdCounter: number = 0;
     public connected: boolean = false;
+    private connectionTimeoutId: number | null = null;
+    private baseUrls: string[] = [];
+    private baseUrlIndex: number = 0;
+    private hasEverConnected: boolean = false;
+    private lastConnectedAt: number | null = null;
+    private skipCloseRotation: boolean = false;
 
     constructor(url: string = '') {
-        // Détecter l'URL depuis window.location si non fournie
-        if (!url) {
-            // 🔥 FIX: En développement, utiliser directement le backend (port 5000)
-            // En production, utiliser le proxy Vite (window.location.host)
-            const isDev = window.location.hostname === 'localhost' && window.location.port === '3000';
-            if (isDev) {
-                // Développement: connexion directe au backend
-                url = 'ws://localhost:5000';
-            } else {
-                // Production: utiliser le proxy ou l'URL de production
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.host;
-                url = `${protocol}//${host}`;
+        if (typeof window !== 'undefined') {
+            try {
+                const stored = window.localStorage.getItem('ws_client_id');
+                if (stored) {
+                    this.clientId = stored;
+                } else {
+                    const randomUUID = (window.crypto as any)?.randomUUID;
+                    const generated = (window.crypto && typeof randomUUID === 'function')
+                        ? randomUUID.call(window.crypto)
+                        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                    this.clientId = generated;
+                    window.localStorage.setItem('ws_client_id', generated);
+                }
+            } catch {
+                this.clientId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
             }
         }
-        
-        // Convertir http:// en ws:// ou https:// en wss:// si nécessaire
-        this.baseUrl = url.replace(/^http/, 'ws');
-        this.url = this.baseUrl + '/ws';
+
+        const candidates = this.buildBaseUrlCandidates(url);
+        this.baseUrls = candidates.length > 0 ? candidates : ['ws://localhost:5000', 'ws://localhost:5001'];
+        this.baseUrlIndex = 0;
+        console.log('🔧 WebSocket candidates:', this.baseUrls);
+        this.setActiveBaseUrl(0);
+    }
+
+    private normalizeBaseUrl(raw: string): string {
+        return raw.trim().replace(/^http/, 'ws').replace(/\/ws\/?$/, '').replace(/\/$/, '');
+    }
+
+    private addCandidate(list: string[], raw?: string | null): void {
+        if (!raw) return;
+        const normalized = this.normalizeBaseUrl(raw);
+        if (!normalized) return;
+        if (!list.includes(normalized)) {
+            list.push(normalized);
+        }
+    }
+
+    private resolveRuntimeOverride(): string | null {
+        if (typeof window === 'undefined') return null;
+        try {
+            const params = new URLSearchParams(window.location?.search || '');
+            const paramUrl = params.get('ws_url') || params.get('wsUrl') || params.get('ws');
+            if (paramUrl) return paramUrl;
+            const paramPort = params.get('ws_port') || params.get('wsPort');
+            if (paramPort) {
+                const protocol = window.location?.protocol === 'https:' ? 'wss:' : 'ws:';
+                const hostname = window.location?.hostname;
+                const host = (!hostname || hostname === '0.0.0.0' || hostname === '::') ? 'localhost' : hostname;
+                return `${protocol}//${host}:${paramPort}`;
+            }
+            const stored = window.localStorage?.getItem('ws_base_url') || window.localStorage?.getItem('ws_url');
+            if (stored) return stored;
+            const globalOverride = (window as any).__WS_URL__ || (window as any).__WS_BASE_URL__;
+            if (globalOverride) return globalOverride;
+        } catch (err) {
+            console.warn('⚠️ [WEBSOCKET-CLIENT] Unable to resolve runtime WS override:', err);
+        }
+        return null;
+    }
+
+    private buildBaseUrlCandidates(initialUrl?: string): string[] {
+        const candidates: string[] = [];
+        this.addCandidate(candidates, initialUrl);
+
+        const runtimeOverride = this.resolveRuntimeOverride();
+        this.addCandidate(candidates, runtimeOverride);
+
+        const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env)
+            ? ((import.meta as any).env.VITE_WS_URL || (import.meta as any).env.VITE_BACKEND_URL)
+            : '';
+        this.addCandidate(candidates, envUrl);
+
+        if (typeof window !== 'undefined' && window.location) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const hostname = window.location.hostname;
+            const port = window.location.port ? `:${window.location.port}` : '';
+            const isInvalidHost = !hostname || hostname === '0.0.0.0' || hostname === '::';
+            const host = isInvalidHost ? `localhost${port}` : window.location.host;
+            if (isInvalidHost) {
+                console.warn('⚠️ WebSocket host invalide détecté, fallback localhost:', hostname);
+            }
+            this.addCandidate(candidates, `${protocol}//${host}`);
+
+            const isLocalHost = ['localhost', '127.0.0.1'].includes(hostname) || isInvalidHost;
+            const isDevPort = ['3000', '5173', '4173'].includes(window.location.port);
+            if (isLocalHost || isDevPort) {
+                this.addCandidate(candidates, 'ws://localhost:5000');
+                this.addCandidate(candidates, 'ws://localhost:5001');
+                this.addCandidate(candidates, 'ws://127.0.0.1:5000');
+                this.addCandidate(candidates, 'ws://127.0.0.1:5001');
+            }
+        }
+
+        if (candidates.length === 0) {
+            this.addCandidate(candidates, 'ws://localhost:5000');
+            this.addCandidate(candidates, 'ws://localhost:5001');
+        }
+
+        return candidates;
+    }
+
+    private setActiveBaseUrl(index: number, reason?: string): void {
+        if (!this.baseUrls.length) return;
+        const safeIndex = Math.max(0, Math.min(index, this.baseUrls.length - 1));
+        this.baseUrlIndex = safeIndex;
+        this.baseUrl = this.baseUrls[safeIndex];
+        this.url = `${this.baseUrl}/ws`;
+        if (reason) {
+            console.warn(`🔁 [WEBSOCKET-CLIENT] Switch WS base URL (${reason}):`, this.url);
+        } else {
+            console.log('🎯 WebSocket URL finale construite:', this.url);
+        }
+    }
+
+    private rotateBaseUrl(reason: string): boolean {
+        if (this.baseUrls.length <= 1) return false;
+        const nextIndex = (this.baseUrlIndex + 1) % this.baseUrls.length;
+        if (nextIndex === this.baseUrlIndex) return false;
+        this.setActiveBaseUrl(nextIndex, reason);
+        return true;
     }
 
     connect(): void {
         try {
+            this.skipCloseRotation = false;
             console.log('🔄 Connexion WebSocket:', this.url);
+            this.serverConnectionId = null;
+            this.lastPongAt = null;
+            this.lastRttMs = null;
+            // 🔥 FIX: Timeout de connexion plus long pour gérer la surcharge
             this.ws = new WebSocket(this.url);
+            
+            // Timeout personnalisé pour handshake
+            this.connectionTimeoutId = window.setTimeout(() => {
+                if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+                    console.warn('⚠️ Timeout handshake WebSocket - serveur surchargé?');
+                    if (this.rotateBaseUrl('handshake-timeout')) {
+                        this.skipCloseRotation = true;
+                    }
+                    this.ws.close();
+                }
+            }, 30000); // 30s pour handshake
             this.setupEventHandlers();
             this.startHeartbeat();
         } catch (error) {
@@ -80,61 +216,155 @@ export class BidirectionalWebSocket {
         if (!this.ws) return;
 
         this.ws.onopen = () => {
-            console.log('✅ WebSocket natif connecté');
-            this.connected = true;
-            this.reconnectAttempts = 0;
-            this.flushQueue();
-            // 🔥 FIX: Mettre à jour le store de connexion
-            import('$lib/stores/connection').then(({ setConnected }) => {
-                setConnected();
-            });
-            this.emit('connect', {}); // Émettre un événement de connexion
-        };
+             console.log('✅ WebSocket natif connecté');
+             if (this.connectionTimeoutId) {
+                 clearTimeout(this.connectionTimeoutId);
+                 this.connectionTimeoutId = null;
+             }
+             this.connected = true;
+             this.hasEverConnected = true;
+             this.lastConnectedAt = Date.now();
+             this.reconnectAttempts = 0;
+             this.lastPing = Date.now();
+             this.lastPongAt = null;
+             this.lastRttMs = null;
+             this.flushQueue();
+             // 🔥 FIX: Mettre à jour le store de connexion
+             import('$lib/stores/connection')
+                 .then(({ setConnected }) => {
+                     setConnected();
+                 })
+                 .catch((err) => {
+                     console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on open:', err);
+                 });
+             this.sendClientHello();
+             this.emit('connect', {}); // Émettre un événement de connexion
+             console.log('🔍 [WS-DIAGNOSTIC] onopen terminé, connect=', this.connected, 'listeners connect=', this.eventHandlers.get('connect')?.length || 0);
+         };
 
         this.ws.onmessage = (event) => {
             try {
+                console.log('� WEBSOCKET MESSAGE RECEIVED:', event.data);
                 const message: WebSocketMessage = JSON.parse(event.data);
-                // console.log('⬇️ Message WebSocket reçu:', message);
-
-                if (message.type === 'event' && message.event) {
-                    this.handleEvent(message.event, message.data);
-                } else if (message.type === 'response' && message.id !== undefined) {
-                    this.handleResponse(message.id, message.result, message.error);
-                } else if (message.type === 'command_response' && message.id !== undefined) {
-                    this.handleResponse(message.id, message.result, message.error);
-                } else if (message.type === 'request_response' && message.id !== undefined) {
-                    this.handleResponse(message.id, message.data, message.error);
-                } else if (message.type === 'ping') {
-                    // 🔥 FIX: Répondre au ping du serveur
-                    this.sendRaw(JSON.stringify({ type: 'pong' }));
-                } else if (message.type === 'pong') {
-                    // 🔥 FIX: Mettre à jour lastPing quand on reçoit le pong (réponse à notre ping)
+                console.log('🔍 [WS-DIAGNOSTIC] onmessage: type=', message.type, 'event=', message.event || 'unknown');
+                console.log('� Received:', message.type, message.event || 'unknown');
+                
+                if (message.type === 'ping') {
                     this.lastPing = Date.now();
+                    const pongPayload: any = { type: 'pong', timestamp: Date.now() };
+                    if (typeof message.ping_id === 'number') {
+                        pongPayload.ping_id = message.ping_id;
+                    }
+                    this.sendRaw(JSON.stringify(pongPayload));
+                    return;
                 }
+                
+                if (message.type === 'pong') {
+                    this.lastRttMs = Date.now() - this.lastPing;
+                    this.lastPongAt = Date.now();
+                    return;
+                }
+                
+                if (message.type === 'server_hello') {
+                    this.serverConnectionId = message.connection_id || null;
+                    console.log(`🤝 Server hello: connection ${this.serverConnectionId}`);
+                    return;
+                }
+
+                if ((message.type === 'request_response' || message.type === 'command_response') && typeof message.id === 'number') {
+                    console.log('🔍 [WS-DIAGNOSTIC] Response reçu: type=', message.type, 'id=', message.id, 'has error=', !!message.error);
+                    const payload = message.type === 'command_response' ? message.result : message.data;
+                    this.handleResponse(message.id, payload, message.error);
+                    return;
+                } else if (message.type === 'event' && message.event) {
+                    console.log('🔍 [WS-DIAGNOSTIC] Event reçu: event=', message.event, 'has data=', !!message.data);
+                    console.log('🔍 [WS-DIAGNOSTIC] Event data keys:', message.data ? Object.keys(message.data) : 'null');
+                    const eventData = {
+                        ...message.data,
+                        session_id: message.session_id,
+                        timestamp: message.timestamp
+                    };
+                    this.handleEvent(message.event, eventData);
+                    return;
+                }
+                
+                console.warn('⚠️ Message type non géré:', message.type);
             } catch (error) {
-                console.error('❌ Erreur traitement message WebSocket:', error, event.data);
+                console.error('WebSocket message parsing error:', error, 'Raw data:', event.data);
             }
         };
 
         this.ws.onclose = (event) => {
             this.connected = false;
-            console.warn('⚠️ WebSocket déconnecté:', event.code, event.reason);
+            const now = Date.now();
+            const timeSinceLastActivityMs = now - this.lastPing;
+            const timeSinceLastPongMs = this.lastPongAt ? (now - this.lastPongAt) : null;
+            const timeSinceLastConnectedMs = this.lastConnectedAt ? (now - this.lastConnectedAt) : null;
+            const online = typeof navigator !== 'undefined' ? navigator.onLine : null;
+            const visibility = typeof document !== 'undefined' ? document.visibilityState : null;
+            console.warn('⚠️ WebSocket déconnecté:', {
+                url: this.url,
+                code: event.code,
+                reason: event.reason,
+                wasClean: event.wasClean,
+                readyState: this.ws?.readyState,
+                reconnectAttempts: this.reconnectAttempts,
+                serverConnectionId: this.serverConnectionId,
+                clientId: this.clientId,
+                lastRttMs: this.lastRttMs,
+                timeSinceLastActivityMs,
+                timeSinceLastPongMs,
+                online,
+                visibility,
+            });
+            if (this.skipCloseRotation) {
+                this.skipCloseRotation = false;
+            } else {
+                const closeCode = event.code;
+                const isRetryableClose = closeCode === 1001 || closeCode === 1005 || closeCode === 1006 || closeCode === 1011;
+                const isFastFail = timeSinceLastConnectedMs !== null && timeSinceLastConnectedMs < 5000;
+                if ((isFastFail || !this.hasEverConnected || isRetryableClose) && closeCode !== 1000) {
+                    this.rotateBaseUrl(`close-${closeCode || 'unknown'}`);
+                }
+            }
             this.stopHeartbeat();
             // 🔥 FIX: Mettre à jour le store de connexion
-            import('$lib/stores/connection').then(({ setDisconnected, setReconnecting }) => {
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    setReconnecting();
-                } else {
-                    setDisconnected();
-                }
-            });
-            this.emit('disconnect', { code: event.code, reason: event.reason }); // Émettre un événement de déconnexion
+            import('$lib/stores/connection')
+                .then(({ setDisconnected, setReconnecting }) => {
+                    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                        setReconnecting();
+                    } else {
+                        setDisconnected();
+                    }
+                })
+                .catch((err) => {
+                    console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on close:', err);
+                });
+            this.emit('disconnect', {
+                code: event.code,
+                reason: event.reason,
+                wasClean: event.wasClean,
+                reconnectAttempts: this.reconnectAttempts,
+                serverConnectionId: this.serverConnectionId,
+                clientId: this.clientId,
+                lastRttMs: this.lastRttMs,
+                timeSinceLastActivityMs,
+                timeSinceLastPongMs,
+                online,
+                visibility,
+            }); // Émettre un événement de déconnexion
             this.scheduleReconnect();
         };
 
         this.ws.onerror = (error) => {
             console.error('❌ Erreur WebSocket:', error);
             this.emit('error', error); // Émettre un événement d'erreur
+            if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+                const rotated = this.rotateBaseUrl('error');
+                if (rotated) {
+                    this.skipCloseRotation = true;
+                }
+            }
             if (this.ws && this.ws.readyState === WebSocket.CLOSED) {
                 this.scheduleReconnect();
             }
@@ -157,8 +387,13 @@ export class BidirectionalWebSocket {
     }
 
     sendCommand(command: string, params: any = {}): Promise<any> {
+        console.log(`🔍 [WS-SEND-COMMAND] Début envoi commande "${command}" avec params:`, params);
+        console.log(`🔍 [WS-SEND-COMMAND] WebSocket connecté:`, this.connected, 'state:', this.ws?.readyState);
+        
         return new Promise((resolve, reject) => {
             const id = this.commandIdCounter++;
+            console.log(`🔍 [WS-SEND-COMMAND] ID généré: ${id}`);
+            
             this.commandCallbacks.set(id, { resolve, reject });
             const message: WebSocketMessage = {
                 type: 'command',
@@ -167,7 +402,18 @@ export class BidirectionalWebSocket {
                 params,
                 timestamp: Date.now()
             };
-            this.sendRaw(JSON.stringify(message));
+            
+            const messageJson = JSON.stringify(message);
+            console.log(`🔍 [WS-SEND-COMMAND] JSON à envoyer:`, messageJson);
+            
+            try {
+                this.sendRaw(messageJson);
+                console.log(`✅ [WS-SEND-COMMAND] Message envoyé avec succès pour commande "${command}"`);
+            } catch (error) {
+                console.error(`❌ [WS-SEND-COMMAND] Erreur envoi commande "${command}":`, error);
+                this.commandCallbacks.delete(id);
+                reject(error);
+            }
         });
     }
 
@@ -187,22 +433,37 @@ export class BidirectionalWebSocket {
     }
 
     private handleResponse(id: number, result: any, error: string | undefined): void {
-        const callback = this.commandCallbacks.get(id);
-        if (callback) {
+        try {
+            const callback = this.commandCallbacks.get(id);
+            if (!callback) return;
             if (error) {
                 callback.reject(new Error(error));
             } else {
                 callback.resolve(result);
             }
             this.commandCallbacks.delete(id);
+        } catch (e) {
+            console.error('❌ [WEBSOCKET-CLIENT] handleResponse error:', e);
+            this.commandCallbacks.delete(id);
         }
     }
 
     private handleEvent(event: string, data: any): void {
         const handlers = this.eventHandlers.get(event);
-        if (handlers) {
-            handlers.forEach(handler => handler(data));
-        }
+        if (!handlers || handlers.length === 0) return;
+
+        handlers.forEach((handler) => {
+            try {
+                const maybePromise: any = handler(data);
+                if (maybePromise && typeof (maybePromise as any).then === 'function') {
+                    (maybePromise as Promise<any>).catch((err) => {
+                        console.error(`❌ [WEBSOCKET-CLIENT] Unhandled async error in handler for event '${event}':`, err);
+                    });
+                }
+            } catch (err) {
+                console.error(`❌ [WEBSOCKET-CLIENT] Error in handler for event '${event}':`, err);
+            }
+        });
     }
 
     on(event: string, handler: (data: any) => void): () => void {
@@ -225,15 +486,38 @@ export class BidirectionalWebSocket {
 
     emit(event: string, data: any): void {
         const handlers = this.eventHandlers.get(event);
-        if (handlers) {
-            handlers.forEach(handler => handler(data));
-        }
+        if (!handlers || handlers.length === 0) return;
+        handlers.forEach((handler) => {
+            try {
+                const maybePromise: any = handler(data);
+                if (maybePromise && typeof (maybePromise as any).then === 'function') {
+                    (maybePromise as Promise<any>).catch((err) => {
+                        console.error(`❌ [WEBSOCKET-CLIENT] Unhandled async error in emit('${event}') handler:`, err);
+                    });
+                }
+            } catch (err) {
+                console.error(`❌ [WEBSOCKET-CLIENT] Error in emit('${event}') handler:`, err);
+            }
+        });
     }
 
     once(event: string, handler: (data: any) => void): void {
         const wrappedHandler = (data: any) => {
-            handler(data);
-            this.off(event, wrappedHandler);
+            try {
+                const maybePromise: any = handler(data);
+                if (maybePromise && typeof (maybePromise as any).then === 'function') {
+                    (maybePromise as Promise<any>).catch((err) => {
+                        console.error(`❌ [WEBSOCKET-CLIENT] Unhandled async error in once('${event}') handler:`, err);
+                    }).finally(() => {
+                        this.off(event, wrappedHandler);
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error(`❌ [WEBSOCKET-CLIENT] Error in once('${event}') handler:`, err);
+            } finally {
+                this.off(event, wrappedHandler);
+            }
         };
         this.on(event, wrappedHandler);
     }
@@ -243,47 +527,148 @@ export class BidirectionalWebSocket {
 
         this.isReconnecting = true;
         // 🔥 FIX: Mettre à jour le store pour indiquer la reconnexion
-        import('$lib/stores/connection').then(({ setReconnecting }) => {
-            setReconnecting();
-        });
-        this.reconnectTimeout = window.setTimeout(() => {
-            if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                this.reconnectAttempts++;
-                console.log(`🔄 Tentative de reconnexion WebSocket #${this.reconnectAttempts}...`);
-                this.connect();
-            } else {
-                console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
-                // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
-                import('$lib/stores/connection').then(({ setDisconnected }) => {
-                    setDisconnected();
-                });
-                this.emit('error', new Error('Max reconnect attempts reached'));
-            }
-            this.isReconnecting = false;
-        }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts)); // Backoff exponentiel
+        import('$lib/stores/connection')
+            .then(({ setReconnecting }) => {
+                setReconnecting();
+            })
+            .catch((err) => {
+                console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on reconnect:', err);
+            });
+        if (this.reconnectAttempts > 0) {
+            const delay = Math.min(2000 + (this.reconnectAttempts * 1000), 10000);
+            console.log(`⏳ Attente ${delay}ms avant reconnexion (serveur possiblement surchargé)`);
+            setTimeout(() => {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`🔄 Tentative de reconnexion WebSocket #${this.reconnectAttempts}...`);
+                    this.connect();
+                } else {
+                    console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
+                    // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
+                    import('$lib/stores/connection')
+                        .then(({ setDisconnected }) => {
+                            setDisconnected();
+                        })
+                        .catch((err) => {
+                            console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on final disconnect:', err);
+                        });
+                    this.emit('error', new Error('Max reconnect attempts reached'));
+                }
+                this.isReconnecting = false;
+            }, delay);
+        } else {
+            this.reconnectTimeout = window.setTimeout(() => {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`🔄 Tentative de reconnexion WebSocket #${this.reconnectAttempts}...`);
+                    this.connect();
+                } else {
+                    console.error('❌ Nombre maximal de tentatives de reconnexion WebSocket atteint.');
+                    // 🔥 FIX: Mettre à jour le store pour indiquer la déconnexion finale
+                    import('$lib/stores/connection')
+                        .then(({ setDisconnected }) => {
+                            setDisconnected();
+                        })
+                        .catch((err) => {
+                            console.error('❌ [WEBSOCKET-CLIENT] Failed to import connection store on final disconnect:', err);
+                        });
+                    this.emit('error', new Error('Max reconnect attempts reached'));
+                }
+                this.isReconnecting = false;
+            }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts)); // Backoff exponentiel
+        }
     }
 
     private startHeartbeat(): void {
         this.stopHeartbeat(); // S'assurer qu'il n'y a qu'un seul intervalle
-        const PING_INTERVAL = 30000; // 30 secondes (augmenté pour éviter reconnexions fréquentes)
-        const PONG_TIMEOUT = 60000; // 60 secondes (2x ping interval)
+        const PING_INTERVAL = 35_000; // 35s (augmenté pour surcharge)
+        const PONG_TIMEOUT = 120_000; // 120s (augmenté pour surcharge)
         
-        // 🔥 FIX: Initialiser lastPing à la connexion
-        this.lastPing = Date.now();
+        // 🔥 FIX: Initialiser correctement les timestamps
+        const now = Date.now();
+        this.lastPing = now;
+        this.lastPongAt = now; // Considérer la connexion comme "vivante" au début
         
         this.pingInterval = window.setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                // 🔥 FIX: Vérifier d'abord si pas de pong reçu depuis PONG_TIMEOUT ms
-                const timeSinceLastPong = Date.now() - this.lastPing;
+                const now = Date.now();
+                
+                // 🔥 FIX: Vérifier si pas de pong reçu depuis PONG_TIMEOUT (utiliser lastPongAt, pas lastPing)
+                const timeSinceLastPong = this.lastPongAt ? (now - this.lastPongAt) : (now - this.lastPing);
                 if (timeSinceLastPong > PONG_TIMEOUT) {
-                    console.warn('⚠️ Pas de pong reçu depuis', Math.round(timeSinceLastPong / 1000), 'secondes, reconnexion forcée.');
-                    this.ws.close(); // Force la reconnexion via onclose
+                    console.warn(`⚠️ [WEBSOCKET-CLIENT] Pas d'activité depuis ${Math.round(timeSinceLastPong / 1000)}s (seuil: ${PONG_TIMEOUT/1000}s), reconnexion forcée.`);
+                    this.ws.close(1000, "Client heartbeat timeout"); // Force la reconnexion via onclose
                     return;
                 }
-                // Envoyer ping seulement si connexion OK
-                this.sendRaw(JSON.stringify({ type: 'ping' }));
+                
+                // Envoyer ping client pour mesurer RTT
+                this.clientPingIdCounter += 1;
+                const pingId = this.clientPingIdCounter;
+                const clientTs = now;
+                console.debug(`📡 [WEBSOCKET-CLIENT] Envoi ping #${pingId} au serveur`);
+                this.sendRaw(JSON.stringify({ 
+                    type: 'ping', 
+                    ping_id: pingId, 
+                    timestamp: clientTs,
+                    client_ts: clientTs
+                }));
+                
+                // Mettre à jour lastPing pour indiquer qu'on a envoyé un ping
+                this.lastPing = now;
+            } else {
+                console.debug(`⚠️ [WEBSOCKET-CLIENT] WebSocket pas ouvert (state: ${this.ws?.readyState}), arrêt heartbeat`);
+                this.stopHeartbeat();
             }
         }, PING_INTERVAL);
+        
+        console.debug(`💓 [WEBSOCKET-CLIENT] Heartbeat démarré (ping: ${PING_INTERVAL/1000}s, timeout: ${PONG_TIMEOUT/1000}s)`);
+    }
+
+    private sendClientHello(): void {
+        if (typeof window === 'undefined') return;
+        const nav: any = window.navigator as any;
+        const ctx: any = {
+            userAgent: nav?.userAgent,
+            language: nav?.language,
+            languages: nav?.languages,
+            platform: nav?.platform,
+            timezone: (() => {
+                try {
+                    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+                } catch {
+                    return null;
+                }
+            })(),
+            href: window.location?.href,
+            origin: window.location?.origin,
+            pathname: window.location?.pathname,
+            visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+            online: nav?.onLine,
+            deviceMemory: nav?.deviceMemory,
+            hardwareConcurrency: nav?.hardwareConcurrency,
+            screen: {
+                width: window.screen?.width,
+                height: window.screen?.height,
+                devicePixelRatio: window.devicePixelRatio,
+            },
+            viewport: {
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+            },
+            connection: nav?.connection ? {
+                effectiveType: nav.connection.effectiveType,
+                rtt: nav.connection.rtt,
+                downlink: nav.connection.downlink,
+                saveData: nav.connection.saveData,
+            } : null,
+        };
+
+        this.sendRaw(JSON.stringify({
+            type: 'client_hello',
+            client_id: this.clientId,
+            context: ctx,
+            timestamp: Date.now(),
+        }));
     }
 
     private stopHeartbeat(): void {

@@ -402,6 +402,23 @@ class AnalyticsDatabase:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # 🔥 MIGRATION: Assurer compatibilité avec anciennes DB (ajout colonnes manquantes)
+        # (CREATE TABLE IF NOT EXISTS ne modifie pas un schéma existant)
+        try:
+            cursor.execute("PRAGMA table_info(trades)")
+            existing_cols = {row['name'] for row in cursor.fetchall()}
+
+            if 'is_live_trade' not in existing_cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN is_live_trade BOOLEAN DEFAULT 0")
+            if 'is_dry_run' not in existing_cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN is_dry_run BOOLEAN DEFAULT 1")
+            if 'leverage_used' not in existing_cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN leverage_used INTEGER DEFAULT 1")
+            if 'entry_order_id' not in existing_cols:
+                cursor.execute("ALTER TABLE trades ADD COLUMN entry_order_id TEXT")
+        except Exception as e:
+            logger.debug(f"Migration schéma trades ignorée (non bloquant): {e}")
         
         # Index
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)')

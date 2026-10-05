@@ -95,6 +95,19 @@ Le frontend proxy automatiquement `/api` et `/socket.io` vers le backend (pas de
 
 ---
 
+## ✅ Tests & Coverage (WebSocket)
+
+Tests unitaires Vitest + jsdom pour verrouiller la logique de connexion WebSocket.
+
+```bash
+npm run test
+npm run test:coverage
+```
+
+Le coverage cible `src/lib/utils/websocket-impl.ts` et génère un rapport HTML par défaut.
+
+---
+
 ## 📦 Build Production
 
 ### Build pour Node.js (Proxmox VM)

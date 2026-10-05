@@ -4,23 +4,23 @@
       "metric": "trading_composite",
       "last_run": {
         "metric": "trading_composite",
-        "score": 0.7761741988983368,
+        "score": 0.1,
         "params": {
-          "max_depth": 2,
-          "min_child_weight": 10,
-          "reg_alpha": 11.974334868366029,
-          "reg_lambda": 14.299525915161514,
-          "subsample": 0.6958920514657898,
-          "colsample_bytree": 0.7906935485309322,
-          "colsample_bylevel": 0.702610666589851,
-          "learning_rate": 0.015871366404422785,
+          "max_depth": 3,
+          "min_child_weight": 13,
+          "reg_alpha": 10.909967362024421,
+          "reg_lambda": 14.447546989902737,
+          "subsample": 0.632113549727779,
+          "colsample_bytree": 0.6844754114807521,
+          "colsample_bylevel": 0.811650177915158,
+          "learning_rate": 0.013597698495643882,
           "n_estimators": 200,
-          "gamma": 2.5106039146088905,
-          "scale_pos_weight": 1.1930706366802883
+          "gamma": 1.9589324019521162,
+          "scale_pos_weight": 1.3641014214070155
         },
-        "trial_number": 6442,
-        "total_trials": 6450,
-        "datetime": "2025-11-30T10:13:06.782936",
+        "trial_number": 13115,
+        "total_trials": 13116,
+        "datetime": "2026-01-27T22:07:22.717454",
         "source": "latest"
       }
     },
@@ -28,7 +28,7 @@
       "metric": "f1_score",
       "last_run": {
         "score": 0.85,
-        "timestamp": "2025-12-02T19:34:58.210302",
+        "timestamp": "2026-01-30T07:49:37.658141",
         "metric": "f1_score",
         "source": "latest"
       }

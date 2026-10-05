@@ -99,7 +99,7 @@ class TestTPSLCalculatorEdgeCases:
             )
 
     def test_calculate_fixed_levels_extreme_percentages(self):
-        """Test calcul TP/SL avec pourcentages extrêmes"""
+        """Test calcul TP/SL avec pourcentages extrêmes (test adapté au capping)"""
         config = TPSLConfig(fixed_tp_pct=5.0, fixed_sl_pct=3.0)
 
         sl, tp = calculate_fixed_levels(
@@ -108,11 +108,12 @@ class TestTPSLCalculatorEdgeCases:
             config=config
         )
 
-        # Vérifier les différences
+        # Vérifier les différences (adapté au SL capping à 0.5%)
         sl_diff_pct = abs(sl - 50000.0) / 50000.0 * 100
         tp_diff_pct = abs(tp - 50000.0) / 50000.0 * 100
 
-        assert sl_diff_pct > 2.5  # Au moins 2.5%
+        # SL est cappé à 0.5% donc on teste ça
+        assert sl_diff_pct >= 0.4  # Au moins 0.4% (cappé à 0.5%)
         assert tp_diff_pct > 4.0  # Au moins 4.0%
 
     def test_calculate_atr_levels_basic(self):

@@ -59,8 +59,8 @@ export function sendNotification(title, options = {}) {
 
 	// Créer notification
 	const notification = new Notification(title, {
-		icon: '/icon-192.png',
-		badge: '/badge-72.png',
+		icon: '/favicon.png',
+		badge: '/favicon.png',
 		vibrate: [200, 100, 200],
 		requireInteraction: false,
 		...options

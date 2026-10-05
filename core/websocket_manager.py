@@ -5,11 +5,26 @@ Remplace Socket.IO pour des performances optimales
 import asyncio
 import json
 import logging
+import math
+import time
 from typing import Dict, Set, Optional
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_json(value):
+    """Remplacer NaN/Inf par None pour éviter les JSON invalides côté frontend."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _sanitize_for_json(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_for_json(item) for item in value]
+    return value
 
 
 class WebSocketManager:
@@ -28,9 +43,23 @@ class WebSocketManager:
         self.active_connections: Set[WebSocket] = set()
         self.connection_data: Dict[WebSocket, dict] = {}
         self.rooms: Dict[str, Set[WebSocket]] = {}  # Support rooms
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None  # 🔥 Lazy initialization
+        self._lock_loop = None
+        self._connection_counter: int = 0
         # 🔥 LIVE TRADING: Système de commandes WebSocket
         self._command_handlers: Dict[str, callable] = {}
+    
+    @property
+    def lock(self) -> asyncio.Lock:
+        """Lazy initialization of the lock to ensure it's in the correct event loop"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if self._lock is None or (loop is not None and self._lock_loop is not loop):
+            self._lock = asyncio.Lock()
+            self._lock_loop = loop
+        return self._lock
     
     def command(self, name: str):
         """
@@ -91,35 +120,232 @@ class WebSocketManager:
     
     async def connect(self, websocket: WebSocket):
         """Accepter une nouvelle connexion WebSocket"""
+        logger.debug("🔥 [WEBSOCKET-MANAGER] connect() appelé - DIAGNOSTIC FORCÉ")
+        logger.debug(f"🔥 [WEBSOCKET-MANAGER] websocket = {websocket}")
+        logger.debug(f"🔥 [WEBSOCKET-MANAGER] websocket.client = {getattr(websocket, 'client', 'NONE')}")
         await websocket.accept()
-        async with self._lock:
+        logger.debug("🔥 [WEBSOCKET-MANAGER] websocket.accept() terminé avec succès")
+        async with self.lock:
+            self._connection_counter += 1
+            connection_id = self._connection_counter
             self.active_connections.add(websocket)
             self.connection_data[websocket] = {
+                'connection_id': connection_id,
+                'client': getattr(websocket, 'client', None),
                 'connected_at': datetime.now().isoformat(),
-                'last_ping': datetime.now().isoformat()
+                'connected_at_ts': time.time(),
+                'last_ping': datetime.now().isoformat(),
+                'last_message_ts': time.time(),
+                'last_message_type': 'connect',
+                'message_in_count': 0,
+                'message_out_count': 0,
+                'bytes_in': 0,
+                'bytes_out': 0,
+                'server_ping_counter': 0,
+                'last_server_ping_id': None,
+                'last_server_ping_ts': None,
+                'last_server_pong_ts': None,
+                'last_server_rtt_ms': None,
+                'client_info': None,
+                'user_agent': None,
+                'origin': None,
+                'send_timeout_count': 0,
+                'send_lock': asyncio.Lock(),
             }
-        logger.info(f"✅ WebSocket connecté (total: {len(self.active_connections)})")
+        logger.info(
+            f"✅ WebSocket connecté (id={connection_id}, client={getattr(websocket, 'client', None)}, total: {len(self.active_connections)})"
+        )
     
     async def disconnect(self, websocket: WebSocket):
         """Déconnecter un WebSocket (optimisé)"""
-        async with self._lock:
+        if websocket not in self.active_connections and websocket not in self.connection_data:
+            return
+        conn_data = self.connection_data.get(websocket) or {}
+        connection_id = conn_data.get('connection_id')
+        client = conn_data.get('client') or getattr(websocket, 'client', None)
+        connected_at_ts = conn_data.get('connected_at_ts')
+        duration_s = None
+        if isinstance(connected_at_ts, (int, float)):
+            duration_s = round(time.time() - connected_at_ts, 3)
+        msg_in = conn_data.get('message_in_count')
+        msg_out = conn_data.get('message_out_count')
+        bytes_in = conn_data.get('bytes_in')
+        bytes_out = conn_data.get('bytes_out')
+        last_message_type = conn_data.get('last_message_type')
+        last_message_ts = conn_data.get('last_message_ts')
+        last_message_age_s = None
+        if isinstance(last_message_ts, (int, float)):
+            last_message_age_s = round(time.time() - last_message_ts, 3)
+        rtt_ms = conn_data.get('last_server_rtt_ms')
+        user_agent = conn_data.get('user_agent')
+        origin = conn_data.get('origin')
+        
+        # 🔥 WEBSOCKET-FIX: Logs détaillés pour diagnostiquer les déconnexions
+        disconnect_reason = "unknown"
+        websocket_state = getattr(websocket, 'client_state', 'unknown')
+        try:
+            if hasattr(websocket, 'close_code'):
+                disconnect_reason = f"close_code_{websocket.close_code}"
+            elif hasattr(websocket, 'client_state') and websocket.client_state == 'disconnected':
+                disconnect_reason = "client_disconnected"
+        except Exception:
+            pass
+            
+        async with self.lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
             # 🔥 OPTIMISATION: Nettoyer aussi des rooms en une seule passe
             for room_connections in self.rooms.values():
                 room_connections.discard(websocket)
-        logger.info(f"❌ WebSocket déconnecté (total: {len(self.active_connections)})")
+                
+        logger.info(
+            "� WebSocket déconnecté: id=%s reason=%s duration_s=%s client=%s remaining=%s",
+            connection_id,
+            disconnect_reason,
+            duration_s,
+            client,
+            len(self.active_connections),
+        )
+        logger.debug(
+            "[WS-DEBUG] disconnect details: state=%s in=%s out=%s bytes_in=%s bytes_out=%s last_msg=%s last_msg_age_s=%s rtt_ms=%s ua=%s origin=%s",
+            websocket_state,
+            msg_in,
+            msg_out,
+            bytes_in,
+            bytes_out,
+            last_message_type,
+            last_message_age_s,
+            rtt_ms,
+            user_agent,
+            origin,
+        )
+
+        # 🚨 DIAGNOSTIC CRITIQUE: Analyser cause déconnexion (mode debug)
+        logger.debug("🚨 [DISCONNECT-DIAGNOSTIC] ANALYSE DÉCONNEXION:")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] connect() counter={self._connection_counter}")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] disconnect_reason = '{disconnect_reason}'")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] websocket_state = {websocket_state}")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] duration_s = {duration_s}")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] last_message_type = '{last_message_type}'")
+        logger.debug(f"🚨 [DISCONNECT-DIAGNOSTIC] msg_in={msg_in}, msg_out={msg_out}, bytes_out={bytes_out}")
+
+        # 🔥 WEBSOCKET-FIX: Si c'est une déconnexion rapide (< 30s), c'est suspect
+        if duration_s and duration_s < 30:
+            logger.warning(
+                "⚠️ WebSocket déconnexion rapide détectée: %ss (id=%s)",
+                duration_s,
+                connection_id,
+            )
     
-    async def send_personal_message(self, message: dict, websocket: WebSocket):
+    async def send_personal_message(self, message: dict, websocket: WebSocket, timeout: float = 10.0):
         """Envoyer un message à un WebSocket spécifique"""
+        message_json = None
+        if isinstance(message, dict):
+            out_type = (
+                message.get('type')
+                or message.get('request_type')
+                or message.get('event')
+                or 'unknown'
+            )
+        else:
+            out_type = type(message).__name__
         try:
-            if websocket in self.active_connections:
-                await websocket.send_text(json.dumps(message))
+            # 🔥 PROTECTION: Vérifier que la connexion est active avant envoi
+            if websocket not in self.active_connections:
+                return  # Connexion déjà nettoyée
+                
+            # 🔥 PROTECTION: Vérifications d'état simplifiées pour FastAPI WebSocket
+            # Les WebSocket FastAPI ont un attribut 'client_state' et 'application_state'
+            try:
+                if hasattr(websocket, 'client_state') and websocket.client_state == 3:  # DISCONNECTED
+                    await self.disconnect(websocket)
+                    return
+                elif hasattr(websocket, 'application_state') and websocket.application_state == 3:  # DISCONNECTED
+                    await self.disconnect(websocket)
+                    return
+                # Si pas d'états disponibles, laisser passer (connexion potentiellement active)
+            except Exception:
+                # En cas d'erreur d'accès aux états, laisser passer
+                pass
+                    
+            safe_message = _sanitize_for_json(message)
+            message_json = json.dumps(safe_message, default=str)
+            conn_data = self.connection_data.get(websocket)
+            if conn_data is not None:
+                conn_data['last_message_ts'] = time.time()
+                conn_data['last_message_type'] = f"out:{message.get('type') or 'unknown'}"
+                conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
+                conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(message_json)
+            send_lock = conn_data.get('send_lock') if conn_data else None
+            if send_lock:
+                async with send_lock:
+                    await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
+            else:
+                await asyncio.wait_for(websocket.send_text(message_json), timeout=timeout)
+            logger.debug(f"📤 [WS-DEBUG] Message envoyé via send_text: {message_json}")
+        except asyncio.TimeoutError:
+            conn_data = self.connection_data.get(websocket)
+            connection_id = conn_data.get('connection_id') if conn_data else None
+            client = (conn_data.get('client') if conn_data else None) or getattr(websocket, 'client', None)
+            client_state = getattr(websocket, 'client_state', None)
+            app_state = getattr(websocket, 'application_state', None)
+            close_code = getattr(websocket, 'close_code', None)
+            last_message_ts = (conn_data or {}).get('last_message_ts')
+            last_message_age_s = None
+            if isinstance(last_message_ts, (int, float)):
+                last_message_age_s = round(time.time() - last_message_ts, 3)
+            if conn_data is not None:
+                conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
+                conn_data['last_message_type'] = 'out:timeout'
+            logger.warning(
+                "WS send timeout: id=%s client=%s type=%s size=%s state=%s/%s close_code=%s last_msg=%s last_age_s=%s",
+                connection_id,
+                client,
+                out_type,
+                len(message_json) if message_json else None,
+                client_state,
+                app_state,
+                close_code,
+                (conn_data or {}).get('last_message_type'),
+                last_message_age_s,
+            )
+            await self.disconnect(websocket)
         except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
-            # 🔥 FIX: Déconnexions normales - nettoyer silencieusement
+            conn_data = self.connection_data.get(websocket)
+            connection_id = conn_data.get('connection_id') if conn_data else None
+            client = (conn_data.get('client') if conn_data else None) or getattr(websocket, 'client', None)
+            logger.debug(
+                "WS send disconnect: id=%s client=%s type=%s err=%s",
+                connection_id,
+                client,
+                out_type,
+                type(e).__name__,
+            )
             await self.disconnect(websocket)
         except Exception as e:
-            logger.error(f"❌ Erreur envoi message WebSocket: {e}")
+            conn_data = self.connection_data.get(websocket)
+            connection_id = conn_data.get('connection_id') if conn_data else None
+            client = (conn_data.get('client') if conn_data else None) or getattr(websocket, 'client', None)
+            client_state = getattr(websocket, 'client_state', None)
+            app_state = getattr(websocket, 'application_state', None)
+            close_code = getattr(websocket, 'close_code', None)
+            last_message_ts = (conn_data or {}).get('last_message_ts')
+            last_message_age_s = None
+            if isinstance(last_message_ts, (int, float)):
+                last_message_age_s = round(time.time() - last_message_ts, 3)
+            logger.error(
+                "WS send error: id=%s client=%s type=%s size=%s state=%s/%s close_code=%s last_msg=%s last_age_s=%s err=%s",
+                connection_id,
+                client,
+                out_type,
+                len(message_json) if message_json else None,
+                client_state,
+                app_state,
+                close_code,
+                (conn_data or {}).get('last_message_type'),
+                last_message_age_s,
+                repr(e),
+            )
             await self.disconnect(websocket)
     
     async def broadcast(self, message: dict):
@@ -127,22 +353,56 @@ class WebSocketManager:
         if not self.active_connections:
             return
         
-        # 🔥 OPTIMISATION: Créer le message JSON une seule fois
-        message_json = json.dumps(message)
+        # 🔥 OPTIMISATION: Créer le message JSON une seule fois avec encodeur robuste
+        try:
+            safe_message = _sanitize_for_json(message)
+            message_json = json.dumps(safe_message, default=str)
+        except Exception as e:
+            logger.error(f"❌ Erreur sérialisation JSON broadcast: {e}")
+            return
         
         # 🔥 FIX: Créer une copie de la liste pour éviter les modifications pendant l'itération
         connections_to_send = list(self.active_connections)
         if not connections_to_send:
             return
+
+        out_type = f"out:{message.get('type') or 'unknown'}"
+        out_ts = time.time()
         
         # 🔥 OPTIMISATION: Envoyer à tous les clients en parallèle avec asyncio.gather
         async def send_to_connection(connection):
             try:
-                # 🔥 FIX: Vérifier que la connexion est toujours active
-                if connection not in self.active_connections:
-                    return None
-                await connection.send_text(message_json)
+                # 🔥 FIX: Vérifier que la connexion est toujours active et pas fermée
+                if (connection not in self.active_connections or 
+                    getattr(connection, 'client_state', None) == 3 or  # WebSocketState.DISCONNECTED
+                    getattr(connection, 'application_state', None) == 3):  # DISCONNECTED
+                    return connection  # Connexion fermée - à nettoyer
+                conn_data = self.connection_data.get(connection)
+                if conn_data is not None:
+                    conn_data['last_message_ts'] = out_ts
+                    conn_data['last_message_type'] = out_type
+                    conn_data['message_out_count'] = int(conn_data.get('message_out_count') or 0) + 1
+                    conn_data['bytes_out'] = int(conn_data.get('bytes_out') or 0) + len(message_json)
+                # 🔥 PROTECTION: Vérifier readyState avant send_text
+                if hasattr(connection, 'websocket') and hasattr(connection.websocket, 'state'):
+                    # FastAPI WebSocket
+                    if connection.websocket.state != 1:  # WebSocketState.CONNECTED = 1
+                        return connection  # État non-connecté
+                send_lock = conn_data.get('send_lock') if conn_data else None
+                if send_lock:
+                    async with send_lock:
+                        await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
+                else:
+                    await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
                 return None  # Succès
+            except asyncio.TimeoutError:
+                conn_data = self.connection_data.get(connection)
+                if conn_data is not None:
+                    conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
+                    conn_data['last_message_type'] = 'out:timeout'
+                    if conn_data['send_timeout_count'] >= 3:
+                        return connection  # Timeout répété - nettoyer connexion
+                return None  # Timeout ponctuel - garder la connexion
             except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
                 # 🔥 FIX: Ignorer les erreurs de déconnexion normales
                 return connection  # Échec - retourner connexion à nettoyer
@@ -151,11 +411,16 @@ class WebSocketManager:
                 logger.debug(f"⚠️ Erreur broadcast WebSocket: {e}")
                 return connection  # Échec - retourner connexion à nettoyer
         
-        # Exécuter tous les envois en parallèle
-        results = await asyncio.gather(
-            *[send_to_connection(conn) for conn in connections_to_send],
-            return_exceptions=True
-        )
+        # Exécuter tous les envois en parallèle avec protection contre event loop fermée
+        try:
+            results = await asyncio.gather(
+                *[send_to_connection(conn) for conn in connections_to_send],
+                return_exceptions=True
+            )
+        except RuntimeError as e:
+            # Event loop fermée pendant l'envoi - ignorer silencieusement
+            logger.debug(f"⚠️ Event loop fermée pendant broadcast: {e}")
+            return
         
         # 🔥 FIX: Nettoyer les connexions déconnectées (filtrer les exceptions et None)
         disconnected = []
@@ -170,7 +435,7 @@ class WebSocketManager:
                     disconnected.append(connections_to_send[i])
         
         if disconnected:
-            async with self._lock:
+            async with self.lock:
                 for conn in disconnected:
                     self.active_connections.discard(conn)
                     self.connection_data.pop(conn, None)
@@ -186,10 +451,14 @@ class WebSocketManager:
             event: Nom de l'événement
             data: Données à envoyer
         """
+        from core.state_manager import get_state_manager
+        state = get_state_manager()
+        
         message = {
             'type': 'event',
             'event': event,
             'data': data,
+            'session_id': state.session_id,  # 🔥 Propager session_id avec chaque événement
             'timestamp': datetime.now().isoformat()
         }
         await self.broadcast(message)
@@ -241,17 +510,56 @@ class WebSocketManager:
     def get_connection_count(self) -> int:
         """Retourner le nombre de connexions actives"""
         return len(self.active_connections)
+
+    def get_connection_id(self, websocket: WebSocket) -> Optional[int]:
+        """Retourner l'identifiant interne de la connexion"""
+        conn_data = self.connection_data.get(websocket)
+        if not conn_data:
+            return None
+        return conn_data.get('connection_id')
     
     async def ping_all(self):
-        """Envoyer un ping à tous les clients (keep-alive)"""
+        """Envoyer un ping à tous les clients (keep-alive) avec monitoring amélioré"""
         if not self.active_connections:
             return
         
-        message = {
-            'type': 'ping',
-            'timestamp': datetime.now().isoformat()
-        }
-        await self.broadcast(message)
+        now = time.time()
+        timestamp_iso = datetime.now().isoformat()
+        
+        # 🔥 FIX: Vérifier les connexions inactives avant d'envoyer des pings
+        inactive_connections = []
+        
+        for websocket in list(self.active_connections):
+            conn_data = self.connection_data.get(websocket)
+            if conn_data:
+                last_pong_ts = conn_data.get('last_server_pong_ts', 0) or 0
+                last_ping_ts = conn_data.get('last_server_ping_ts', 0) or 0
+                
+                # Identifier les connexions qui ne répondent plus depuis >90s
+                if last_ping_ts > 0 and (now - last_ping_ts) > 90.0 and last_pong_ts < last_ping_ts:
+                    logger.error(
+                        f"🚨 [WEBSOCKET-MONITOR] Connexion inactive détectée: client {conn_data.get('connection_id')} "
+                        f"(pas de pong depuis {now - last_pong_ts:.1f}s, dernier ping il y a {now - last_ping_ts:.1f}s)"
+                    )
+                    inactive_connections.append(websocket)
+        
+        # Nettoyer les connexions inactives
+        if inactive_connections:
+            for websocket in inactive_connections:
+                try:
+                    await websocket.close(code=1000, reason="Ping timeout - connection inactive")
+                except Exception:
+                    pass
+                await self.disconnect(websocket)
+        
+        # Envoyer ping aux connexions actives restantes
+        if self.active_connections:
+            message = {
+                'type': 'ping',
+                'timestamp': timestamp_iso
+            }
+            logger.debug(f"📡 [WEBSOCKET-MONITOR] Envoi ping keep-alive à {len(self.active_connections)} clients")
+            await self.broadcast(message)
     
     def subscribe(self, websocket: WebSocket, room: str):
         """S'abonner à une room"""
@@ -275,13 +583,28 @@ class WebSocketManager:
                 'data': data,
                 'timestamp': datetime.now().isoformat()
             }
-            message_json = json.dumps(message)
+            safe_message = _sanitize_for_json(message)
+            message_json = json.dumps(safe_message, default=str)
             
             # 🔥 OPTIMISATION: Envoyer en parallèle avec asyncio.gather
             async def send_to_connection(connection):
                 try:
-                    await connection.send_text(message_json)
+                    conn_data = self.connection_data.get(connection)
+                    send_lock = conn_data.get('send_lock') if conn_data else None
+                    if send_lock:
+                        async with send_lock:
+                            await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
+                    else:
+                        await asyncio.wait_for(connection.send_text(message_json), timeout=10.0)
                     return None  # Succès
+                except asyncio.TimeoutError:
+                    conn_data = self.connection_data.get(connection)
+                    if conn_data is not None:
+                        conn_data['send_timeout_count'] = int(conn_data.get('send_timeout_count') or 0) + 1
+                        conn_data['last_message_type'] = 'out:timeout'
+                        if conn_data['send_timeout_count'] >= 3:
+                            return connection  # Timeout répété - nettoyer connexion
+                    return None  # Timeout ponctuel - garder la connexion
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur emit room {room}: {e}")
                     return connection  # Échec
@@ -296,7 +619,7 @@ class WebSocketManager:
                 # Nettoyer connexions déconnectées
                 disconnected = [conn for conn in results if conn is not None and not isinstance(conn, Exception)]
                 if disconnected:
-                    async with self._lock:
+                    async with self.lock:
                         for conn in disconnected:
                             self.rooms[room].discard(conn)
                             self.active_connections.discard(conn)

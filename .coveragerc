@@ -1,10 +1,26 @@
 [run]
-source = core,api
+source = core,api,optimization,utils,trading,ml
 omit =
     */test_*
     */__pycache__/*
     */tests/*
     */.venv/*
+    deploy_*.py
+    final_*.py
+    verify*.py
+    scripts/verify_*.py
+    scripts/deploy_*.py
+    scripts/final_*.py
+    verification/verify_*.py
+    verification/analyze_*.py
+    verification/backtest_*.py
+    verification/reconcile_*.py
+    verification/film_*.py
+    verification/check_*.py
+    database/count_*.py
+    database/migrate_*.py
+    migrate_*.py
+    final_*.py
 
 [report]
 precision = 2

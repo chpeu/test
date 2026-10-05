@@ -7,7 +7,16 @@ from typing import Dict, Optional, List
 from utils.logger import get_logger
 
 
-logger = get_logger()
+# Logger will be initialized lazily to avoid blocking during module import
+logger = None
+
+
+def _get_logger():
+    """Get or initialize logger lazily to avoid blocking during import"""
+    global logger
+    if logger is None:
+        logger = get_logger()
+    return logger
 
 
 def detect_manipulation(

@@ -9,8 +9,14 @@ import os
 import sys
 import io
 
+if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':
+    raise ImportError('verify_ui_fixes is a script-only module')
+
 # Fix encoding pour Windows
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+try:
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+except Exception:
+    pass
 
 # Couleurs console
 GREEN = "\033[92m"
