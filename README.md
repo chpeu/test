@@ -2,10 +2,10 @@
 
 **Migration Python de v5.1 HTML avec interface IDENTIQUE**
 
-[![Tests](https://github.com/chpeu/trade_cursor_py/workflows/Tests%20&%20Coverage/badge.svg)](https://github.com/chpeu/trade_cursor_py/actions)
+[![Tests](https://github.com/chpeu/test/actions/workflows/test.yml/badge.svg)](https://github.com/chpeu/test/actions/workflows/test.yml)
 [![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
-[![Coverage](https://img.shields.io/badge/coverage-50.93%25-yellowgreen.svg)]()
-[![Tests](https://img.shields.io/badge/tests-236%20passed-success.svg)]()
+[![FastAPI](https://img.shields.io/badge/backend-FastAPI%20async-009688.svg)]()
+[![PostgreSQL](https://img.shields.io/badge/datalogger-PostgreSQL-336791.svg)]()
 
 ---
 
@@ -41,11 +41,22 @@ pip install -r requirements.txt
 
 ### 2. Installation dépendances
 ```bash
-cd trade_cursor_py
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+pip install -r requirements_ml.txt   # ML (XGBoost, calibration, Optuna)
 ```
 
-### 3. Lancer l'application
+### 3. Configuration
+```bash
+cp .env.example .env
+# Renseigner les valeurs réelles (tokens Telegram, etc.) — .env est ignoré par git
+```
+
+La base PostgreSQL est nécessaire pour le datalogger ML (`core/postgresql_datalogger.py`).
+Paramètres de connexion dans `.env`.
+
+### 4. Lancer l'application
 ```bash
 python main.py
 ```
@@ -57,8 +68,8 @@ Ouvrez `http://localhost:5000` dans votre navigateur.
 ## 📁 STRUCTURE
 
 ```
-trade_cursor_py/
-├── main.py                    # App Flask + Socket.IO
+test/                          # dépôt chpeu/test
+├── main.py                    # App FastAPI async + WebSocket natif
 ├── config.py                  # Configuration globale
 ├── requirements.txt           # Dépendances Python
 ├── README.md                  # Ce fichier
@@ -116,11 +127,13 @@ trade_cursor_py/
 
 ## 📊 STATISTIQUES
 
-- **Fichiers**: 20+
-- **Code**: ~3500 lignes
-- **Tests**: 5+
-- **Erreurs**: 0 ✅
-- **Couverture**: ~90%
+Chiffres réels (branche `claude/analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag`, 02/02/2026) :
+
+- **Fichiers Python** : 880
+- **Lignes de Python** : ~246 000
+- **Tests** : 163 fichiers, 3022 fonctions (`pytest tests/`)
+- **Zones principales** : `core/` (92 fichiers), `optimization/` (361), `api/routes/` (~20 routeurs), `trading/`
+- **Couverture** : **57,14 %** (mesurée sur `core` + `api` avec `pytest --cov=core --cov=api`)
 
 ---
 
