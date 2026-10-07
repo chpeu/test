@@ -307,7 +307,7 @@ async def main():
             print("-" * 20)
             await stop_post_exit_loop()
             print("✅ PostExitLoop arrêtée")
-        except:
+        except Exception:
             pass
 
 if __name__ == "__main__":

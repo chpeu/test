@@ -138,7 +138,7 @@ class MEXCTokenValidator:
                 if age.total_seconds() > 86400:  # 24 heures
                     self.warnings.append(f"⚠️ Token extrait il y a {age.days} jours")
                 print(f"📅 Token extrait: {extracted.strftime('%Y-%m-%d %H:%M:%S')}")
-            except:
+            except Exception:
                 pass
         
         # 6. Résumé final

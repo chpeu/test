@@ -947,9 +947,8 @@ async def diagnostic_leverage():
             from utils.config_persistence import load_config_overrides
             overrides = load_config_overrides()
             overrides_leverage = overrides.get('default_leverage', 'NON_DEFINI')
-        except:
-            pass
-        
+        except Exception:
+            logger.debug('live_trading_endpoints.py: exception silencieuse (avant: pass)', exc_info=True)
         # 4. LiveOrderManager actuel
         live_manager_leverage = 'NON_INITIALISE'
         if hasattr(main, 'live_order_manager') and main.live_order_manager:

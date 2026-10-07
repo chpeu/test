@@ -46,7 +46,7 @@ async def validate_rollout_progression():
             scanner_flag = ffm.get_flag('use_testable_scanner')
             print(f"Scanner:          {'✅' if scanner_flag.enabled else '❌'} "
                   f"Rollout: {scanner_flag.rollout_percentage}%")
-        except:
+        except Exception:
             print(f"Scanner:          ⏸️  Rollout: 0% (Not yet configured)")
         
         # 2. Tester Position Manager Phase 1 (50% rollout)

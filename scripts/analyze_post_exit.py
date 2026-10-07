@@ -50,7 +50,7 @@ def load_current_config():
                 'trailing_trigger_pnl': config.get('trailing_trigger_pnl', 0.20),
                 'trailing_distance': config.get('trailing_distance', 0.10)
             }
-    except:
+    except Exception:
         return CURRENT_CONFIG
 
 

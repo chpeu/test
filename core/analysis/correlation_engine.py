@@ -100,9 +100,8 @@ class CorrelationEngine:
         if conn and not self.db_connection:
             try:
                 conn.close()
-            except:
-                pass
-    
+            except Exception:
+                logger.debug('correlation_engine.py: exception silencieuse (avant: pass)', exc_info=True)
     def analyze_by_session(self, days: int = 7) -> List[CorrelationResult]:
         """
         Analyser la performance par session de trading.

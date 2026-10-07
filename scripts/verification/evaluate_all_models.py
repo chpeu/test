@@ -106,7 +106,7 @@ try:
         
         try:
             auc_v1 = roc_auc_score(y_test, y_proba_v1)
-        except:
+        except Exception:
             auc_v1 = 0.5
         
         print(f"\n   Resultats XGBoost V1:")
@@ -218,7 +218,7 @@ try:
         
         try:
             auc_gb = roc_auc_score(y_test, y_proba_gb)
-        except:
+        except Exception:
             auc_gb = 0.5
         
         print(f"\n   Resultats GradientBoosting:")

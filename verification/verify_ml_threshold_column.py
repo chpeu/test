@@ -176,7 +176,7 @@ def check_export_includes_column():
             print(f"[FAIL] Erreur export: status {response.status_code}")
             try:
                 print(f"   Message: {response.json()}")
-            except:
+            except Exception:
                 pass
             return False
             

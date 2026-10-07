@@ -123,8 +123,7 @@ def calculate_fixed_levels(
             if sl_rounded > sl_target:
                 sl_rounded = math.floor(sl_target * multiplier) / multiplier
     except Exception:
-        pass
-
+        logger.debug('tp_sl_calculator.py: exception silencieuse (avant: pass)', exc_info=True)
     # Vérifier différence APRÈS arrondi
     sl_rounded_diff = abs(sl_rounded - entry)
     tp_rounded_diff = abs(tp_rounded - entry)

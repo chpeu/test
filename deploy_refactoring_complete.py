@@ -322,7 +322,7 @@ def generate_deployment_summary():
                         try:
                             with open(filepath, 'r', encoding='utf-8') as f:
                                 total_lines += len(f.readlines())
-                        except:
+                        except Exception:
                             pass
     
     print(f"📊 Statistiques:")

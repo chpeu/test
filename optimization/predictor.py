@@ -182,9 +182,8 @@ class MLPredictor:
                         {'feature': k, 'importance': float(v)}
                         for k, v in sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[:5]
                     ]
-                except:
-                    pass
-            
+                except Exception:
+                    logger.debug('predictor.py: exception silencieuse (avant: pass)', exc_info=True)
             result = {
                 'prediction': 'win' if prediction == 1 else 'loss',
                 'prediction_value': prediction,

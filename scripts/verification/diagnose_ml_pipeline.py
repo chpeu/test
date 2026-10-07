@@ -195,7 +195,7 @@ class MLPipelineDiagnostic:
                 corr = self.df[col].corr(self.df['target_win'].astype(float))
                 if not np.isnan(corr):
                     correlations.append({'feature': col, 'correlation': abs(corr)})
-            except:
+            except Exception:
                 pass
         
         corr_df = pd.DataFrame(correlations).sort_values('correlation', ascending=False)
@@ -283,7 +283,7 @@ class MLPipelineDiagnostic:
                             'win_mean': win_mean,
                             'loss_mean': loss_mean
                         })
-            except:
+            except Exception:
                 pass
         
         if len(separable_features) > 0:

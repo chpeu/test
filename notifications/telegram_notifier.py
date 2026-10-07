@@ -201,7 +201,7 @@ class TelegramNotifier:
                             if not self.rate_limit_logged:
                                 logger.warning(f"⚠️ Telegram rate limit: attendre {retry_after}s")
                                 self.rate_limit_logged = True
-                        except:
+                        except Exception:
                             self.rate_limit_until = time.time() + 60  # Fallback 60s
                         return False
                     else:

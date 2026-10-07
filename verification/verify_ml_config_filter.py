@@ -190,7 +190,7 @@ try:
             print(f"   ✅ COHERENT - Modele entraine sur donnees nettoyees")
         else:
             print(f"   ⚠️  Difference: modele peut necessiter re-entrainement")
-    except:
+    except Exception:
         print(f"   ⚠️  Table ml_features_clean non trouvee")
         
 except Exception as e:

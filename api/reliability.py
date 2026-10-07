@@ -580,8 +580,7 @@ class WebSocketManager:
                     try:
                         await self.send_ping()
                     except Exception:
-                        pass
-
+                        logger.debug('reliability.py: exception silencieuse (avant: pass)', exc_info=True)
             except (ConnectionError, asyncio.exceptions.CancelledError) as e:
                 if self._running:
                     if DEBUG_ENABLED:

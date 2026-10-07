@@ -142,8 +142,7 @@ class BTCIndicator:
                             'percentage': float(ticker_data.get('priceChangePercent', 0))
                         }
                 except Exception:
-                    pass
-            
+                    logger.debug('btc_indicator.py: exception silencieuse (avant: pass)', exc_info=True)
             # Fallback sur ccxt
             if not ticker and hasattr(exchange, 'fetch_ticker'):
                 ticker = await self._run_sync(exchange.fetch_ticker, 'BTC/USDT')

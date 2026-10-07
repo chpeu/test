@@ -550,7 +550,7 @@
 			<div class="next-event-section sl-section">
 				<div class="next-event-header">
 					<span class="next-event-label">🛡️ Stop Loss</span>
-					<span class="next-event-type" style="color: #ef4444">
+					<span class="next-event-type" style="color: var(--accent-red-strong)">
 						Protection
 					</span>
 				</div>
@@ -879,7 +879,7 @@
 				<!-- Prochains événements -->
 				{#if $activePosition.next_tp}
 					<div class="event-row next-event">
-						<span class="event-dot" style="background: #10b981"></span>
+						<span class="event-dot" style="background: var(--accent-green-strong)"></span>
 						<span class="event-type">Prochain TP</span>
 						<span class="event-price">{formatPriceWithPrecision($activePosition.next_tp.price)}</span>
 						<span class="event-distance">
@@ -889,7 +889,7 @@
 				{/if}
 				{#if $activePosition.next_sl}
 					<div class="event-row next-event">
-						<span class="event-dot" style="background: #ef4444"></span>
+						<span class="event-dot" style="background: var(--accent-red-strong)"></span>
 						<span class="event-type">Prochain SL</span>
 						<span class="event-price">{formatPriceWithPrecision($activePosition.next_sl.price)}</span>
 						<span class="event-distance">

@@ -157,7 +157,7 @@ class OptunaV2Tuner:
         
         try:
             auc = roc_auc_score(y_true, y_proba)
-        except:
+        except Exception:
             auc = 0.5
         
         if self.metric == "trading_composite":

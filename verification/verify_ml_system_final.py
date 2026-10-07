@@ -131,14 +131,14 @@ try:
     try:
         ml_count = pd.read_sql("SELECT COUNT(*) as cnt FROM ml_features WHERE target_pnl IS NOT NULL", engine).iloc[0]['cnt']
         log_check("Vue ml_features", "OK", f"{ml_count} samples")
-    except:
+    except Exception:
         log_check("Vue ml_features", "ERROR", "Vue non accessible")
     
     # Compter ml_features_clean
     try:
         clean_count = pd.read_sql("SELECT COUNT(*) as cnt FROM ml_features_clean", engine).iloc[0]['cnt']
         log_check("Table ml_features_clean", "OK", f"{clean_count} samples nettoyees")
-    except:
+    except Exception:
         log_check("Table ml_features_clean", "WARNING", "Table non creee (executer clean_ml_data_final.py)")
     
     # Verifier trades manuels

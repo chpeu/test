@@ -121,8 +121,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if conn_data.get('origin') is None and origin:
                     conn_data['origin'] = origin
         except Exception:
-            pass
-
+            logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
         logger.debug(
             f"🔌 [WS-DEBUG] WebSocket accepté: id={connection_id}, client={getattr(websocket, 'client', None)}"
         )
@@ -161,8 +160,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     'data': log_entry
                 }, websocket)
         except Exception:
-            pass
-        
+            logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
         # Envoyer server_hello pour handshake frontend
         try:
             await ws_mgr.send_personal_message({
@@ -185,7 +183,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     conn_data['last_server_ping_ts'] = now
                     conn_data['last_message_type'] = 'out:ping_test'
             except Exception:
-                pass
+                logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
             await ws_mgr.send_personal_message({
                 'type': 'ping',
                 'timestamp': time.time(),
@@ -260,7 +258,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             try:
                                 await websocket.close(code=1000, reason="Ping send timeout")
                             except Exception:
-                                pass
+                                logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
                             break
                         continue
                         
@@ -518,7 +516,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     if isinstance(last_ts, (int, float)):
                         last_msg_age_s = round(time.time() - last_ts, 3)
             except Exception:
-                pass
+                logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
             logger.info(
                 f"👋 WebSocket déconnecté (id={connection_id}, code={close_code}, reason={close_reason}, client={getattr(websocket, 'client', None)}, last_msg_age_s={last_msg_age_s})"
             )
@@ -532,8 +530,7 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 await ws_mgr.disconnect(websocket)
             except Exception:
-                pass
-    
+                logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
     except Exception as e:
         logger.critical(f"❌ CRITICAL: Erreur fatale dans websocket_endpoint: {e}", exc_info=True)
         # Laisser la connexion se fermer naturellement
@@ -626,7 +623,7 @@ async def handle_client_command(command: str, params: dict):
                 _app_state['quiet_mode'] = enabled
                 _app_state['log_mode'] = mode
             except Exception:
-                pass
+                logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
         await add_log('INFO', 'Quiet mode', 'Activé' if enabled else 'Désactivé')
         ws_mgr = _ws_manager or state.get_ws_manager()
         if ws_mgr:
@@ -660,7 +657,7 @@ async def handle_client_command(command: str, params: dict):
                 _app_state['quiet_mode'] = quiet_enabled
                 _app_state['log_mode'] = mode
             except Exception:
-                pass
+                logger.debug('websocket.py: exception silencieuse (avant: pass)', exc_info=True)
         await add_log('INFO', 'Log mode', mode.upper())
         ws_mgr = _ws_manager or state.get_ws_manager()
         if ws_mgr:

@@ -120,9 +120,8 @@ class PerSymbolModelManager:
                     meta = json.load(f)
                 self.feature_names = meta.get('selected_features', [])
                 self.global_threshold = meta.get('optimal_threshold', 0.55)
-            except:
-                pass
-        
+            except Exception:
+                logger.debug('per_symbol_models.py: exception silencieuse (avant: pass)', exc_info=True)
         # Charger modèles par symbole
         if MODELS_PATH.exists():
             for model_file in MODELS_PATH.glob("*.pkl"):

@@ -78,7 +78,7 @@ def evaluate(model, X, y, name="Model", use_smote=False):
             try:
                 smote = SMOTE(random_state=42)
                 X_train, y_train = smote.fit_resample(X_train, y_train)
-            except:
+            except Exception:
                 pass
         
         # Scale

@@ -613,9 +613,8 @@ class TokenHealthMonitor:
                                 "✅ Token MEXC restauré\n\nLe trading peut reprendre.",
                                 bypass_throttle=True
                             )
-                        except:
-                            pass
-
+                        except Exception:
+                            logger.debug('mexc_futures_bypass.py: exception silencieuse (avant: pass)', exc_info=True)
                 self._token_healthy = True
                 self._consecutive_failures = 0
                 logger.debug("✅ Token valide (health check OK)")

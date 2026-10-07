@@ -120,7 +120,7 @@ def analyze_trades(conn, limit: int = 500) -> Dict[str, Any]:
         
         try:
             ml_conf = float(ml_conf)
-        except:
+        except Exception:
             continue
         
         bucket = get_bucket(ml_conf)
@@ -289,7 +289,7 @@ def main() -> int:
     if len(sys.argv) > 1:
         try:
             limit = int(sys.argv[1])
-        except:
+        except Exception:
             pass
     
     print("=" * 90)

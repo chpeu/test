@@ -118,8 +118,7 @@ if os.name == "nt":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         logging.getLogger(__name__).info("✅ Event loop policy WindowsSelector activée")
     except Exception:
-        pass
-
+        logging.getLogger(__name__).debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
 # 🔥 INSTANCES GLOBALES (Maintenues pour compatibilité descendante via StateManager)
 live_order_manager = None
 trade_db = None
@@ -199,9 +198,7 @@ def _log_uncaught_exception(exc_type, exc, tb):
             state_snapshot.session_id,
         )
     except Exception:
-        pass
-
-
+        logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
 sys.excepthook = _log_uncaught_exception
 
 def _log_thread_exception(args):
@@ -224,7 +221,7 @@ def _log_process_exit():
         reboot_flag = state_snapshot.backend_reboot_in_progress
         session_id = state_snapshot.session_id
     except Exception:
-        pass
+        logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
     logger.warning(
         "⚠️ Backend process exiting (pid=%s reboot_in_progress=%s session_id=%s)",
         os.getpid(),
@@ -521,8 +518,7 @@ async def lifespan(app: FastAPI):
             from core.shutdown import set_shutdown_manager
             set_shutdown_manager(shutdown_manager)
         except Exception:
-            pass
-
+            logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
         try:
             loop_for_signals = None
             try:
@@ -543,7 +539,7 @@ async def lifespan(app: FastAPI):
                 priority=90
             )
         except Exception:
-            pass
+            logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
     data_logger = None
     try:
         try:
@@ -700,7 +696,7 @@ async def lifespan(app: FastAPI):
                 })
                 logger.info("✅ Événement reset_session émis avant le shutdown")
                 await asyncio.sleep(0.2) # Laisser le temps à l'émission
-            except: pass
+            except Exception: pass
 
         # 🔥 POST-EXIT PERSISTENCE: Sauvegarder les trackers actifs AVANT shutdown
         try:
@@ -762,8 +758,7 @@ async def lifespan(app: FastAPI):
                 from core.shutdown import set_shutdown_manager
                 set_shutdown_manager(None)
             except Exception:
-                pass
-
+                logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
         else:
             # Fallback: Old shutdown logic if GracefulShutdown not available
             logger.warning("⚠️ GracefulShutdown non disponible, utilisation legacy cleanup")
@@ -806,8 +801,7 @@ async def lifespan(app: FastAPI):
                     from utils.logger import drain_websocket_log_handlers
                     await drain_websocket_log_handlers(timeout=1.0)
                 except Exception:
-                    pass
-
+                    logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
             except Exception as e:
                 logger.warning(f"⚠️ Erreur shutdown legacy: {e}", exc_info=True)
 
@@ -815,8 +809,7 @@ async def lifespan(app: FastAPI):
             from core.shutdown import set_shutdown_manager
             set_shutdown_manager(None)
         except Exception:
-            pass
-
+            logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
         logger.info("🏁 LIFESPAN EXIT: Contexte fermé")
 
 

@@ -272,7 +272,7 @@ class HybridPriceProvider:
                 try:
                     await self.ws_manager.disconnect()
                 except Exception:
-                    pass
+                    logger.debug('price_provider.py: exception silencieuse (avant: pass)', exc_info=True)
                 self.ws_manager = None
 
             try:
@@ -319,9 +319,8 @@ class HybridPriceProvider:
                     metrics = get_metrics_collector()
                     if metrics:
                         metrics.ws_connected = True
-                except:
-                    pass
-
+                except Exception:
+                    logger.debug('price_provider.py: exception silencieuse (avant: pass)', exc_info=True)
             except Exception as e:
                 # Code 1000 = fermeture normale WebSocket (pas une vraie erreur)
                 error_msg = str(e)
@@ -334,7 +333,7 @@ class HybridPriceProvider:
                     try:
                         await self.ws_manager.disconnect()
                     except Exception:
-                        pass
+                        logger.debug('price_provider.py: exception silencieuse (avant: pass)', exc_info=True)
                 self.ws_manager = None
 
                 # 🔥 JOUR 5: Métriques
@@ -343,9 +342,8 @@ class HybridPriceProvider:
                     metrics = get_metrics_collector()
                     if metrics:
                         metrics.ws_connected = False
-                except:
-                    pass
-    
+                except Exception:
+                    logger.debug('price_provider.py: exception silencieuse (avant: pass)', exc_info=True)
     async def _resubscribe_after_reconnect(self):
         """
         🔥 FIX CRITIQUE: Réabonner aux symboles après reconnexion WebSocket
@@ -440,7 +438,7 @@ class HybridPriceProvider:
         try:
             from core.metrics import get_metrics_collector
             metrics = get_metrics_collector()
-        except:
+        except Exception:
             metrics = None
         
         # Stratégie WebSocket (prioritaire)

@@ -796,8 +796,7 @@ class MarketRegimeSelector:
                 except asyncio.TimeoutError:
                     pass
         except Exception:
-            pass
-
+            logger.debug('market_regime_selector.py: exception silencieuse (avant: pass)', exc_info=True)
         try:
             if get_config_value('market_regime_auto_calibration_enabled', False):
                 should_calibrate = True
@@ -816,8 +815,7 @@ class MarketRegimeSelector:
                             self._calibration_task = asyncio.create_task(self.calibrate_thresholds())
                         self._last_calibration_attempt = now
         except Exception:
-            pass
-        
+            logger.debug('market_regime_selector.py: exception silencieuse (avant: pass)', exc_info=True)
         # 🔥 FIX: Toujours mettre à jour les valeurs ATR/ADX pour le widget Samples
         # (même si on ne fait pas de check complet)
         if atr_values:

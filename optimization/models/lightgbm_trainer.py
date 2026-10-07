@@ -467,7 +467,7 @@ class LightGBMTrainer:
                 if lgbm_params:
                     return lgbm_params
         except Exception:
-            pass
+            logger.debug('lightgbm_trainer.py: exception silencieuse (avant: pass)', exc_info=True)
         return None
 
     def predict(self, X):

@@ -572,8 +572,7 @@ class XGBoostTrainerV2:
                     logger.info(f"📂 Params chargés depuis Optuna: best_value={study.best_value:.4f}")
                     return study.best_params
             except Exception:
-                pass
-            
+                logger.debug('xgboost_trainer_v2.py: exception silencieuse (avant: pass)', exc_info=True)
             return None
             
         except Exception as e:

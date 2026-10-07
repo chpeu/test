@@ -547,7 +547,7 @@ class TestUtilsSubstantial:
                 try:
                     result = get_price_with_source(123.45, "test")
                     assert result is not None
-                except:
+                except Exception:
                     # Signature différente, mais la fonction existe
                     pass
                 

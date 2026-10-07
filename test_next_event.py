@@ -85,7 +85,7 @@ def simulate_price_update():
     try:
         response = requests.post(f"{BASE_URL}/api/position/check", timeout=5)
         print("✅ Check position envoyé")
-    except:
+    except Exception:
         print("⚠️ Endpoint /api/position/check non disponible (normal)")
 
 if __name__ == "__main__":

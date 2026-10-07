@@ -37,7 +37,7 @@ def format_timestamp(ts):
         try:
             dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
             return dt.strftime('%Y-%m-%d %H:%M:%S')
-        except:
+        except Exception:
             return ts
     return ts.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -98,7 +98,7 @@ def analyze_last_trades(limit=5):
                     if isinstance(e_details, str):
                         try:
                             det = json.loads(e_details)
-                        except:
+                        except Exception:
                             det = e_details
                     else:
                         det = e_details

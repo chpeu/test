@@ -16,18 +16,20 @@ function createTooltip() {
 	
 	tooltipElement = document.createElement('div');
 	tooltipElement.id = 'debug-tooltip';
+	// Couleurs lues dans les tokens du thème courant (le tooltip est injecté hors
+	// composant : sans var(), il restait sombre sur un thème clair).
 	tooltipElement.style.cssText = `
 		position: fixed;
-		background: rgba(0, 0, 0, 0.9);
-		color: #34d399;
+		background: var(--bg-secondary);
+		color: var(--accent-green);
 		padding: 6px 10px;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		font-size: 12px;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-mono);
 		pointer-events: none;
 		z-index: 100000;
-		border: 1px solid #34d399;
-		box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
+		border: 1px solid var(--accent-green);
+		box-shadow: var(--shadow-md);
 		display: none;
 		white-space: nowrap;
 	`;
@@ -92,8 +94,8 @@ async function copyDebugNameToClipboard() {
 		if (tooltipElement) {
 			const originalText = tooltipElement.textContent;
 			tooltipElement.textContent = `✓ Copié: ${currentDebugName}`;
-			tooltipElement.style.color = '#34d399';
-			tooltipElement.style.borderColor = '#34d399';
+			tooltipElement.style.color = 'var(--accent-green-strong)';
+			tooltipElement.style.borderColor = 'var(--accent-green-strong)';
 			
 			setTimeout(() => {
 				if (tooltipElement) {

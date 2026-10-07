@@ -33,13 +33,12 @@ def _ensure_error_log_worker_started() -> None:
                     if isinstance(payload, dict):
                         _log_error_to_db_sync(**payload)
                 except Exception:
-                    pass
+                    logger.debug('error_logger.py: exception silencieuse (avant: pass)', exc_info=True)
                 finally:
                     try:
                         _error_log_queue.task_done()
                     except Exception:
-                        pass
-
+                        logger.debug('error_logger.py: exception silencieuse (avant: pass)', exc_info=True)
         thread = threading.Thread(target=_worker, name="error_logger_db_worker", daemon=True)
         thread.start()
         _error_log_worker_started = True
@@ -98,9 +97,7 @@ def log_error_to_db(
     except queue.Full:
         pass
     except Exception:
-        pass
-
-
+        logger.debug('error_logger.py: exception silencieuse (avant: pass)', exc_info=True)
 def with_error_logging(error_type: str = "ERROR", symbol_arg: Optional[str] = None):
     """
     Décorateur pour logger automatiquement les erreurs vers scan_errors
@@ -135,9 +132,8 @@ def with_error_logging(error_type: str = "ERROR", symbol_arg: Optional[str] = No
                                 idx = params.index(symbol_arg)
                                 if idx < len(args):
                                     symbol = args[idx]
-                        except:
-                            pass
-                
+                        except Exception:
+                            logger.debug('error_logger.py: exception silencieuse (avant: pass)', exc_info=True)
                 # Logger vers DB
                 log_error_to_db(
                     error_type=error_type,
@@ -177,8 +173,7 @@ class ErrorLoggerHandler(logging.Handler):
                 if record_name.startswith('core.postgresql_datalogger') or record_name.startswith('core.error_logger'):
                     return
             except Exception:
-                pass
-
+                logger.debug('error_logger.py: exception silencieuse (avant: pass)', exc_info=True)
             # Mapper les niveaux Python vers nos types
             level_map = {
                 logging.CRITICAL: 'CRITICAL',

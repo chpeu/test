@@ -160,8 +160,7 @@ def get_pg_datalogger():
             # Le bootstrap (init_background_services) s'occupera de l'injection.
             pass
         except Exception:
-            pass
-    
+            logger.debug('scanner_loop.py: exception silencieuse (avant: pass)', exc_info=True)
     return _pg_datalogger_instance
 
 
@@ -409,8 +408,7 @@ async def _scan_top_pairs():
                         adaptive_manager = get_adaptive_sizing_manager()
                         adaptive_sizing_mult = adaptive_manager.get_size_multiplier(best_setup.get('symbol', ''))
                     except Exception:
-                        pass
-
+                        logger.debug('scanner_loop.py: exception silencieuse (avant: pass)', exc_info=True)
                 # BUG #5 FIX: Récupérer scalability_data depuis top_pairs
                 symbol = best_setup.get('symbol')
                 scalability_data = None

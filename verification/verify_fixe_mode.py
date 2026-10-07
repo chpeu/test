@@ -106,7 +106,7 @@ def get_trade_atr_metrics(trade_id: int) -> Dict[str, Any]:
                 result['param_sl_pct_fixed'] = config.get('sl_percent')
                 result['param_atr_mult_tp'] = config.get('atr_mult_tp')
                 result['param_atr_mult_sl'] = config.get('atr_mult_sl')
-            except:
+            except Exception:
                 pass
         
         return result

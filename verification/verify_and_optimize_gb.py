@@ -53,7 +53,7 @@ print("=" * 70)
 try:
     df = pd.read_sql("SELECT * FROM ml_features_clean WHERE target_pnl IS NOT NULL", engine)
     print(f"✅ Donnees nettoyees: {len(df)} samples")
-except:
+except Exception:
     df = pd.read_sql("SELECT * FROM ml_features WHERE target_pnl IS NOT NULL", engine)
     print(f"⚠️ Utilisation ml_features: {len(df)} samples")
 

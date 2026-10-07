@@ -191,7 +191,7 @@ async def init_instances() -> None:
             try:
                 pos_mgr.notification_manager = state.get_notification_manager()
             except Exception:
-                pass
+                logger.debug('bootstrap.py: exception silencieuse (avant: pass)', exc_info=True)
             state.set_position_manager(pos_mgr)
             logger.info(f"✅ PositionManager initialized ({time.time()-start:.3f}s)")
             

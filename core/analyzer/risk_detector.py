@@ -79,9 +79,8 @@ def detect_manipulation(
 
                 if z_score > 4:
                     suspicion_score += 2
-    except:
-        pass
-
+    except Exception:
+        _get_logger().debug('risk_detector: exception silencieuse (avant: pass)', exc_info=True)
     # 4. Mouvement > 5% en 1 minute (trop rapide)
     if timeframe == '1m' and len(current_candle) >= 5:
         open_price = current_candle[1]

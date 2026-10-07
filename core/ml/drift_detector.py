@@ -388,8 +388,7 @@ def get_drift_detector() -> MarketDriftDetector:
             _detector_instance.pnl_detector.min_window = min_window
             _detector_instance.winrate_detector.min_window = min_window
         except Exception:
-            pass
-
+            logger.debug('drift_detector.py: exception silencieuse (avant: pass)', exc_info=True)
     _detector_instance.enabled = enabled
     
     return _detector_instance

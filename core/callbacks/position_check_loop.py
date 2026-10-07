@@ -456,8 +456,7 @@ async def _emit_position_update(position, current_price: float):
             position.next_tp = next_events.get('next_tp') if next_events else None
             position.next_sl = next_events.get('next_sl') if next_events else None
         except Exception:
-            pass
-
+            logger.debug('position_check_loop.py: exception silencieuse (avant: pass)', exc_info=True)
         update_data = {
             'symbol': position.symbol,
             'direction': position.direction,

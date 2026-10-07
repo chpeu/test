@@ -143,7 +143,7 @@ def print_film(trade):
                 'detail': f"SL → Entry ({be_price:.6f})" if be_price else "SL → Entry",
                 'extra': f"PnL trigger: +{be_pnl:.3f}%" if be_pnl else ""
             })
-        except:
+        except Exception:
             pass
     
     # 5. Trailing Activation
@@ -158,7 +158,7 @@ def print_film(trade):
                 'detail': f"Distance: {trailing_distance:.2f}%" if trailing_distance else "Distance: config",
                 'extra': f"SL final: {trailing_final_sl:.6f}" if trailing_final_sl else ""
             })
-        except:
+        except Exception:
             pass
     
     # 6. Stagnation

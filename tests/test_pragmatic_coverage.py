@@ -49,7 +49,7 @@ def execute_code_lines(module_path, lines_to_execute=50):
                             if len(parts) == 2 and not '(' in parts[1]:
                                 exec(line, {})
                                 executed_lines += 1
-                except:
+                except Exception:
                     pass
                     
     except Exception:

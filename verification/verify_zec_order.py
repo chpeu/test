@@ -29,7 +29,7 @@ async def verify_zec_contract_specs():
             try:
                 from config import TRADING_CONFIG
                 browser_token = TRADING_CONFIG.get('browser_token') or TRADING_CONFIG.get('MEXC_BROWSER_TOKEN')
-            except:
+            except Exception:
                 pass
         
         if not browser_token:

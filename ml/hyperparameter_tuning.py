@@ -62,7 +62,7 @@ class TradingMetric:
             # ROC AUC (capacité discrimination) - poids 20%
             try:
                 auc = roc_auc_score(y_true, y_proba)
-            except:
+            except Exception:
                 auc = 0.5
             
             # Recall (éviter de manquer des wins) - poids 10%
@@ -130,7 +130,7 @@ class HyperparameterTuner:
                 db_config = PostgreSQLDataLogger.get_db_config()
                 storage = f"postgresql://{db_config['user']}:{db_config['password']}@{db_config['host']}:{db_config['port']}/{db_config['database']}"
                 logger.info("📊 Optuna: Utilisation de PostgreSQL pour stockage")
-            except:
+            except Exception:
                 # Fallback: SQLite local
                 storage = "sqlite:///optuna_studies.db"
                 logger.info("📊 Optuna: Utilisation de SQLite pour stockage")

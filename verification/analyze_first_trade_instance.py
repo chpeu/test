@@ -290,7 +290,7 @@ def analyze_trade(trade):
                 'desc': f"Break-Even activé @ +{be_pnl:.3f}%",
                 'details': f"SL → Entry ({entry_price})"
             })
-        except:
+        except Exception:
             pass
     
     # Événement 5: Trailing
@@ -307,7 +307,7 @@ def analyze_trade(trade):
                 'desc': f"Trailing activé",
                 'details': f"SL final: {trailing_final_sl}" if trailing_final_sl else ""
             })
-        except:
+        except Exception:
             pass
     
     # Événement 6: Fermeture

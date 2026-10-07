@@ -316,7 +316,7 @@ class MLOptimizerLoop:
         try:
             with open(config_path, 'r') as f:
                 config = json.load(f)
-        except:
+        except Exception:
             config = {}
         
         # Mapper les params vers les clés ml_*

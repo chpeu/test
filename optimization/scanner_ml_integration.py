@@ -235,7 +235,7 @@ def calculate_rsi(prices: pd.Series, period: int = 14) -> float:
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
         return float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
-    except:
+    except Exception:
         return 50.0
 
 
@@ -253,7 +253,7 @@ def calculate_macd(prices: pd.Series, fast=12, slow=26, signal=9) -> Dict:
             'signal': float(signal_line.iloc[-1]) if not pd.isna(signal_line.iloc[-1]) else 0.0,
             'histogram': float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else 0.0
         }
-    except:
+    except Exception:
         return {'macd': 0.0, 'signal': 0.0, 'histogram': 0.0}
 
 
@@ -282,7 +282,7 @@ def calculate_bollinger_bands(prices: pd.Series, period=20, std_dev=2) -> Dict:
             'distance_to_upper': float(distance_to_upper) if not pd.isna(distance_to_upper) else 0.0,
             'distance_to_lower': float(distance_to_lower) if not pd.isna(distance_to_lower) else 0.0,
         }
-    except:
+    except Exception:
         current = float(prices.iloc[-1])
         return {
             'upper': current,
@@ -308,7 +308,7 @@ def calculate_atr(df: pd.DataFrame, period=14) -> float:
         atr = tr.rolling(window=period).mean()
         
         return float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else 0.0
-    except:
+    except Exception:
         return 0.0
 
 

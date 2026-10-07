@@ -53,7 +53,7 @@ def count_routes(filepath):
             content = f.read()
         count = content.count('@app.get(') + content.count('@app.post(')
         return count
-    except:
+    except Exception:
         return 0
 
 def count_lines(filepath):
@@ -61,7 +61,7 @@ def count_lines(filepath):
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             return len(f.readlines())
-    except:
+    except Exception:
         return 0
 
 def main():

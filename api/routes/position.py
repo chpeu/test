@@ -165,15 +165,13 @@ async def api_open_position(request: Request):
         from utils.logging_utils import add_log
         asyncio.create_task(add_log('INFO', 'Position ouverte', f"{direction} {data.get('symbol', '')}"))
     except Exception:
-        pass
-
+        logger.debug('position.py: exception silencieuse (avant: pass)', exc_info=True)
     try:
         wm = _ws_manager or state.get_ws_manager()
         if wm:
             asyncio.create_task(wm.emit('position_opened', position.to_dict()))
     except Exception:
-        pass
-
+        logger.debug('position.py: exception silencieuse (avant: pass)', exc_info=True)
     return JSONResponse({'status': 'opened', 'position': position.to_dict()})
 
 @router.get("/active")

@@ -41,7 +41,7 @@ async def dump_mexc_markets():
             try:
                 funding = await exchange.fetch_funding_rate(symbol)
                 funding_rate = float(funding.get('fundingRate', 0)) * 100
-            except:
+            except Exception:
                 pass
                 
             fee = markets[symbol].get('taker', 0) * 100

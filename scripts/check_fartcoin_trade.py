@@ -9,7 +9,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 if sys.platform == 'win32':
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    except: pass
+    except Exception: pass
 
 import psycopg2
 from psycopg2.extras import RealDictCursor

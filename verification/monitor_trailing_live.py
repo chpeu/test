@@ -42,7 +42,7 @@ def get_active_position():
                     state = json.load(f)
                     if state.get('active_position'):
                         return state['active_position']
-            except:
+            except Exception:
                 pass
     return None
 

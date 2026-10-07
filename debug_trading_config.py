@@ -40,7 +40,7 @@ def test_with_debug():
                     for line in logs.split('\n')[-50:]:  # 50 dernières lignes
                         if 'TRADING_CONFIG' in line or 'NameError' in line or 'open_position' in line:
                             print(f"Log: {line}")
-            except:
+            except Exception:
                 print("Impossible de parser l'erreur")
         else:
             print("✅ Succès!")

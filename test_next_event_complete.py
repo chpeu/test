@@ -17,7 +17,7 @@ def test_bot_functionality():
     try:
         response = requests.get(f"{BASE_URL}/api/status", timeout=5)
         print("✅ Backend en ligne")
-    except:
+    except Exception:
         print("❌ Backend hors ligne")
         return False
     
@@ -25,7 +25,7 @@ def test_bot_functionality():
     try:
         config = requests.get(f"{BASE_URL}/api/live/config", timeout=5).json()
         print(f"📊 Config: dry_run={config.get('dry_run')}, mode={config.get('trading_mode')}")
-    except:
+    except Exception:
         print("❌ Impossible de récupérer la config")
     
     # 3. Arrêter le scanner si actif
@@ -35,7 +35,7 @@ def test_bot_functionality():
             print("⏹️ Arrêt du scanner...")
             requests.post(f"{BASE_URL}/api/stop", timeout=5)
             time.sleep(1)
-    except:
+    except Exception:
         print("⚠️ Impossible d'arrêter le scanner")
     
     # 4. Créer une position test
@@ -102,7 +102,7 @@ def test_bot_functionality():
         requests.post(f"{BASE_URL}/api/position/close", 
                      json={"reason": "TEST_CLEANUP"}, timeout=5)
         print("✅ Position fermée")
-    except:
+    except Exception:
         print("⚠️ Impossible de fermer la position")
     
     print("\n✅ Test terminé")

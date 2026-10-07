@@ -108,7 +108,7 @@ def run_optimization():
                         total = status.get('total_trials', N_TRIALS)
                         best = status.get('best_score', 0)
                         log(f"  Trial {current}/{total} | Best score: {best:.4f}")
-    except:
+    except Exception:
         pass
     
     log("Lancement optimisation Optuna...")
@@ -164,7 +164,7 @@ def apply_best_params():
             
             if best_params:
                 log(f"  Params: {best_params}")
-    except:
+    except Exception:
         pass
     
     try:
@@ -253,7 +253,7 @@ def main():
         if resp.status_code != 200:
             log("ERREUR: Backend non accessible!")
             return
-    except:
+    except Exception:
         log("ERREUR: Backend non accessible sur http://localhost:5000")
         log("Veuillez demarrer le backend avant de lancer ce script.")
         return

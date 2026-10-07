@@ -46,7 +46,7 @@ class TestPricingExecution:
                                 try:
                                     result = func(args[0], "binance", "BTC/USDT")
                                     assert result is not None
-                                except:
+                                except Exception:
                                     pass
                         except Exception:
                             # Code exécuté même avec erreur

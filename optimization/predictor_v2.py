@@ -266,9 +266,8 @@ class MLPredictorV2:
                         {'feature': k, 'importance': float(v)}
                         for k, v in sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[:5]
                     ]
-                except:
-                    pass
-            
+                except Exception:
+                    logger.debug('predictor_v2.py: exception silencieuse (avant: pass)', exc_info=True)
             # Construire résultat
             result = {
                 'predicted_pnl': predicted_pnl,

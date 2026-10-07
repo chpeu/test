@@ -1684,9 +1684,8 @@ async def _optimize_hyperparameters_background(
                 if torch.cuda.is_available():
                     gpu_id = 0
                     logger.info("[GPU] GPU détecté et activé")
-            except:
-                pass
-        
+            except Exception:
+                logger.debug('ml_legacy.py: exception silencieuse (avant: pass)', exc_info=True)
         # Charger et préparer données
         ml_tasks[task_id]['progress'] = 10
         ml_tasks[task_id]['stage'] = 'loading_data'
@@ -2523,7 +2522,7 @@ async def _run_auto_optimization_background(
             stderr_bytes = await process.stderr.read()
             try:
                 stderr = stderr_bytes.decode('utf-8')
-            except:
+            except Exception:
                 stderr = stderr_bytes.decode('cp1252', errors='ignore')
                 
             if stderr:
@@ -4565,7 +4564,7 @@ async def verify_gb_complete():
                             n_features = len(meta.get('feature_cols', [])) or 92
                         else:
                             n_features = 92  # Fallback
-                except:
+                except Exception:
                     n_features = 92
                 
                 test_input = np.random.randn(1, n_features)
@@ -4759,9 +4758,8 @@ async def sync_config_from_model():
                 from config import TRADING_CONFIG
                 from utils.config_persistence import apply_config_overrides
                 apply_config_overrides(TRADING_CONFIG)
-            except:
-                pass
-            
+            except Exception:
+                logger.debug('ml_legacy.py: exception silencieuse (avant: pass)', exc_info=True)
             return {
                 'success': True,
                 'message': 'Configuration synchronisée depuis le modèle'

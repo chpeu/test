@@ -656,7 +656,7 @@ def run_regression_tests():
                 if hasattr(instance, 'teardown_method'):
                     try:
                         instance.teardown_method()
-                    except:
+                    except Exception:
                         pass
     
     print("\n" + "=" * 60)

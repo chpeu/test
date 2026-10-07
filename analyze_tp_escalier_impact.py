@@ -92,7 +92,7 @@ def analyze_tp_escalier_impact():
             pnl_e = float(pnl_escalier.replace('%', ''))
             total_gain_normal += pnl_n * prob / 100
             total_gain_escalier += pnl_e * prob / 100
-        except:
+        except Exception:
             pass
     
     print(f"\n📊 GAIN MOYEN GLOBAL ESTIMÉ:")

@@ -1449,8 +1449,7 @@ class PostgreSQLDataLogger:
                 if exists:
                     return provided_trade_id
             except Exception:
-                pass
-
+                logger.debug('postgresql_datalogger.py: exception silencieuse (avant: pass)', exc_info=True)
         if not symbol or entry_price is None:
             return provided_trade_id
 
@@ -1499,8 +1498,7 @@ class PostgreSQLDataLogger:
                     )
                     return resolved_id
             except Exception:
-                pass
-
+                logger.debug('postgresql_datalogger.py: exception silencieuse (avant: pass)', exc_info=True)
         try:
             query = "SELECT id FROM trades WHERE " + base_where + " ORDER BY timestamp_entry DESC LIMIT 1"
             result = self._execute_query(query, params_common, fetch=True)
@@ -1513,8 +1511,7 @@ class PostgreSQLDataLogger:
                 )
                 return resolved_id
         except Exception:
-            pass
-
+            logger.debug('postgresql_datalogger.py: exception silencieuse (avant: pass)', exc_info=True)
         return provided_trade_id
     
     def log_trade(
@@ -2537,8 +2534,7 @@ class PostgreSQLDataLogger:
                     delta = datetime.now() - rs.regime_since
                     regime_stability_minutes = int(delta.total_seconds() / 60)
             except Exception:
-                pass
-            
+                logger.debug('postgresql_datalogger.py: exception silencieuse (avant: pass)', exc_info=True)
             # Construire la requête
             # 🔥 PHASE 0.5 Extended + PHASE 1A: Ajout BE, trailing, stagnation, session/heure
             insert_sql = """
@@ -2734,8 +2730,7 @@ class PostgreSQLDataLogger:
                     if rs and hasattr(rs, 'current_regime') and rs.current_regime:
                         scan_data['regime_at_scan'] = rs.current_regime.value
                 except Exception:
-                    pass
-
+                    logger.debug('postgresql_datalogger.py: exception silencieuse (avant: pass)', exc_info=True)
             market_data = scan_data.get('market_data') or {}
             indicators_1m = scan_data.get('indicators_1m') or {}
             indicators_5m = scan_data.get('indicators_5m') or {}
@@ -3158,8 +3153,8 @@ class PostgreSQLDataLogger:
                 try:
                     conn.rollback()
                     self._return_connection(conn)
-                except:
-                    pass
+                except Exception:
+                    logger.debug('postgresql_datalogger.py: exception silencieuse (avant: pass)', exc_info=True)
             return None
 
     def get_trade_events(self, trade_id: str) -> List[Dict[str, Any]]:

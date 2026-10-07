@@ -89,7 +89,7 @@ async def post_exit_loop():
                             if isinstance(price, str):
                                 try:
                                     price = float(price)
-                                except:
+                                except Exception:
                                     price = None
                         else:
                             price = float(price_data)

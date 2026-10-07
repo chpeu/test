@@ -61,8 +61,7 @@ def save_trade_history(file_path: Optional[str] = None) -> None:
             try:
                 os.remove(temp_file)
             except Exception:
-                pass
-
+                logger.debug('history_utils.py: exception silencieuse (avant: pass)', exc_info=True)
 def load_trade_history() -> None:
     """Charger l'historique des trades depuis PostgreSQL (priorité) ou JSON (fallback)"""
     state = get_state_manager()

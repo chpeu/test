@@ -97,7 +97,7 @@ def main():
                         print(f"\n   📝 Historique trailing ({len(updates)} updates):")
                         for i, update in enumerate(updates[-5:], 1):  # 5 derniers
                             print(f"      {i}. {update}")
-                except:
+                except Exception:
                     print(f"\n   📝 Trailing updates: {trailing_updates}")
             
             print(f"\n🚪 Analyse de sortie:")

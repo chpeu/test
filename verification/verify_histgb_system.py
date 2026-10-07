@@ -271,7 +271,7 @@ def verify_metadata_file() -> VerificationResult:
                 dt = datetime.fromisoformat(timestamp)
                 age = datetime.now() - dt
                 result.add_info(f"Dernière optimisation: {dt.strftime('%Y-%m-%d %H:%M')} ({age.days}j {age.seconds//3600}h)")
-            except:
+            except Exception:
                 pass
         
         # Vérifier features
@@ -497,7 +497,7 @@ def sync_config_from_model(dry_run: bool = True) -> bool:
             from utils.config_persistence import apply_config_overrides
             apply_config_overrides(TRADING_CONFIG)
             print("✅ TRADING_CONFIG rechargé")
-        except:
+        except Exception:
             pass
         
         return True

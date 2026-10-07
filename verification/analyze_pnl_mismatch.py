@@ -18,7 +18,7 @@ def parse_dt(v):
     txt = clean(v)
     for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S"]:
         try: return datetime.strptime(txt, fmt)
-        except: pass
+        except Exception: pass
     return None
 
 def parse_amt(v):

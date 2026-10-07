@@ -32,7 +32,7 @@ def get_current_prices() -> Dict[str, Any]:
         if pp and hasattr(pp, "price_cache"):
             return dict(pp.price_cache)
     except Exception:
-        pass
+        logger.debug('price.py: exception silencieuse (avant: pass)', exc_info=True)
     return {}
 
 router = APIRouter(prefix="/api", tags=["price"])

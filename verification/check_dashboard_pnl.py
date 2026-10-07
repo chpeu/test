@@ -31,7 +31,7 @@ def get_current_price(symbol):
         if response.status_code == 200:
             data = response.json()
             return float(data['price'])
-    except:
+    except Exception:
         pass
     return None
 

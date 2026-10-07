@@ -69,7 +69,7 @@ class TestMigrationScripts:
             try:
                 with patch('sys.argv', [filename]):
                     exec(f"import {filename.replace('.py', '')}")
-            except:
+            except Exception:
                 pass  # OK si fichier n'existe pas ou erreur d'import
 
 

@@ -41,7 +41,7 @@ def test_api_routes():
             if status_code == 200:
                 try:
                     data = response.json()
-                except:
+                except Exception:
                     data = "Could not parse JSON"
             
             results.append({

@@ -55,7 +55,7 @@ def start_scanner_if_needed():
                 if top_pairs:
                     print(f"✅ {len(top_pairs)} top pairs disponibles")
                     return True
-        except:
+        except Exception:
             pass
         
         # Pas de top pairs, démarrer le scanner

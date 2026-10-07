@@ -305,7 +305,7 @@ class TestablePositionValidator(IPositionValidator):
                     score = float(setup[score_field])
                     if score < self.validation_rules['min_score']:
                         warnings.append(f"ATTENTION: {score_field} faible: {score} (recommandé: >{self.validation_rules['min_score']})")
-                except:
+                except Exception:
                     pass  # Déjà validé dans field_values
         
         # Volume recommandé
@@ -314,9 +314,8 @@ class TestablePositionValidator(IPositionValidator):
                 volume = float(setup['volume'])
                 if volume < self.validation_rules['min_volume']:
                     warnings.append(f"ATTENTION: Volume faible: {volume} (recommandé: >{self.validation_rules['min_volume']})")
-            except:
-                pass
-        
+            except Exception:
+                logger.debug('testable_position_validator.py: exception silencieuse (avant: pass)', exc_info=True)
         # Cohérence scores 1m vs 5m
         if 'score_1m' in setup and 'score_5m' in setup:
             try:
@@ -326,9 +325,8 @@ class TestablePositionValidator(IPositionValidator):
                 
                 if diff > 3.0:
                     warnings.append(f"ATTENTION: Divergence scores importante: 1m={score_1m}, 5m={score_5m}")
-            except:
-                pass
-        
+            except Exception:
+                logger.debug('testable_position_validator.py: exception silencieuse (avant: pass)', exc_info=True)
         return warnings
     
     def _validate_consistency(self, setup: Dict[str, Any]) -> List[str]:
@@ -344,7 +342,7 @@ class TestablePositionValidator(IPositionValidator):
                 # ATR ne peut pas être supérieur au prix
                 if atr > price:
                     errors.append(f"ATR ({atr}) supérieur au prix ({price})")
-            except:
+            except Exception:
                 pass  # Déjà validé ailleurs
         
         # Vérifier cohérence symbol/side (si règles spécifiques)
@@ -373,9 +371,8 @@ class TestablePositionValidator(IPositionValidator):
                     issues.append(f"ERREUR: Risque trop élevé: {risk}% (max: {self.validation_rules['max_risk_per_trade']}%)")
                 elif risk > 3.0:
                     issues.append(f"ATTENTION: Risque élevé: {risk}%")
-            except:
-                pass
-        
+            except Exception:
+                logger.debug('testable_position_validator.py: exception silencieuse (avant: pass)', exc_info=True)
         return issues
     
     def _validate_capital_requirements(self, position_size: PositionSize, capital: float) -> List[str]:

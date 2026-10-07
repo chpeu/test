@@ -593,7 +593,7 @@ class StateManager:
                 try:
                     active_position = active_position.to_dict()
                 except Exception:
-                    pass
+                    logger.debug('state_manager.py: exception silencieuse (avant: pass)', exc_info=True)
             return {
                 "is_scanning": self._app_state.is_scanning,
                 "active_position": active_position,
@@ -894,8 +894,7 @@ class LegacyAppStateProxy(MutableMapping):
             try:
                 active_position = active_position.to_dict()
             except Exception:
-                pass
-
+                logger.debug('state_manager.py: exception silencieuse (avant: pass)', exc_info=True)
         data: Dict[str, Any] = {
             "is_scanning": self._state.is_scanning,
             "active_position": active_position,

@@ -525,8 +525,7 @@ class PositionManager:
                     self.active_position.position_events[-50:]
                 )
         except Exception:
-            pass
-
+            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
         trade_id = getattr(self.active_position, "_trade_id", None)
         if not trade_id:
             return
@@ -549,12 +548,10 @@ class PositionManager:
                             details=details,
                         )
                     except Exception:
-                        pass
-
+                        logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                 threading.Thread(target=_log, daemon=True).start()
         except Exception:
-            pass
-
+            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
     def _schedule_position_sync(
         self, symbol: str, delay: Optional[float] = None
     ) -> None:
@@ -796,7 +793,7 @@ class PositionManager:
                                         state.set_active_position(None)
                                         state.reset_close_failure()
                             except Exception:
-                                pass
+                                logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     else:
                         logger.warning(
                             f"⚠️ Aucune position LIVE trouvée pour {symbol} lors de la resynchronisation différée"
@@ -969,7 +966,7 @@ class PositionManager:
                             if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
-                            pass
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                         client._markets_loading_task = loop.create_task(
                             client.exchange.load_markets()
                         )
@@ -985,7 +982,7 @@ class PositionManager:
                                     if hasattr(client.exchange, "markets_loading"):
                                         client.exchange.markets_loading = None
                                 except Exception:
-                                    pass
+                                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                             except Exception as e:
                                 logger.warning(
                                     f"⚠️ Impossible de charger les marchés: {e}"
@@ -994,12 +991,11 @@ class PositionManager:
                                     if hasattr(client.exchange, "markets_loading"):
                                         client.exchange.markets_loading = None
                                 except Exception:
-                                    pass
+                                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                             try:
                                 client._markets_loading_task = None
                             except Exception:
-                                pass
-
+                                logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                         client._markets_loading_task.add_done_callback(_on_loaded)
                     return None
                 except RuntimeError:
@@ -1008,7 +1004,7 @@ class PositionManager:
                             if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
-                            pass
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                         markets = asyncio.run(
                             asyncio.wait_for(
                                 client.exchange.load_markets(), timeout=2.0
@@ -1022,7 +1018,7 @@ class PositionManager:
                             if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
-                            pass
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                         return None
                     except Exception as e:
                         logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
@@ -1030,7 +1026,7 @@ class PositionManager:
                             if hasattr(client.exchange, "markets_loading"):
                                 client.exchange.markets_loading = None
                         except Exception:
-                            pass
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                         return None
                 except Exception as e:
                     logger.warning(f"⚠️ Impossible de charger les marchés: {e}")
@@ -1773,8 +1769,7 @@ class PositionManager:
                                         calibrated_winrate=calibrated_wr,
                                     )
                                 except Exception:
-                                    pass
-
+                                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                             loop.create_task(_log_rejection_async())
                         except RuntimeError:
                             # Pas de boucle événements, utiliser thread
@@ -1790,8 +1785,7 @@ class PositionManager:
                                         calibrated_winrate=calibrated_wr,
                                     )
                                 except Exception:
-                                    pass
-
+                                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                             threading.Thread(target=_log_sync, daemon=True).start()
                 except Exception as calib_rej_err:
                     logger.debug(
@@ -2166,8 +2160,7 @@ class PositionManager:
                     if trade_hour is None and isinstance(session_info, dict):
                         trade_hour = session_info.get("hour_utc", None)
                 except Exception:
-                    pass
-
+                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
             if market_regime:
                 self.active_position._market_regime = market_regime
             if trading_session:
@@ -2176,8 +2169,7 @@ class PositionManager:
                 trade_hour = datetime.now(timezone.utc).hour
             self.active_position._trade_hour = int(trade_hour)
         except Exception:
-            pass
-
+            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
         # Initialiser les tailles en contrats même en mode paper/dry-run
         try:
             contracts = size / entry if entry else 0.0
@@ -2422,8 +2414,7 @@ class PositionManager:
                                 order_result.sl_exchange_percent
                             )
                     except Exception:
-                        pass
-
+                        logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     # 🔥 FIX: Utiliser order_result.min_contract_amount
                     self.active_position.min_contract_amount = (
                         order_result.min_contract_amount
@@ -2986,8 +2977,7 @@ class PositionManager:
                                     },
                                 )
                         except Exception:
-                            pass
-
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     threading.Thread(target=_log_sync, daemon=True).start()
         except Exception as e:
             logger.debug(f"Erreur log_trade_entry (non-bloquant): {e}")
@@ -3634,8 +3624,7 @@ class PositionManager:
                             },
                         )
                 except Exception:
-                    pass
-
+                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                 if hasattr(self, "notification_manager") and self.notification_manager:
                     try:
                         notification_data = {
@@ -3834,7 +3823,7 @@ class PositionManager:
                         self.active_position.sl = float(new_sl)
                         self.active_position.break_even_set = True
                 except Exception:
-                    pass
+                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                 self._enforce_fixe_sl_not_wider(context="PARTIAL_TP")
                 self._log_trade_event(
                     "PARTIAL_TP",
@@ -3855,7 +3844,7 @@ class PositionManager:
                         self.active_position.size_remaining_contracts = 0
                         self.active_position.position_size_contracts = 0
                     except Exception:
-                        pass
+                        logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     return "TP"
 
         # 3.5 🎯 TRAILING MFE: Déplacer SL à break-even quand MFE atteint le seuil
@@ -3902,7 +3891,7 @@ class PositionManager:
                     try:
                         self.active_position.trailing_mfe_new_sl = new_sl
                     except Exception:
-                        pass
+                        logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     self.active_position.trailing_mfe_triggered = True
                     self.active_position.trailing_mfe_triggered_at = time.time()
                     self.active_position.trailing_mfe_trigger_pnl_pct = pnl
@@ -5320,7 +5309,7 @@ class PositionManager:
                                 regime_status.get("avg_adx", 0)
                             )
                         except Exception:
-                            pass
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     except Exception as e:
                         logger.debug(f"⚠️ Impossible de récupérer régime: {e}")
 
@@ -5409,8 +5398,7 @@ class PositionManager:
                                 if tid and _active_pos_ref:
                                     _active_pos_ref._trade_id = tid
                             except Exception:
-                                pass
-
+                                logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                         threading.Thread(target=_log_close_sync, daemon=True).start()
                         trade_id = existing_trade_id
 
@@ -6045,7 +6033,7 @@ class PositionManager:
                                         "🔄 Threshold Optimizer RESET suite à drift détecté"
                                     )
                                 except Exception:
-                                    pass
+                                    logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     except Exception as drift_err:
                         logger.debug(f"⚠️ Erreur update Drift Detector: {drift_err}")
 
@@ -6178,8 +6166,7 @@ class PositionManager:
                                 },
                             )
                         except Exception:
-                            pass
-
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     loop.create_task(_log_exit_event())
                 except RuntimeError:
                     # Pas de boucle événements, utiliser thread
@@ -6208,12 +6195,10 @@ class PositionManager:
                                 },
                             )
                         except Exception:
-                            pass
-
+                            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                     threading.Thread(target=_log_sync, daemon=True).start()
         except Exception:
-            pass
-
+            logger.debug('position_manager.py: exception silencieuse (avant: pass)', exc_info=True)
         return result
 
     def update_price_cache(self, symbol: str, price: float, data: Any = None):

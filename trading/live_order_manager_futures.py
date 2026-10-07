@@ -1683,8 +1683,7 @@ class LiveOrderManagerFutures:
                 mexc_response = getattr(e, "response", None) or getattr(e, "body", None)
                 mexc_status = getattr(e, "http_status", None)
             except Exception:
-                pass
-
+                logger.debug('live_order_manager_futures.py: exception silencieuse (avant: pass)', exc_info=True)
             logger.error(
                 f"Erreur ouverture position futures: {error_msg} | "
                 f"Symbol: {symbol} → {futures_symbol} | "

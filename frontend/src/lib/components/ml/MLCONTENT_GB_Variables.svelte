@@ -193,10 +193,10 @@
 		
 		const progressBar = autoOptimizing ? `
 			<div style="margin: 20px 0;">
-				<div style="background: #1e293b; border-radius: 10px; height: 20px; overflow: hidden;">
-					<div style="background: linear-gradient(90deg, #8b5cf6, #06b6d4); height: 100%; width: ${autoOptimizeProgress}%; transition: width 0.3s;"></div>
+				<div style="background: var(--bg-secondary); border-radius: 10px; height: 20px; overflow: hidden;">
+					<div style="background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue)); height: 100%; width: ${autoOptimizeProgress}%; transition: width 0.3s;"></div>
 				</div>
-				<p style="text-align: center; margin-top: 10px; color: #60a5fa;">${autoOptimizeProgress}% - ${autoOptimizeStatus}</p>
+				<p style="text-align: center; margin-top: 10px; color: var(--accent-blue);">${autoOptimizeProgress}% - ${autoOptimizeStatus}</p>
 			</div>
 		` : '';
 		
@@ -206,34 +206,34 @@
 			const rows = autoOptimizeResults.threshold_analysis.map(th => {
 				const isOptimal = th.threshold === autoOptimizeResults.optimal_threshold;
 				const bgColor = isOptimal ? 'rgba(139, 92, 246, 0.3)' : 'transparent';
-				const border = isOptimal ? 'border-left: 3px solid #8b5cf6;' : '';
+				const border = isOptimal ? 'border-left: 3px solid var(--accent-purple);' : '';
 				return `<tr style="background:${bgColor};${border}">
-					<td style="padding:6px;border-bottom:1px solid #1e293b;">${(th.threshold * 100).toFixed(0)}%</td>
-					<td style="padding:6px;border-bottom:1px solid #1e293b;">${(th.accuracy * 100).toFixed(1)}%</td>
-					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.f1_score.toFixed(3)}</td>
-					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.precision.toFixed(3)}</td>
-					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.recall.toFixed(3)}</td>
-					<td style="padding:6px;border-bottom:1px solid #1e293b;">${th.predicted_wins || 0}</td>
+					<td style="padding:6px;border-bottom:1px solid var(--bg-secondary);">${(th.threshold * 100).toFixed(0)}%</td>
+					<td style="padding:6px;border-bottom:1px solid var(--bg-secondary);">${(th.accuracy * 100).toFixed(1)}%</td>
+					<td style="padding:6px;border-bottom:1px solid var(--bg-secondary);">${th.f1_score.toFixed(3)}</td>
+					<td style="padding:6px;border-bottom:1px solid var(--bg-secondary);">${th.precision.toFixed(3)}</td>
+					<td style="padding:6px;border-bottom:1px solid var(--bg-secondary);">${th.recall.toFixed(3)}</td>
+					<td style="padding:6px;border-bottom:1px solid var(--bg-secondary);">${th.predicted_wins || 0}</td>
 				</tr>`;
 			}).join('');
 			
 			thresholdTableHtml = `
 				<div style="margin-top:20px;overflow-x:auto;">
-					<h4 style="color:#94a3b8;margin:0 0 10px 0;font-size:13px;">📈 Analyse des Seuils</h4>
+					<h4 style="color:var(--text-secondary);margin:0 0 10px 0;font-size:13px;">📈 Analyse des Seuils</h4>
 					<table style="width:100%;border-collapse:collapse;font-size:11px;">
 						<thead>
 							<tr style="background:rgba(0,0,0,0.3);">
-								<th style="padding:8px;color:#94a3b8;text-align:left;">Seuil</th>
-								<th style="padding:8px;color:#94a3b8;text-align:left;">Accuracy</th>
-								<th style="padding:8px;color:#94a3b8;text-align:left;">F1</th>
-								<th style="padding:8px;color:#94a3b8;text-align:left;">Precision</th>
-								<th style="padding:8px;color:#94a3b8;text-align:left;">Recall</th>
-								<th style="padding:8px;color:#94a3b8;text-align:left;">Prédits WIN</th>
+								<th style="padding:8px;color:var(--text-secondary);text-align:left;">Seuil</th>
+								<th style="padding:8px;color:var(--text-secondary);text-align:left;">Accuracy</th>
+								<th style="padding:8px;color:var(--text-secondary);text-align:left;">F1</th>
+								<th style="padding:8px;color:var(--text-secondary);text-align:left;">Precision</th>
+								<th style="padding:8px;color:var(--text-secondary);text-align:left;">Recall</th>
+								<th style="padding:8px;color:var(--text-secondary);text-align:left;">Prédits WIN</th>
 							</tr>
 						</thead>
-						<tbody style="color:#e2e8f0;">${rows}</tbody>
+						<tbody style="color:var(--border-strong);">${rows}</tbody>
 					</table>
-					<div style="margin-top:10px;padding:10px;background:rgba(139,92,246,0.15);border-radius:6px;text-align:center;color:#c4b5fd;font-size:12px;">
+					<div style="margin-top:10px;padding:10px;background:rgba(139,92,246,0.15);border-radius:6px;text-align:center;color:var(--accent-purple);font-size:12px;">
 						🎯 Seuil recommandé: ${((autoOptimizeResults.optimal_threshold || 0.45) * 100).toFixed(0)}%
 					</div>
 				</div>
@@ -242,47 +242,47 @@
 		
 		const resultsHtml = autoOptimizeResults ? `
 			<div style="margin-top: 20px; padding: 15px; background: rgba(16, 185, 129, 0.1); border-radius: 8px;">
-				<h3 style="color: #10b981; margin: 0 0 10px 0;">✅ Optimisation Terminée</h3>
+				<h3 style="color: var(--accent-green-strong); margin: 0 0 10px 0;">✅ Optimisation Terminée</h3>
 				<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:15px;">
 					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
-						<div style="color:#94a3b8;font-size:10px;">ACCURACY</div>
-						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${((autoOptimizeResults.metrics?.test_accuracy || 0) * 100).toFixed(1)}%</div>
+						<div style="color:var(--text-secondary);font-size:10px;">ACCURACY</div>
+						<div style="color:var(--text-primary);font-size:16px;font-weight:600;">${((autoOptimizeResults.metrics?.test_accuracy || 0) * 100).toFixed(1)}%</div>
 					</div>
 					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
-						<div style="color:#94a3b8;font-size:10px;">F1 SCORE</div>
-						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.f1_score || 0).toFixed(3)}</div>
+						<div style="color:var(--text-secondary);font-size:10px;">F1 SCORE</div>
+						<div style="color:var(--text-primary);font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.f1_score || 0).toFixed(3)}</div>
 					</div>
 					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
-						<div style="color:#94a3b8;font-size:10px;">ROC-AUC</div>
-						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.roc_auc || 0).toFixed(3)}</div>
+						<div style="color:var(--text-secondary);font-size:10px;">ROC-AUC</div>
+						<div style="color:var(--text-primary);font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.roc_auc || 0).toFixed(3)}</div>
 					</div>
 					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
-						<div style="color:#94a3b8;font-size:10px;">PRECISION</div>
-						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.precision || 0).toFixed(3)}</div>
+						<div style="color:var(--text-secondary);font-size:10px;">PRECISION</div>
+						<div style="color:var(--text-primary);font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.precision || 0).toFixed(3)}</div>
 					</div>
 					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
-						<div style="color:#94a3b8;font-size:10px;">RECALL</div>
-						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.recall || 0).toFixed(3)}</div>
+						<div style="color:var(--text-secondary);font-size:10px;">RECALL</div>
+						<div style="color:var(--text-primary);font-size:16px;font-weight:600;">${(autoOptimizeResults.metrics?.recall || 0).toFixed(3)}</div>
 					</div>
 					<div style="text-align:center;padding:8px;background:rgba(0,0,0,0.2);border-radius:6px;">
-						<div style="color:#94a3b8;font-size:10px;">OVERFITTING</div>
-						<div style="color:#f8fafc;font-size:16px;font-weight:600;">${((autoOptimizeResults.metrics?.overfitting || 0) * 100).toFixed(1)}%</div>
+						<div style="color:var(--text-secondary);font-size:10px;">OVERFITTING</div>
+						<div style="color:var(--text-primary);font-size:16px;font-weight:600;">${((autoOptimizeResults.metrics?.overfitting || 0) * 100).toFixed(1)}%</div>
 					</div>
 				</div>
 				${thresholdTableHtml}
-				<p style="margin-top: 15px; color: #94a3b8; font-size: 11px; text-align:center;">Retournez à l'application principale pour appliquer les résultats.</p>
+				<p style="margin-top: 15px; color: var(--text-secondary); font-size: 11px; text-align:center;">Retournez à l'application principale pour appliquer les résultats.</p>
 			</div>
 		` : '';
 		
 		externalWindow.document.body.innerHTML = `
-			<div style="font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; min-height: 100vh; padding: 20px;">
+			<div style="font-family: system-ui, sans-serif; background: var(--text-primary); color: var(--text-primary); min-height: 100vh; padding: 20px;">
 				<h2 style="margin: 0 0 20px 0;">🚀 Optimisation ML</h2>
 				${progressBar}
 				<div style="max-width: 300px; margin: 20px auto;">
 					${stepsHtml}
 				</div>
 				${resultsHtml}
-				<p style="color: #64748b; margin-top: 20px; font-size: 11px; text-align: center;">
+				<p style="color: var(--text-tertiary); margin-top: 20px; font-size: 11px; text-align: center;">
 					Mise à jour automatique • Application principale accessible
 				</p>
 			</div>

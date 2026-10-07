@@ -189,8 +189,7 @@ class WebSocketManager:
             elif hasattr(websocket, 'client_state') and websocket.client_state == 'disconnected':
                 disconnect_reason = "client_disconnected"
         except Exception:
-            pass
-            
+            logger.debug('websocket_manager.py: exception silencieuse (avant: pass)', exc_info=True)
         async with self.lock:
             self.active_connections.discard(websocket)
             self.connection_data.pop(websocket, None)
@@ -549,7 +548,7 @@ class WebSocketManager:
                 try:
                     await websocket.close(code=1000, reason="Ping timeout - connection inactive")
                 except Exception:
-                    pass
+                    logger.debug('websocket_manager.py: exception silencieuse (avant: pass)', exc_info=True)
                 await self.disconnect(websocket)
         
         # Envoyer ping aux connexions actives restantes

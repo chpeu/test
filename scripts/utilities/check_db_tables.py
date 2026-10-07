@@ -37,7 +37,7 @@ for table in tables['table_name']:
             try:
                 count = pd.read_sql(f"SELECT COUNT(*) as cnt FROM {table} WHERE {col} IS NOT NULL", engine)
                 print(f"  {col}: {count['cnt'].iloc[0]} rows with data")
-            except:
+            except Exception:
                 pass
 
 engine.dispose()
