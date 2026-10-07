@@ -23,9 +23,9 @@ export const connectionStatus = derived(
 export const connectionColor = derived(
 	[connected, reconnecting],
 	([$connected, $reconnecting]) => {
-		if ($connected) return '#00ff88';
-		if ($reconnecting) return '#ffaa00';
-		return '#ff4444';
+		if ($connected) return 'var(--accent-green)';
+		if ($reconnecting) return 'var(--accent-orange)';
+		return 'var(--accent-red)';
 	}
 );
 

@@ -185,19 +185,19 @@
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		background: var(--bg-primary, #0f0f1a);
+		background: var(--bg-primary);
 	}
 	
 	.ml-header {
 		padding: 1.5rem;
 		text-align: center;
-		border-bottom: 1px solid var(--border-color, #333);
+		border-bottom: 1px solid var(--border-color, var(--border));
 	}
 	
 	.ml-header h1 {
 		margin: 0 0 0.5rem 0;
 		font-size: 1.75rem;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
@@ -205,14 +205,14 @@
 	
 	.subtitle {
 		margin: 0;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.9rem;
 	}
 	
 	.ev-analysis-btn {
 		margin-top: 1rem;
 		padding: 0.6rem 1.2rem;
-		background: linear-gradient(135deg, #667eea, #764ba2);
+		background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
 		color: white;
 		border: none;
 		border-radius: 8px;
@@ -231,8 +231,8 @@
 		display: flex;
 		gap: 0.5rem;
 		padding: 1rem 1.5rem;
-		background: var(--bg-secondary, #1a1a2e);
-		border-bottom: 1px solid var(--border-color, #333);
+		background: var(--bg-secondary, var(--bg-secondary));
+		border-bottom: 1px solid var(--border-color, var(--border));
 	}
 	
 	.tab {
@@ -240,10 +240,10 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.75rem 1.5rem;
-		background: var(--bg-tertiary, #252540);
+		background: var(--bg-tertiary, var(--bg-tertiary));
 		border: 2px solid transparent;
 		border-radius: 8px;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.95rem;
 		font-weight: 600;
 		cursor: pointer;
@@ -251,12 +251,12 @@
 	}
 	
 	.tab:hover {
-		border-color: var(--accent-color, #667eea);
-		color: var(--text-primary, #fff);
+		border-color: var(--accent-color, var(--accent-indigo));
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.tab.active {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		color: white;
 		border-color: transparent;
 	}
@@ -276,7 +276,7 @@
 		align-items: center;
 		justify-content: center;
 		height: 200px;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 1.1rem;
 	}
 	
@@ -290,13 +290,13 @@
 	
 	.save-status.success {
 		background: rgba(40, 167, 69, 0.2);
-		color: #51cf66;
+		color: var(--accent-green);
 		border: 1px solid rgba(40, 167, 69, 0.3);
 	}
 	
 	.save-status.error {
 		background: rgba(220, 53, 69, 0.2);
-		color: #ff6b6b;
+		color: var(--accent-red);
 		border: 1px solid rgba(220, 53, 69, 0.3);
 	}
 	
@@ -304,7 +304,7 @@
 		margin-top: 0.5rem;
 		padding: 0.35rem 0.75rem;
 		background: rgba(255, 193, 7, 0.15);
-		color: #ffc107;
+		color: var(--accent-orange);
 		border-radius: 4px;
 		font-size: 0.8rem;
 	}

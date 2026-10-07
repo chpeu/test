@@ -196,7 +196,7 @@
 <style>
 	.correlation-analytics {
 		padding: 1rem;
-		background: var(--bg-secondary, #1a1a2e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 8px;
 	}
 	
@@ -209,7 +209,7 @@
 	
 	.header h2 {
 		margin: 0;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.controls {
@@ -220,31 +220,31 @@
 	.controls select, .controls button {
 		padding: 0.5rem 1rem;
 		border-radius: 4px;
-		border: 1px solid var(--border-color, #333);
-		background: var(--bg-tertiary, #252540);
-		color: var(--text-primary, #fff);
+		border: 1px solid var(--border-color, var(--border));
+		background: var(--bg-tertiary, var(--bg-tertiary));
+		color: var(--text-primary, var(--text-primary));
 		cursor: pointer;
 	}
 	
 	.controls button:hover:not(:disabled) {
-		background: var(--accent-color, #4a9eff);
+		background: var(--accent-color, var(--accent-blue));
 	}
 	
 	.loading, .error {
 		text-align: center;
 		padding: 2rem;
-		color: var(--text-secondary, #aaa);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.error {
-		color: #ff6b6b;
+		color: var(--accent-red);
 	}
 	
 	.spinner {
 		width: 40px;
 		height: 40px;
-		border: 3px solid var(--border-color, #333);
-		border-top-color: var(--accent-color, #4a9eff);
+		border: 3px solid var(--border-color, var(--border));
+		border-top-color: var(--accent-color, var(--accent-blue));
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 		margin: 0 auto 1rem;
@@ -256,14 +256,14 @@
 	
 	.section {
 		margin-bottom: 2rem;
-		background: var(--bg-tertiary, #252540);
+		background: var(--bg-tertiary, var(--bg-tertiary));
 		border-radius: 8px;
 		padding: 1rem;
 	}
 	
 	.section h3 {
 		margin: 0 0 1rem 0;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 		font-size: 1rem;
 	}
 	
@@ -279,17 +279,17 @@
 	th, td {
 		padding: 0.75rem;
 		text-align: left;
-		border-bottom: 1px solid var(--border-color, #333);
+		border-bottom: 1px solid var(--border-color, var(--border));
 	}
 	
 	th {
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-weight: 500;
 		font-size: 0.85rem;
 	}
 	
 	td {
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	tr.favor { background: rgba(40, 167, 69, 0.1); }
@@ -302,16 +302,16 @@
 		font-weight: bold;
 	}
 	
-	.badge.favor { background: #28a745; color: #fff; }
-	.badge.avoid { background: #dc3545; color: #fff; }
-	.badge.neutral { background: #6c757d; color: #fff; }
+	.badge.favor { background: var(--accent-green); color: var(--text-primary); }
+	.badge.avoid { background: var(--accent-red); color: var(--text-primary); }
+	.badge.neutral { background: var(--text-tertiary); color: var(--text-primary); }
 	
 	.winrate {
 		font-weight: bold;
 	}
 	
-	.pnl.positive { color: #28a745; }
-	.pnl.negative { color: #dc3545; }
+	.pnl.positive { color: var(--accent-green); }
+	.pnl.negative { color: var(--accent-red); }
 	
 	.regime-distribution {
 		display: flex;
@@ -328,20 +328,20 @@
 	.regime-name {
 		width: 80px;
 		font-weight: bold;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.bar-container {
 		flex: 1;
 		height: 20px;
-		background: var(--bg-secondary, #1a1a2e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 4px;
 		overflow: hidden;
 	}
 	
 	.bar {
 		height: 100%;
-		background: linear-gradient(90deg, #4a9eff, #28a745);
+		background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
 		border-radius: 4px;
 		transition: width 0.3s ease;
 	}
@@ -350,24 +350,24 @@
 		width: 50px;
 		text-align: right;
 		font-weight: bold;
-		color: var(--accent-color, #4a9eff);
+		color: var(--accent-color, var(--accent-blue));
 	}
 	
 	.count {
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.85rem;
 	}
 	
 	.dominant {
 		margin-top: 1rem;
 		padding: 0.75rem;
-		background: var(--bg-secondary, #1a1a2e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 4px;
 		text-align: center;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.dominant strong {
-		color: var(--accent-color, #4a9eff);
+		color: var(--accent-color, var(--accent-blue));
 	}
 </style>

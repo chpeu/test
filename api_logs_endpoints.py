@@ -1,6 +1,15 @@
-# Endpoints API pour les logs d'erreurs - À ajouter dans main.py
+# Endpoints API pour les logs d'erreurs
+# Module autonome : monter le `router` dans l'app FastAPI (main.py) si besoin.
+import logging
 
-@app.get("/api/logs/errors")
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+
+@router.get("/api/logs/errors")
 async def api_get_errors(limit: int = 50, offset: int = 0):
     """Récupérer les erreurs avec pagination"""
     try:
@@ -77,13 +86,13 @@ async def api_get_errors(limit: int = 50, offset: int = 0):
         })
 
 
-@app.get("/api/logs/errors/recent")
+@router.get("/api/logs/errors/recent")
 async def api_get_recent_errors(limit: int = 50):
     """Récupérer les erreurs récentes"""
     return await api_get_errors(limit=limit, offset=0)
 
 
-@app.post("/api/logs/errors/clear")
+@router.post("/api/logs/errors/clear")
 async def api_clear_errors():
     """Vider toutes les erreurs"""
     try:

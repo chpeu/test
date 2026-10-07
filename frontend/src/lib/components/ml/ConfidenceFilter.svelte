@@ -98,7 +98,7 @@
 
 <style>
 	.confidence-filter {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		border-radius: 12px;
 		padding: 20px;
 		color: white;
@@ -238,7 +238,7 @@
 	}
 
 	.stat .value.good {
-		color: #10b981;
+		color: var(--accent-green);
 		text-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
 	}
 

@@ -66,10 +66,10 @@
 
 <style>
 	.stats-panel {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.stats-header {
@@ -79,7 +79,7 @@
 
 	.stats-header h3 {
 		font-size: 20px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin: 0;
 	}
@@ -92,22 +92,22 @@
 	}
 
 	.stat-box {
-		background: #0a0e27;
+		background: var(--bg-primary);
 		padding: 15px;
 		border-radius: 10px;
 		text-align: center;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 		transition: all 0.3s;
 	}
 
 	.stat-box:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 15px rgba(0, 255, 136, 0.2);
+		box-shadow: 0 4px 15px rgba(var(--accent-green-rgb), 0.2);
 	}
 
 	.stat-label {
 		font-size: 11px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-bottom: 8px;
 		text-transform: uppercase;
 		font-weight: bold;
@@ -116,90 +116,90 @@
 	.stat-value {
 		font-size: 24px;
 		font-weight: bold;
-		color: #fff;
+		color: var(--text-primary);
 	}
 
 	.stat-subvalue {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-top: 5px;
 	}
 
 	/* Specific styles */
 	.stat-box.wins {
-		border-color: #00ff88;
+		border-color: var(--accent-green);
 	}
 
 	.stat-box.wins .stat-value {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.stat-box.losses {
-		border-color: #ff4444;
+		border-color: var(--accent-red);
 	}
 
 	.stat-box.losses .stat-value {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	.stat-box.winrate {
-		border-color: #00aaff;
+		border-color: var(--accent-blue);
 	}
 
 	.stat-box.winrate .stat-value {
-		color: #00aaff;
+		color: var(--accent-blue);
 	}
 
 	.stat-box.pnl-pct.positive {
-		border-color: #00ff88;
+		border-color: var(--accent-green);
 	}
 
 	.stat-box.pnl-pct.positive .stat-value {
-		color: #00ff88;
-		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+		color: var(--accent-green);
+		text-shadow: 0 0 20px rgba(var(--accent-green-rgb), 0.5);
 	}
 
 	.stat-box.pnl-pct.negative {
-		border-color: #ff4444;
+		border-color: var(--accent-red);
 	}
 
 	.stat-box.pnl-pct.negative .stat-value {
-		color: #ff4444;
-		text-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+		color: var(--accent-red);
+		text-shadow: 0 0 20px rgba(var(--accent-red-rgb), 0.5);
 	}
 
 	.stat-box.pnl.positive {
-		border-color: #00ff88;
+		border-color: var(--accent-green);
 	}
 
 	.stat-box.pnl.positive .stat-value {
-		color: #00ff88;
-		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+		color: var(--accent-green);
+		text-shadow: 0 0 20px rgba(var(--accent-green-rgb), 0.5);
 	}
 
 	.stat-box.pnl.negative {
-		border-color: #ff4444;
+		border-color: var(--accent-red);
 	}
 
 	.stat-box.pnl.negative .stat-value {
-		color: #ff4444;
-		text-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+		color: var(--accent-red);
+		text-shadow: 0 0 20px rgba(var(--accent-red-rgb), 0.5);
 	}
 
 	.stat-box.best {
-		border-color: #00ff88;
+		border-color: var(--accent-green);
 	}
 
 	.stat-box.best .stat-value {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.stat-box.worst {
-		border-color: #ff4444;
+		border-color: var(--accent-red);
 	}
 
 	.stat-box.worst .stat-value {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	/* Mobile responsive */

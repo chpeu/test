@@ -223,69 +223,9 @@ async def api_export_trading_config_xlsx():
 @router.get("/config/export-xlsm")
 async def api_export_trading_config_xlsm():
     """Alias legacy vers l'export XLSX (compatibilité)."""
+    # FIX: ancien corps dupliqué et mort (code unreachable après le return,
+    # avec 17 noms non définis: TRADING_CONFIG, Workbook, Font, json, ...)
     return await _export_trading_config_excel("xlsx")
-    """Export de la configuration en XLSX (alias)"""
-    categories = _organize_trading_config_for_export(TRADING_CONFIG)
-    rows = _flatten_trading_config_for_excel(categories)
-
-    wb: Workbook = Workbook()
-    ws = wb.active
-    ws.title = "Trading_Config"
-
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-    alignment_center = Alignment(horizontal="center")
-
-    headers = ["Catégorie", "Variable", "Valeur"]
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = alignment_center
-
-    for row in rows:
-        ws.append([row['category'], row['variable'], row['value']])
-
-    for col_idx in range(1, len(headers) + 1):
-        column_letter = get_column_letter(col_idx)
-        ws.column_dimensions[column_letter].width = 35 if col_idx == 1 else 28
-
-    summary_sheet = wb.create_sheet("Autres_Config")
-    summary_sheet.append(["Section", "Clé", "Valeur"])
-    for cell in summary_sheet[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = alignment_center
-
-    def append_config_block(title: str, config_dict: Dict[str, Any]):
-        if not config_dict:
-            return
-        summary_sheet.append([title, "", ""])
-        last_row = summary_sheet.max_row
-        for cell in summary_sheet[last_row]:
-            cell.font = Font(bold=True)
-        for key, value in config_dict.items():
-            if isinstance(value, (dict, list)):
-                value_str = json.dumps(value, ensure_ascii=False)
-            else:
-                value_str = value
-            summary_sheet.append(["", key, value_str])
-
-    append_config_block("RISK_CONFIG", RISK_CONFIG)
-    append_config_block("CONDITION_WEIGHTS", CONDITION_WEIGHTS)
-    append_config_block("TREND_BONUS_CONFIG", TREND_BONUS_CONFIG)
-    append_config_block("RETRY_CONFIG", RETRY_CONFIG)
-    append_config_block("CIRCUIT_BREAKER_CONFIG", CIRCUIT_BREAKER_CONFIG)
-    append_config_block("WEBSOCKET_CONFIG", WEBSOCKET_CONFIG)
-
-    for col_idx in range(1, 4):
-        summary_sheet.column_dimensions[get_column_letter(col_idx)].width = 35 if col_idx == 1 else 30
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-
-    return output
 
 
 async def _export_trading_config_excel(extension: str = "xlsx"):

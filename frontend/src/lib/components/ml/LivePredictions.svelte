@@ -127,21 +127,21 @@
 	});
 
 	function getConfidenceColor(confidence) {
-		if (confidence >= 0.8) return '#10b981';
-		if (confidence >= 0.7) return '#3b82f6';
-		if (confidence >= 0.6) return '#f59e0b';
-		return '#ef4444';
+		if (confidence >= 0.8) return 'var(--accent-green-strong)';
+		if (confidence >= 0.7) return 'var(--accent-blue)';
+		if (confidence >= 0.6) return 'var(--accent-orange)';
+		return 'var(--accent-red-strong)';
 	}
 
 	function getRecommendation(prediction, confidence) {
 		if (prediction === 'win' && confidence >= 0.7) {
-			return { text: 'FORTEMENT RECOMMANDE', color: '#10b981', icon: '🚀' };
+			return { text: 'FORTEMENT RECOMMANDE', color: 'var(--accent-green-strong)', icon: '🚀' };
 		} else if (prediction === 'win' && confidence >= 0.6) {
-			return { text: 'RECOMMANDE', color: '#3b82f6', icon: '✅' };
+			return { text: 'RECOMMANDE', color: 'var(--accent-blue)', icon: '✅' };
 		} else if (prediction === 'loss' && confidence >= 0.7) {
-			return { text: 'A EVITER', color: '#ef4444', icon: '🚫' };
+			return { text: 'A EVITER', color: 'var(--accent-red-strong)', icon: '🚫' };
 		} else {
-			return { text: 'INCERTAIN', color: '#6b7280', icon: '❓' };
+			return { text: 'INCERTAIN', color: 'var(--text-tertiary)', icon: '❓' };
 		}
 	}
 </script>
@@ -268,12 +268,12 @@
 
 	.title-section h2 {
 		font-size: 1.3rem;
-		color: #111827;
+		color: var(--text-primary);
 		margin: 0 0 0.5rem 0;
 	}
 
 	.subtitle {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.9rem;
 		margin: 0;
 	}
@@ -286,10 +286,10 @@
 	.refresh-btn,
 	.auto-refresh-btn {
 		padding: 0.5rem 1rem;
-		border: 2px solid #e5e7eb;
+		border: 2px solid var(--border);
 		border-radius: 8px;
 		background: white;
-		color: #374151;
+		color: var(--text-primary);
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.2s;
@@ -297,8 +297,8 @@
 
 	.refresh-btn:hover:not(:disabled),
 	.auto-refresh-btn:hover {
-		border-color: #667eea;
-		color: #667eea;
+		border-color: var(--accent-indigo);
+		color: var(--accent-indigo);
 		transform: translateY(-2px);
 	}
 
@@ -308,26 +308,26 @@
 	}
 
 	.auto-refresh-btn.active {
-		background: #667eea;
+		background: var(--accent-indigo);
 		color: white;
-		border-color: #667eea;
+		border-color: var(--accent-indigo);
 	}
 
 	.error-card {
-		background: #fef2f2;
-		border: 2px solid #fecaca;
+		background: rgba(var(--accent-red-rgb), 0.10);
+		border: 2px solid rgba(var(--accent-red-rgb), 0.4);
 		border-radius: 8px;
 		padding: 1.5rem;
 		text-align: center;
 	}
 
 	.error-card h3 {
-		color: #dc2626;
+		color: var(--accent-red-strong);
 		margin: 0 0 0.5rem 0;
 	}
 
 	.hint {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.85rem;
 		margin-top: 0.5rem;
 	}
@@ -335,7 +335,7 @@
 	.empty-state {
 		text-align: center;
 		padding: 3rem 2rem;
-		color: #6b7280;
+		color: var(--text-tertiary);
 	}
 
 	.predictions-list {
@@ -344,21 +344,21 @@
 	}
 
 	.prediction-card {
-		background: #f9fafb;
-		border: 2px solid #e5e7eb;
+		background: var(--bg-input);
+		border: 2px solid var(--border);
 		border-radius: 12px;
 		padding: 1.25rem;
 		transition: all 0.3s;
 	}
 
 	.prediction-card.win {
-		border-color: #86efac;
-		background: #f0fdf4;
+		border-color: rgba(var(--accent-green-rgb), 0.4);
+		background: rgba(var(--accent-green-rgb), 0.10);
 	}
 
 	.prediction-card.loss {
-		border-color: #fca5a5;
-		background: #fef2f2;
+		border-color: var(--accent-red);
+		background: rgba(var(--accent-red-rgb), 0.10);
 	}
 
 	.prediction-card.filtered {
@@ -387,13 +387,13 @@
 	}
 
 	.pred-time {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-weight: 600;
 	}
 
 	.pred-model {
-		background: #eff6ff;
-		color: #1e40af;
+		background: rgba(var(--accent-blue-rgb), 0.12);
+		color: var(--accent-blue-dark);
 		padding: 0.2rem 0.5rem;
 		border-radius: 6px;
 		font-weight: 600;
@@ -435,13 +435,13 @@
 	}
 
 	.prob-label {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-weight: 600;
 	}
 
 	.prob-bar-container {
 		height: 12px;
-		background: #e5e7eb;
+		background: var(--bg-hover);
 		border-radius: 6px;
 		overflow: hidden;
 	}
@@ -452,17 +452,17 @@
 	}
 
 	.prob-bar.win-bar {
-		background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+		background: linear-gradient(90deg, var(--accent-green) 0%, var(--accent-green-strong) 100%);
 	}
 
 	.prob-bar.loss-bar {
-		background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+		background: linear-gradient(90deg, var(--accent-red) 0%, var(--accent-red-strong) 100%);
 	}
 
 	.prob-value {
 		text-align: right;
 		font-weight: 700;
-		color: #374151;
+		color: var(--text-primary);
 	}
 
 	.pred-recommendation {
@@ -489,7 +489,7 @@
 	}
 
 	.features-title {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.85rem;
 		font-weight: 600;
 		margin-bottom: 0.5rem;
@@ -502,8 +502,8 @@
 	}
 
 	.feature-tag {
-		background: #eff6ff;
-		color: #1e40af;
+		background: rgba(var(--accent-blue-rgb), 0.12);
+		color: var(--accent-blue-dark);
 		padding: 0.25rem 0.75rem;
 		border-radius: 12px;
 		font-size: 0.8rem;
@@ -514,16 +514,16 @@
 		display: flex;
 		justify-content: space-between;
 		padding-top: 0.75rem;
-		border-top: 1px solid #e5e7eb;
+		border-top: 1px solid var(--border);
 		font-size: 0.85rem;
 	}
 
 	.perf-label {
-		color: #6b7280;
+		color: var(--text-tertiary);
 	}
 
 	.perf-value {
 		font-weight: 700;
-		color: #374151;
+		color: var(--text-primary);
 	}
 </style>

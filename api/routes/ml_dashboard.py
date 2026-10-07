@@ -375,6 +375,7 @@ async def get_performance_analysis(
     - Par direction
     """
     try:
+        import pandas as pd  # FIX F821: pd utilisé sans import -> endpoint échouait systématiquement
         from optimization.data.feature_loader import load_features_from_postgres
         
         df = load_features_from_postgres(min_trades=10, timeframe_days=timeframe_days)

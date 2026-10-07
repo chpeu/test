@@ -37,7 +37,7 @@ export const pnlChartData = derived(sortedTrades, $trades => {
 	return {
 		labels: last20.map((t, i) => `#${i + 1}`),
 		values: last20.map(t => t.net_pnl_usdt || 0),
-		colors: last20.map(t => t.net_pnl_usdt >= 0 ? '#00ff88' : '#ff4444')
+		colors: last20.map(t => t.net_pnl_usdt >= 0 ? 'var(--accent-green)' : 'var(--accent-red)')
 	};
 });
 

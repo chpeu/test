@@ -97,9 +97,9 @@
 	}
 
 	function getStatusColor(status) {
-		if (status === 'running') return '#00ff88';
-		if (status === 'paused') return '#ffaa00';
-		return '#888888';
+		if (status === 'running') return 'var(--accent-green)';
+		if (status === 'paused') return 'var(--accent-orange)';
+		return 'var(--text-secondary)';
 	}
 
 	function getStatusIcon(status) {
@@ -318,12 +318,12 @@
 	}
 
 	.btn-create:hover {
-		background: #00cc6a;
+		background: var(--accent-green-strong);
 		transform: translateY(-2px);
 	}
 
 	.error-banner {
-		background: rgba(255, 68, 68, 0.1);
+		background: rgba(var(--accent-red-rgb), 0.1);
 		border: 1px solid var(--accent-red);
 		color: var(--accent-red);
 		padding: 10px 12px;
@@ -349,12 +349,12 @@
 
 	.session-item:hover {
 		border-color: var(--accent-green);
-		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.1);
+		box-shadow: 0 4px 12px rgba(var(--accent-green-rgb), 0.1);
 	}
 
 	.session-item.active {
 		border-color: var(--accent-green);
-		background: rgba(0, 255, 136, 0.05);
+		background: rgba(var(--accent-green-rgb), 0.05);
 	}
 
 	.session-main {
@@ -413,12 +413,12 @@
 	}
 
 	.session-stats .stat.profit {
-		background: rgba(0, 255, 136, 0.1);
+		background: rgba(var(--accent-green-rgb), 0.1);
 		color: var(--accent-green);
 	}
 
 	.session-stats .stat.loss {
-		background: rgba(255, 68, 68, 0.1);
+		background: rgba(var(--accent-red-rgb), 0.1);
 		color: var(--accent-red);
 	}
 
@@ -501,7 +501,7 @@
 		color: var(--text-primary);
 		padding: 10px 12px;
 		border-radius: 6px;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		font-size: 13px;
 	}
 
@@ -535,7 +535,7 @@
 	}
 
 	.btn-primary:hover {
-		background: #00cc6a;
+		background: var(--accent-green-strong);
 	}
 
 	.btn-secondary {

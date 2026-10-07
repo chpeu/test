@@ -1,181 +1,371 @@
-/* Global CSS Reset and Base Styles - Style Port 5000 */
+/* ============================================================
+   Trade Cursor v7 — Design System « Nightdesk »
+   Thème sombre profond façon terminal de trading nouvelle génération :
+   surfaces en dégradés subtils, hairlines, accents émeraude/ambre,
+   typographie Inter + chiffres tabulaires monospace.
+   Les anciens noms de tokens sont conservés pour compatibilité.
+   ============================================================ */
+
 * {
 	margin: 0;
 	padding: 0;
 	box-sizing: border-box;
 }
 
-/* Style port 5000 - Fond sombre, couleurs néon */
-html,
-body {
-	font-family: 'Courier New', monospace;
-	background: #0a0e27;
-	color: #fff;
-	min-height: 100vh;
-	font-size: 14px;
-	line-height: 1.4;
+:root {
+	color-scheme: dark;
+
+	/* ---- Typographie ---- */
+	--font-ui:
+		'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+		sans-serif;
+	--font-mono:
+		'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, 'Courier New',
+		monospace;
+
+	/* ---- Surfaces (dark, défaut) ---- */
+	--bg-void: #070a12;
+	--bg-primary: #0b0f1a;
+	--bg-secondary: #121a2a;
+	--bg-tertiary: #1a2438;
+	--bg-secondary-rgb: 18, 26, 42;
+	--bg-primary-rgb: 11, 15, 26;
+
+	/* ---- Textes ---- */
+	--text-primary: #e8edf6;
+	--text-secondary: #8fa0b8;
+	--text-faint: #5c6c85;
+
+	/* ---- Bordures / hairlines ---- */
+	--border: #24304a;
+	--border-rgb: 36, 48, 74;
+	--border-soft: rgba(148, 163, 184, 0.12);
+	--border-strong: #33415e;
+
+	/* ---- Accents ---- */
+	--accent-green: #34d399;
+	--accent-green-strong: #10b981;
+	--accent-green-rgb: 52, 211, 153;
+	--accent-red: #f87171;
+	--accent-red-strong: #ef4444;
+	--accent-red-rgb: 248, 113, 113;
+	--accent-blue: #38bdf8;
+	--accent-blue-rgb: 56, 189, 248;
+	--accent-orange: #fbbf24;
+	--accent-orange-rgb: 251, 191, 36;
+	--accent-yellow: #fbbf24;
+	--accent-violet: #a78bfa;
+	--accent-purple: #8b5cf6;
+	--accent-purple-2: #764ba2;
+	--accent-indigo: #667eea;
+	--accent-blue-dark: #0ea5e9;
+	--accent-green-light: #6ee7b7;
+
+	/* ---- Alias de compat (composants historiques) ---- */
+	--accent-color: var(--accent-blue);
+	--success-color: var(--accent-green);
+	--border-color: var(--border);
+	--text-color: var(--text-primary);
+	--text-muted: var(--text-secondary);
+	--text-tertiary: #64748b;
+	--bg-input: #0e1524;
+	--bg-hover: #1c2740;
+
+	/* ---- Effets ---- */
+	--radius-sm: 8px;
+	--radius-md: 12px;
+	--radius-lg: 16px;
+	--radius-xl: 22px;
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+	--shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.55);
+	--shadow-lg: 0 24px 60px -16px rgba(0, 0, 0, 0.65);
+	--glass-bg: rgba(18, 26, 42, 0.72);
+	--glass-blur: saturate(160%) blur(14px);
+	--ring-focus: 0 0 0 3px rgba(52, 211, 153, 0.35);
+	--glow-green: 0 0 24px rgba(52, 211, 153, 0.25);
+	--glow-red: 0 0 24px rgba(248, 113, 113, 0.25);
+	--gradient-brand: linear-gradient(135deg, #34d399 0%, #38bdf8 100%);
+	--gradient-card: linear-gradient(180deg, rgba(148, 163, 184, 0.06) 0%, rgba(148, 163, 184, 0) 100%);
+	--ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Boutons style port 5000 */
+/* ---- Thème clair — même squelette, ambiance "day desk" ---- */
+[data-theme='light'] {
+	color-scheme: light;
+
+	--bg-void: #eef1f7;
+	--bg-primary: #f4f6fb;
+	--bg-secondary: #ffffff;
+	--bg-tertiary: #e8edf5;
+	--bg-secondary-rgb: 255, 255, 255;
+	--bg-primary-rgb: 244, 246, 251;
+
+	--text-primary: #101828;
+	--text-secondary: #5b6b84;
+	--text-faint: #8494ac;
+
+	--border: #dbe3ef;
+	--border-rgb: 219, 227, 239;
+	--border-soft: rgba(16, 24, 40, 0.08);
+	--border-strong: #c4d0e3;
+
+	--accent-green: #059669;
+	--accent-green-strong: #047857;
+	--accent-green-rgb: 5, 150, 105;
+	--accent-red: #dc2626;
+	--accent-red-strong: #b91c1c;
+	--accent-red-rgb: 220, 38, 38;
+	--accent-blue: #0284c7;
+	--accent-blue-rgb: 2, 132, 199;
+	--accent-orange: #d97706;
+	--accent-orange-rgb: 217, 119, 6;
+	--accent-yellow: #d97706;
+	--accent-violet: #7c3aed;
+	--accent-purple: #7c3aed;
+	--accent-purple-2: #6d28d9;
+	--accent-indigo: #4f46e5;
+	--accent-blue-dark: #0369a1;
+	--accent-green-light: #10b981;
+
+	--accent-color: var(--accent-blue);
+	--success-color: var(--accent-green);
+	--border-color: var(--border);
+	--text-color: var(--text-primary);
+	--text-muted: var(--text-secondary);
+	--text-tertiary: #64748b;
+	--bg-input: #eef2f9;
+	--bg-hover: #e2e9f4;
+
+	--glass-bg: rgba(255, 255, 255, 0.78);
+	--shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+	--shadow-md: 0 8px 24px -10px rgba(16, 24, 40, 0.18);
+	--shadow-lg: 0 24px 60px -18px rgba(16, 24, 40, 0.25);
+	--ring-focus: 0 0 0 3px rgba(5, 150, 105, 0.25);
+	--glow-green: 0 0 24px rgba(5, 150, 105, 0.12);
+	--glow-red: 0 0 24px rgba(220, 38, 38, 0.12);
+}
+
+html,
+body {
+	min-height: 100vh;
+	font-size: 14px;
+	line-height: 1.55;
+}
+
+body {
+	font-family: var(--font-ui);
+	background:
+		radial-gradient(1200px 700px at 85% -10%, rgba(var(--accent-blue-rgb), 0.07), transparent 60%),
+		radial-gradient(900px 600px at -10% 110%, rgba(var(--accent-green-rgb), 0.06), transparent 55%),
+		var(--bg-primary);
+	background-attachment: fixed;
+	color: var(--text-primary);
+	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	overflow-x: hidden;
+	transition:
+		background-color 0.3s ease,
+		color 0.3s ease;
+}
+
+/* Chiffres alignés partout (P&L, prix, pourcentages) */
+input[type='number'],
+td,
+th,
+.mono {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Champs numériques et code en monospace */
+input[type='number'],
+code,
+kbd,
+pre {
+	font-family: var(--font-mono);
+}
+
+/* ---------------- Boutons ---------------- */
 button {
-	font-family: 'Courier New', monospace;
+	font-family: var(--font-ui);
 }
 
 .btn {
-	padding: 14px 35px;
-	border: none;
-	border-radius: 10px;
-	font-size: 15px;
-	font-weight: bold;
+	padding: 10px 22px;
+	border: 1px solid transparent;
+	border-radius: var(--radius-md);
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
 	cursor: pointer;
-	transition: all 0.3s;
-	font-family: 'Courier New', monospace;
-	text-transform: uppercase;
-	box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+	transition:
+		transform 0.18s var(--ease-spring),
+		box-shadow 0.18s ease,
+		filter 0.18s ease,
+		background-color 0.18s ease;
+	box-shadow: var(--shadow-sm);
+}
+
+.btn:active {
+	transform: translateY(1px) scale(0.99);
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	filter: grayscale(0.4);
 }
 
 .btn-primary {
-	background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
-	color: #0a0e27;
+	background: var(--gradient-brand);
+	color: #06231a;
+	box-shadow:
+		var(--shadow-sm),
+		var(--glow-green);
 }
 
 .btn-primary:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+	transform: translateY(-1px);
+	filter: brightness(1.06);
+	box-shadow:
+		var(--shadow-md),
+		var(--glow-green);
 }
 
 .btn-danger {
-	background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
-	color: white;
+	background: linear-gradient(135deg, var(--accent-red) 0%, var(--accent-red-strong) 100%);
+	color: #fff;
+	box-shadow: var(--shadow-sm);
 }
 
 .btn-danger:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 6px 20px rgba(255, 68, 68, 0.4);
+	transform: translateY(-1px);
+	filter: brightness(1.06);
+	box-shadow:
+		var(--shadow-md),
+		var(--glow-red);
 }
 
-/* Inputs style port 5000 */
+/* ---------------- Formulaires ---------------- */
 input[type='text'],
 input[type='number'],
-input[type='range'],
+input[type='password'],
+input[type='email'],
+input[type='search'],
+textarea,
 select {
-	background: #0a0e27;
-	color: #00ff88;
-	border: 2px solid #00ff88;
-	border-radius: 8px;
-	padding: 10px;
-	font-family: 'Courier New', monospace;
-	font-size: 14px;
+	background: var(--bg-primary);
+	color: var(--text-primary);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	padding: 9px 12px;
+	font-family: var(--font-ui);
+	font-size: 13.5px;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+	color: var(--text-faint);
 }
 
 input[type='text']:focus,
 input[type='number']:focus,
+input[type='password']:focus,
+textarea:focus,
 select:focus {
 	outline: none;
-	border-color: #00cc6a;
-	box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+	border-color: var(--accent-green);
+	box-shadow: var(--ring-focus);
 }
 
-/* Panels style port 5000 */
+input[type='range'] {
+	accent-color: var(--accent-green);
+	height: 6px;
+	cursor: pointer;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+	accent-color: var(--accent-green);
+	width: 15px;
+	height: 15px;
+	cursor: pointer;
+}
+
+/* ---------------- Cartes / panneaux ---------------- */
 .panel,
 .card,
 .section {
-	background: #1e2749;
-	border-radius: 10px;
+	background:
+		var(--gradient-card),
+		var(--bg-secondary);
+	border-radius: var(--radius-lg);
 	padding: 18px;
-	border: 2px solid #2a3a6b;
+	border: 1px solid var(--border-soft);
+	box-shadow: var(--shadow-md);
 	margin-bottom: 15px;
 }
 
-/* Couleurs néon */
+/* ---------------- Badges de sémantique ---------------- */
 .text-success {
-	color: #00ff88;
+	color: var(--accent-green);
 }
 
 .text-danger {
-	color: #ff4444;
+	color: var(--accent-red);
 }
 
 .text-warning {
-	color: #ffaa00;
+	color: var(--accent-orange);
 }
 
 .text-info {
-	color: #00aaff;
+	color: var(--accent-blue);
 }
 
-:root {
-	/* Dark Theme Colors (default) */
-	--bg-primary: #0a0e27;
-	--bg-secondary: #1e2749;
-	--bg-tertiary: #2a3a6b;
-	--text-primary: #ffffff;
-	--text-secondary: #888888;
-	--accent-green: #00ff88;
-	--accent-blue: #00aaff;
-	--accent-red: #ff4444;
-	--accent-orange: #ffaa00;
-}
-
-/* Light Theme Colors */
-[data-theme='light'] {
-	--bg-primary: #f5f7fa;
-	--bg-secondary: #ffffff;
-	--bg-tertiary: #e8ecf1;
-	--text-primary: #1a1a1a;
-	--text-secondary: #666666;
-	--accent-green: #00cc6a;
-	--accent-blue: #0088cc;
-	--accent-red: #dd3333;
-	--accent-orange: #dd8800;
-}
-
-body {
-	font-family: 'Courier New', 'Consolas', monospace;
-	background: var(--bg-primary);
-	color: var(--text-primary);
-	min-height: 100vh;
-	line-height: 1.6;
-	font-size: 14px;
-	overflow-x: hidden;
-}
-
-/* Scrollbar styling */
+/* ---------------- Scrollbars fines ---------------- */
 ::-webkit-scrollbar {
-	width: 10px;
-	height: 10px;
+	width: 9px;
+	height: 9px;
 }
 
 ::-webkit-scrollbar-track {
-	background: var(--bg-secondary);
+	background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: var(--accent-green);
-	border-radius: 5px;
+	background: var(--border-strong);
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #00cc6a;
+	background: var(--text-faint);
+	background-clip: content-box;
 }
 
-/* Selection */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border-strong) transparent;
+}
+
 ::selection {
-	background: var(--accent-green);
-	color: var(--bg-primary);
+	background: rgba(var(--accent-green-rgb), 0.35);
+	color: var(--text-primary);
 }
 
-/* Focus outlines */
-button:focus,
-input:focus,
-select:focus {
+:focus-visible {
 	outline: 2px solid var(--accent-green);
 	outline-offset: 2px;
+	border-radius: 4px;
 }
 
-/* Utility classes */
+/* ---------------- Utilitaires ---------------- */
 .container {
-	max-width: 1400px;
+	max-width: 1440px;
 	margin: 0 auto;
 	padding: 20px;
 }
@@ -192,7 +382,11 @@ select:focus {
 	margin-bottom: 1rem;
 }
 
-/* Animations */
+.mono {
+	font-family: var(--font-mono);
+}
+
+/* ---------------- Animations ---------------- */
 @keyframes fadeIn {
 	from {
 		opacity: 0;
@@ -204,7 +398,7 @@ select:focus {
 
 @keyframes slideUp {
 	from {
-		transform: translateY(20px);
+		transform: translateY(14px);
 		opacity: 0;
 	}
 	to {
@@ -213,10 +407,40 @@ select:focus {
 	}
 }
 
+@keyframes pulseDot {
+	0%,
+	100% {
+		box-shadow: 0 0 0 0 rgba(var(--accent-green-rgb), 0.5);
+	}
+	70% {
+		box-shadow: 0 0 0 7px rgba(var(--accent-green-rgb), 0);
+	}
+}
+
+@keyframes shimmer {
+	0% {
+		background-position: -400px 0;
+	}
+	100% {
+		background-position: 400px 0;
+	}
+}
+
 .fade-in {
 	animation: fadeIn 0.3s ease-in;
 }
 
 .slide-up {
-	animation: slideUp 0.4s ease-out;
+	animation: slideUp 0.4s var(--ease-spring);
+}
+
+/* Respect des préférences d'accessibilité */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
 }

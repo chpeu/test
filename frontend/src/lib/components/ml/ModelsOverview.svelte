@@ -266,12 +266,12 @@
 
 	h2 {
 		font-size: 1.3rem;
-		color: #111827;
+		color: var(--text-primary);
 		margin: 0 0 0.5rem 0;
 	}
 
 	.subtitle {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.9rem;
 		margin: 0;
 	}
@@ -282,8 +282,8 @@
 	}
 
 	.spinner {
-		border: 3px solid #f3f4f6;
-		border-top: 3px solid #667eea;
+		border: 3px solid var(--border);
+		border-top: 3px solid var(--accent-indigo);
 		border-radius: 50%;
 		width: 40px;
 		height: 40px;
@@ -304,21 +304,21 @@
 	}
 
 	.model-card {
-		background: #f9fafb;
-		border: 2px solid #e5e7eb;
+		background: var(--bg-input);
+		border: 2px solid var(--border);
 		border-radius: 12px;
 		padding: 1.5rem;
 		transition: all 0.2s;
 	}
 
 	.model-card.ready {
-		border-color: #bfdbfe;
-		background: #eff6ff;
+		border-color: rgba(var(--accent-blue-rgb), 0.4);
+		background: rgba(var(--accent-blue-rgb), 0.12);
 	}
 
 	.model-card.trained {
-		border-color: #86efac;
-		background: #f0fdf4;
+		border-color: rgba(var(--accent-green-rgb), 0.4);
+		background: rgba(var(--accent-green-rgb), 0.10);
 	}
 
 	.model-header {
@@ -334,7 +334,7 @@
 
 	.model-title h3 {
 		font-size: 1.1rem;
-		color: #111827;
+		color: var(--text-primary);
 		margin: 0 0 0.5rem 0;
 	}
 
@@ -351,23 +351,23 @@
 	}
 
 	.badge.trained {
-		background: #86efac;
-		color: #065f46;
+		background: rgba(var(--accent-green-rgb), 0.45);
+		color: var(--accent-green-strong);
 	}
 
 	.badge.ready {
-		background: #bfdbfe;
-		color: #1e40af;
+		background: rgba(var(--accent-blue-rgb), 0.45);
+		color: var(--accent-blue-dark);
 	}
 
 	.badge.locked {
-		background: #e5e7eb;
-		color: #6b7280;
+		background: var(--bg-hover);
+		color: var(--text-tertiary);
 	}
 
 	.badge.training {
-		background: #fef3c7;
-		color: #92400e;
+		background: rgba(var(--accent-orange-rgb), 0.12);
+		color: var(--accent-orange);
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -396,12 +396,12 @@
 	}
 
 	.label {
-		color: #6b7280;
+		color: var(--text-tertiary);
 	}
 
 	.value {
 		font-weight: 600;
-		color: #111827;
+		color: var(--text-primary);
 	}
 
 	.value.confidence {
@@ -409,8 +409,8 @@
 	}
 
 	.warning {
-		background: #fef3c7;
-		color: #92400e;
+		background: rgba(var(--accent-orange-rgb), 0.12);
+		color: var(--accent-orange);
 		padding: 0.75rem;
 		border-radius: 6px;
 		font-size: 0.85rem;
@@ -420,7 +420,7 @@
 	.train-btn {
 		width: 100%;
 		padding: 0.75rem;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		color: white;
 		border: none;
 		border-radius: 8px;
@@ -459,7 +459,7 @@
 	.train-btn.ghost {
 		background: transparent;
 		border: 2px dashed rgba(102, 126, 234, 0.6);
-		color: #4c1d95;
+		color: var(--accent-purple);
 	}
 
 	.train-btn.ghost:disabled {
@@ -469,7 +469,7 @@
 
 	.progress-bar {
 		height: 8px;
-		background: #e5e7eb;
+		background: var(--bg-hover);
 		border-radius: 4px;
 		overflow: hidden;
 		margin-bottom: 0.5rem;
@@ -477,20 +477,20 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(90deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		transition: width 0.5s ease;
 	}
 
 	.progress-label {
 		font-size: 0.85rem;
-		color: #6b7280;
+		color: var(--text-tertiary);
 		text-align: center;
 	}
 
 	.metrics-btn {
 		width: 100%;
 		padding: 0.75rem;
-		background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+		background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-green-strong) 100%);
 		color: white;
 		border: none;
 		border-radius: 8px;
@@ -535,7 +535,7 @@
 		top: 1rem;
 		right: 1rem;
 		float: right;
-		background: #ef4444;
+		background: var(--accent-red);
 		color: white;
 		border: none;
 		border-radius: 50%;
@@ -551,7 +551,7 @@
 	}
 
 	.close-btn:hover {
-		background: #dc2626;
+		background: var(--accent-red-strong);
 		transform: scale(1.1);
 	}
 </style>

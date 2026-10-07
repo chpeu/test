@@ -185,7 +185,7 @@
 	}
 
 	.error-message {
-		background: rgba(255, 68, 68, 0.1);
+		background: rgba(var(--accent-red-rgb), 0.1);
 		border: 1px solid var(--accent-red);
 		padding: 12px;
 		border-radius: 6px;
@@ -232,7 +232,7 @@
 		color: var(--text-primary);
 		padding: 10px 12px;
 		border-radius: 6px;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		font-size: 14px;
 		transition: all 0.3s ease;
 	}
@@ -243,7 +243,7 @@
 
 	.setting-item input[type='number']:focus {
 		border-color: var(--accent-green);
-		box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
+		box-shadow: 0 0 0 3px rgba(var(--accent-green-rgb), 0.1);
 	}
 
 	.hint {

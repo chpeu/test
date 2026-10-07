@@ -77,8 +77,8 @@ class TestFilters:
             return_reason=True
         )
         # Should reject if vol_spike < recalculated min_vol_ratio
-        # With atr_percent=0.5, min should be ~0.8
-        assert result is not None or vol_spike >= 0.4  # Allow pass if volume sufficient
+        # With atr_percent=0.5, min should be ~0.8 and vol_spike=0.5 → rejection (reason string)
+        assert result is not None  # vol_spike=0.5 < min recalculé (~0.8)
 
     def test_check_snr_filter_valid(self):
         """Test SNR filter with valid signal-to-noise ratio"""

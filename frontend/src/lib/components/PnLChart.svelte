@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Chart from 'chart.js/auto';
 	import { pnlChartData } from '$lib/stores/trades';
+	import { tokens, pnlColors, styleChart, watchTheme } from '$lib/themeColors';
 
 	let canvas;
 	let chart;
@@ -15,15 +16,15 @@
 				{
 					label: 'PnL Cumulatif (USDT)',
 					data: [],
-					borderColor: '#00ff88',
-					backgroundColor: 'rgba(0, 255, 136, 0.1)',
+					borderColor: null,
+					backgroundColor: null,
 					borderWidth: 3,
 					fill: true,
 					tension: 0.4,
 					pointRadius: 5,
 					pointHoverRadius: 8,
-					pointBackgroundColor: '#00ff88',
-					pointBorderColor: '#fff',
+					pointBackgroundColor: null,
+					pointBorderColor: null,
 					pointBorderWidth: 2
 				}
 			]
@@ -40,19 +41,19 @@
 					display: true,
 					position: 'top',
 					labels: {
-						color: '#fff',
+						color: null,
 						font: {
 							size: 12,
-							family: "'Courier New', monospace"
+							family: "ui-monospace, 'JetBrains Mono', monospace"
 						},
 						padding: 15
 					}
 				},
 				tooltip: {
-					backgroundColor: 'rgba(10, 14, 39, 0.9)',
-					titleColor: '#00ff88',
-					bodyColor: '#fff',
-					borderColor: '#00ff88',
+					backgroundColor: null,
+					titleColor: null,
+					bodyColor: null,
+					borderColor: null,
 					borderWidth: 1,
 					padding: 12,
 					displayColors: false,
@@ -79,13 +80,13 @@
 				y: {
 					beginAtZero: true,
 					grid: {
-						color: 'rgba(42, 58, 107, 0.3)'
+						color: null
 					},
 					ticks: {
-						color: '#888',
+						color: null,
 						font: {
 							size: 11,
-							family: "'Courier New', monospace"
+							family: "ui-monospace, 'JetBrains Mono', monospace"
 						},
 						callback: function (value) {
 							// 🔥 FIX: Formatage adaptatif pour les ticks
@@ -100,13 +101,13 @@
 				},
 				x: {
 					grid: {
-						color: 'rgba(42, 58, 107, 0.2)'
+						color: null
 					},
 					ticks: {
-						color: '#888',
+						color: null,
 						font: {
 							size: 10,
-							family: "'Courier New', monospace"
+							family: "ui-monospace, 'JetBrains Mono', monospace"
 						},
 						maxRotation: 45,
 						minRotation: 45
@@ -117,8 +118,18 @@
 	};
 
 	onMount(() => {
-		// Créer chart
+		// Créer chart avec les couleurs du thème courant
+		const t = tokens();
+		chartConfig.data.datasets[0] = { ...chartConfig.data.datasets[0], ...pnlColors(true), pointBorderColor: t.textPrimary };
 		chart = new Chart(canvas, chartConfig);
+		styleChart(chart);
+		// Bascule dark/light → recoloration immédiate
+		const unsubscribeTheme = watchTheme(() => {
+			if (!chart) return;
+			const last = chart.data.datasets[0].data.at(-1) || 0;
+			Object.assign(chart.data.datasets[0], pnlColors(last >= 0), { pointBorderColor: tokens().textPrimary });
+			styleChart(chart);
+		});
 
 		// Souscrire aux données
 		const unsubscribe = pnlChartData.subscribe((data) => {
@@ -150,22 +161,17 @@
 			chart.data.labels = data.labels;
 			chart.data.datasets[0].data = cumulativeData;
 
-			// Couleur dynamique (vert si positif, rouge si négatif)
+			// Couleur dynamique (vert si positif, rouge si négatif), selon le thème
 			const lastValue = cumulativeData[cumulativeData.length - 1] || 0;
-			if (lastValue >= 0) {
-				chart.data.datasets[0].borderColor = '#00ff88';
-				chart.data.datasets[0].backgroundColor = 'rgba(0, 255, 136, 0.1)';
-				chart.data.datasets[0].pointBackgroundColor = '#00ff88';
-			} else {
-				chart.data.datasets[0].borderColor = '#ff4444';
-				chart.data.datasets[0].backgroundColor = 'rgba(255, 68, 68, 0.1)';
-				chart.data.datasets[0].pointBackgroundColor = '#ff4444';
-			}
+			Object.assign(chart.data.datasets[0], pnlColors(lastValue >= 0), { pointBorderColor: tokens().textPrimary });
 
 			chart.update('none'); // Update sans animation pour performance
 		});
 
-		return unsubscribe;
+		return () => {
+			unsubscribe();
+			unsubscribeTheme();
+		};
 	});
 
 	onDestroy(() => {
@@ -187,10 +193,10 @@
 
 <style>
 	.pnl-chart-container {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.chart-header {
@@ -199,14 +205,14 @@
 
 	.chart-header h3 {
 		font-size: 18px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin-bottom: 5px;
 	}
 
 	.chart-info {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.chart-wrapper {

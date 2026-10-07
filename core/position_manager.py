@@ -2026,7 +2026,11 @@ class PositionManager:
         # Invariant FIXE: stocker le SL% configuré au moment de l'ouverture
         sl_percent_at_entry = None
         try:
-            sl_percent_at_entry = float(trading_params.get("sl_percent"))
+            # FIX F821: `trading_params` n'existe pas dans cette portée (NameError
+            # silencieusement avalé => invariant toujours None en base).
+            # La source effective est self.tpsl_config.fixed_sl_pct, renseignée
+            # plus haut dans open_position via get_effective_value("sl_percent").
+            sl_percent_at_entry = float(self.tpsl_config.fixed_sl_pct)
         except Exception:
             sl_percent_at_entry = None
 
@@ -3007,9 +3011,10 @@ class PositionManager:
                     if self.live_order_manager
                     else 1,
                     "tp_escalier_levels": len(levels_config) if levels_config else 0,
-                    "condition_types": getattr(setup, "condition_types", [])
-                    if "setup" in locals()
-                    else [],  # Ajouter conditions manquantes
+                    # FIX F821: `setup` n'est jamais dans locals() (le paramètre
+                    # s'appelle `condition_types`) => toujours []. Utiliser le
+                    # paramètre réel de open_position.
+                    "condition_types": condition_types or [],
                 }
                 # Appel async non-bloquant
                 try:

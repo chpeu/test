@@ -25,6 +25,11 @@ from collections import OrderedDict
 # 🔥 SPRINT 2.1: StateManager for centralized state management
 from core.state_manager import get_state_manager
 
+# FIX F821: TradeCursorError/ConfigurationError étaient utilisés dans des clauses
+# except sans jamais être importés -> NameError masquant l'exception d'origine
+# (middleware HTTP et inclusion des routers live/regime).
+from core.exceptions import TradeCursorError, ConfigurationError
+
 # FastAPI imports
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse

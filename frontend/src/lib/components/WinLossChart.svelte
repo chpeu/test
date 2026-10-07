@@ -1,6 +1,7 @@
 <script>
 	import { onMount, onDestroy } from 'svelte';
 	import Chart from 'chart.js/auto';
+	import { tokens, styleChart, watchTheme } from '$lib/themeColors';
 	import { stats } from '$lib/stores/stats';
 
 	let canvas;
@@ -14,8 +15,8 @@
 			datasets: [
 				{
 					data: [0, 0],
-					backgroundColor: ['#00ff88', '#ff4444'],
-					borderColor: ['#00cc6a', '#cc0000'],
+					backgroundColor: [],
+					borderColor: [],
 					borderWidth: 2,
 					hoverOffset: 10
 				}
@@ -29,7 +30,7 @@
 					display: true,
 					position: 'bottom',
 					labels: {
-						color: '#fff',
+						color: null,
 						font: {
 							size: 13,
 							family: "'Courier New', monospace"
@@ -40,10 +41,10 @@
 					}
 				},
 				tooltip: {
-					backgroundColor: 'rgba(10, 14, 39, 0.9)',
-					titleColor: '#00ff88',
-					bodyColor: '#fff',
-					borderColor: '#00ff88',
+					backgroundColor: null,
+					titleColor: null,
+					bodyColor: null,
+					borderColor: null,
 					borderWidth: 1,
 					padding: 12,
 					callbacks: {
@@ -63,6 +64,15 @@
 	onMount(() => {
 		// Créer chart
 		chart = new Chart(canvas, chartConfig);
+		const t0 = tokens();
+		chart.data.datasets[0].backgroundColor = [t0.green, t0.red];
+		styleChart(chart, { titleColor: t0.green, borderColor: t0.green });
+		const unsubscribeTheme = watchTheme(() => {
+			if (!chart) return;
+			const t = tokens();
+			chart.data.datasets[0].backgroundColor = [t.green, t.red];
+			styleChart(chart, { titleColor: t.green, borderColor: t.green });
+		});
 
 		// Souscrire aux stats
 		const unsubscribe = stats.subscribe((data) => {
@@ -73,7 +83,10 @@
 			chart.update('none');
 		});
 
-		return unsubscribe;
+		return () => {
+			unsubscribe();
+			unsubscribeTheme();
+		};
 	});
 
 	onDestroy(() => {
@@ -111,10 +124,10 @@
 
 <style>
 	.winloss-chart-container {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.chart-header {
@@ -124,14 +137,14 @@
 
 	.chart-header h3 {
 		font-size: 18px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin-bottom: 5px;
 	}
 
 	.chart-info {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.chart-wrapper {
@@ -151,20 +164,20 @@
 		text-align: center;
 		padding: 12px;
 		border-radius: 8px;
-		background: #0a0e27;
+		background: var(--bg-primary);
 		border: 2px solid;
 	}
 
 	.stat-item.win {
-		border-color: #00ff88;
+		border-color: var(--accent-green);
 	}
 
 	.stat-item.loss {
-		border-color: #ff4444;
+		border-color: var(--accent-red);
 	}
 
 	.stat-item.total {
-		border-color: #00aaff;
+		border-color: var(--accent-blue);
 	}
 
 	.stat-value {
@@ -174,20 +187,20 @@
 	}
 
 	.stat-item.win .stat-value {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.stat-item.loss .stat-value {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	.stat-item.total .stat-value {
-		color: #00aaff;
+		color: var(--accent-blue);
 	}
 
 	.stat-label {
 		font-size: 11px;
-		color: #888;
+		color: var(--text-secondary);
 		text-transform: uppercase;
 		font-weight: bold;
 	}

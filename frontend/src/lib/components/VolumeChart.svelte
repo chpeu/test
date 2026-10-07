@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Chart from 'chart.js/auto';
 	import { sortedTrades } from '$lib/stores/trades';
+	import { tokens, styleChart, watchTheme } from '$lib/themeColors';
 
 	let canvas;
 	let chart;
@@ -32,7 +33,7 @@
 					display: true,
 					position: 'top',
 					labels: {
-						color: '#fff',
+						color: null,
 						font: {
 							size: 12,
 							family: "'Courier New', monospace"
@@ -41,10 +42,10 @@
 					}
 				},
 				tooltip: {
-					backgroundColor: 'rgba(10, 14, 39, 0.9)',
-					titleColor: '#00ff88',
-					bodyColor: '#fff',
-					borderColor: '#00ff88',
+					backgroundColor: null,
+					titleColor: null,
+					bodyColor: null,
+					borderColor: null,
 					borderWidth: 1,
 					padding: 12,
 					callbacks: {
@@ -89,10 +90,10 @@
 				y: {
 					beginAtZero: true,
 					grid: {
-						color: 'rgba(42, 58, 107, 0.3)'
+						color: null
 					},
 					ticks: {
-						color: '#888',
+						color: null,
 						font: {
 							size: 11,
 							family: "'Courier New', monospace"
@@ -112,7 +113,7 @@
 						display: false
 					},
 					ticks: {
-						color: '#888',
+						color: null,
 						font: {
 							size: 10,
 							family: "'Courier New', monospace"
@@ -127,9 +128,26 @@
 
 	let lastTrades = [];
 
+	function paintVolumes() {
+		if (!chart || lastTrades.length === 0) return;
+		const t = tokens();
+		chart.data.datasets[0].backgroundColor = lastTrades.map((tr) =>
+			tr.net_pnl_usdt >= 0 ? `rgba(${t.greenRgb}, 0.7)` : `rgba(${t.redRgb}, 0.7)`
+		);
+		chart.data.datasets[0].borderColor = lastTrades.map((tr) =>
+			tr.net_pnl_usdt >= 0 ? t.green : t.red
+		);
+		chart.update('none');
+	}
+
 	onMount(() => {
 		// Créer chart
 		chart = new Chart(canvas, chartConfig);
+		styleChart(chart);
+		const unsubscribeTheme = watchTheme(() => {
+			styleChart(chart);
+			paintVolumes();
+		});
 
 		// Souscrire aux trades
 		const unsubscribe = sortedTrades.subscribe((trades) => {
@@ -142,24 +160,16 @@
 			const labels = lastTrades.map((t) => `${t.symbol} ${t.direction === 'LONG' ? '📈' : '📉'}`);
 			const sizes = lastTrades.map((t) => t.size || 0);
 
-			// Couleurs basées sur PnL
-			const bgColors = lastTrades.map((t) =>
-				t.net_pnl_usdt >= 0 ? 'rgba(0, 255, 136, 0.7)' : 'rgba(255, 68, 68, 0.7)'
-			);
-			const borderColors = lastTrades.map((t) =>
-				t.net_pnl_usdt >= 0 ? '#00ff88' : '#ff4444'
-			);
-
 			// Mettre à jour chart
 			chart.data.labels = labels;
 			chart.data.datasets[0].data = sizes;
-			chart.data.datasets[0].backgroundColor = bgColors;
-			chart.data.datasets[0].borderColor = borderColors;
-
-			chart.update('none');
+			paintVolumes();
 		});
 
-		return unsubscribe;
+		return () => {
+			unsubscribe();
+			unsubscribeTheme();
+		};
 	});
 
 	onDestroy(() => {
@@ -192,10 +202,10 @@
 
 <style>
 	.volume-chart-container {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.chart-header {
@@ -204,14 +214,14 @@
 
 	.chart-header h3 {
 		font-size: 18px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin-bottom: 5px;
 	}
 
 	.chart-info {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.chart-wrapper {
@@ -230,22 +240,22 @@
 
 	.chart-controls label {
 		font-size: 13px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.chart-controls select {
 		padding: 8px 12px;
-		background: #0a0e27;
-		color: #00ff88;
-		border: 2px solid #00ff88;
+		background: var(--bg-primary);
+		color: var(--accent-green);
+		border: 2px solid var(--accent-green);
 		border-radius: 6px;
 		font-size: 13px;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		cursor: pointer;
 	}
 
 	.chart-controls select:hover {
-		background: rgba(0, 255, 136, 0.1);
+		background: rgba(var(--accent-green-rgb), 0.1);
 	}
 
 	/* Mobile */

@@ -55,7 +55,7 @@
 	let remainingSeconds = 0;
 
 	// Couleurs selon l'état
-	$: statusColor = cbData.can_trade ? '#10b981' : '#ef4444';
+	$: statusColor = cbData.can_trade ? 'var(--accent-green-strong)' : 'var(--accent-red-strong)';
 	$: statusText = cbData.state === 'ACTIVE' ? 'ACTIF' : cbData.state === 'PAUSED' ? 'PAUSE' : 'ARRÊT';
 	$: statusIcon = cbData.can_trade ? '✅' : cbData.state === 'PAUSED' ? '⏸️' : '🛑';
 
@@ -192,7 +192,7 @@
 	class="cb-widget" 
 	class:paused={!cbData.can_trade}
 	class:disabled={!cbData.enabled}
-	style="border-color: {cbData.enabled ? statusColor : '#4b5563'}"
+	style="border-color: {cbData.enabled ? statusColor : 'var(--text-tertiary)'}"
 >
 	<div class="cb-header">
 		<span class="cb-icon">{cbData.enabled ? '🛑' : '⏸️'}</span>
@@ -291,7 +291,7 @@
 
 <style>
 	.cb-widget {
-		background: rgba(30, 39, 73, 0.8);
+		background: rgba(var(--bg-secondary-rgb), 0.8);
 		border: 2px solid;
 		border-radius: 10px;
 		padding: 12px 15px;
@@ -323,7 +323,7 @@
 	.cb-header h4 {
 		margin: 0;
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		font-weight: 500;
 		flex: 1;
 	}
@@ -363,50 +363,50 @@
 
 	.metric .label {
 		font-size: 10px;
-		color: #666;
+		color: var(--text-tertiary);
 		text-transform: uppercase;
 	}
 
 	.metric .value {
 		font-size: 14px;
 		font-weight: 600;
-		color: #fff;
-		font-family: 'Courier New', monospace;
+		color: var(--text-primary);
+		font-family: var(--font-ui);
 	}
 
 	.metric.warning .value {
-		color: #f59e0b;
+		color: var(--accent-orange);
 	}
 
 	.metric.critical .value {
-		color: #ef4444;
+		color: var(--accent-red);
 	}
 
 	.metric.positive .value {
-		color: #10b981;
+		color: var(--accent-green);
 	}
 
 	.value.boost.active {
-		color: #f59e0b;
+		color: var(--accent-orange);
 	}
 
 	.cb-stats {
 		display: flex;
 		gap: 12px;
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.stat strong {
-		color: #fff;
+		color: var(--text-primary);
 	}
 
 	.stat.win strong {
-		color: #10b981;
+		color: var(--accent-green);
 	}
 
 	.stat.loss strong {
-		color: #ef4444;
+		color: var(--accent-red);
 	}
 
 	.pause-info {
@@ -421,16 +421,16 @@
 
 	.pause-reason {
 		font-size: 12px;
-		color: #ef4444;
+		color: var(--accent-red);
 	}
 
 	.pause-countdown {
 		font-size: 11px;
-		color: #f59e0b;
+		color: var(--accent-orange);
 	}
 
 	.pause-countdown strong {
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		font-size: 13px;
 	}
 
@@ -444,19 +444,19 @@
 
 	.threshold-info {
 		font-size: 10px;
-		color: #666;
+		color: var(--text-tertiary);
 		cursor: help;
 	}
 
 	.error-msg {
 		font-size: 11px;
-		color: #f59e0b;
+		color: var(--accent-orange);
 	}
 
 	.reset-btn {
 		background: rgba(59, 130, 246, 0.15);
-		border: 1px solid #3b82f6;
-		color: #3b82f6;
+		border: 1px solid var(--accent-blue);
+		color: var(--accent-blue);
 		padding: 4px 10px;
 		border-radius: 5px;
 		font-size: 11px;
@@ -481,7 +481,7 @@
 
 	.disabled-badge {
 		background: rgba(239, 68, 68, 0.2);
-		color: #ef4444;
+		color: var(--accent-red);
 		padding: 2px 8px;
 		border-radius: 4px;
 		font-size: 10px;
@@ -497,12 +497,12 @@
 	.disabled-message p {
 		margin: 0 0 8px 0;
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.disabled-message .hint {
 		font-size: 10px;
-		color: #666;
+		color: var(--text-tertiary);
 		font-style: italic;
 		margin: 0;
 	}

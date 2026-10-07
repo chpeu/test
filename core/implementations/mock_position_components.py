@@ -5,6 +5,7 @@ Implémentations simulées pour isolation complète des tests
 
 import logging
 import uuid
+import random  # FIX F821: success_rate/slippage dans open_position/close_position
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 

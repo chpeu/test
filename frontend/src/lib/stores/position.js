@@ -68,8 +68,8 @@ export const activePosition = writable(null);
 
 // Computed: PnL color
 export const pnlColor = derived(activePosition, $pos => {
-	if (!$pos || $pos.pnl === undefined) return '#888';
-	return $pos.pnl >= 0 ? '#00ff88' : '#ff4444';
+	if (!$pos || $pos.pnl === undefined) return 'var(--text-secondary)';
+	return $pos.pnl >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
 });
 
 // Computed: SL distance (toujours positif, indique la distance en %)

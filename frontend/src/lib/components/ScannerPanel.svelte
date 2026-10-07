@@ -62,10 +62,10 @@
 
 <style>
 	.scanner-panel {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.scanner-header {
@@ -77,19 +77,19 @@
 
 	.scanner-header h3 {
 		font-size: 20px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin: 0;
 	}
 
 	.scan-status {
-		background: rgba(0, 170, 255, 0.2);
-		color: #00aaff;
+		background: rgba(var(--accent-blue-rgb), 0.2);
+		color: var(--accent-blue);
 		padding: 6px 14px;
 		border-radius: 12px;
 		font-size: 12px;
 		font-weight: bold;
-		border: 1px solid #00aaff;
+		border: 1px solid var(--accent-blue);
 	}
 
 	.pairs-grid {
@@ -101,8 +101,8 @@
 	}
 
 	.pair-card {
-		background: #0a0e27;
-		border: 1px solid #2a3a6b;
+		background: var(--bg-primary);
+		border: 1px solid var(--border);
 		border-radius: 14px;
 		padding: 5px 4px 5px 6px;
 		transition: all 0.3s;
@@ -118,13 +118,13 @@
 		left: 0;
 		width: 3px;
 		height: 100%;
-		background: linear-gradient(180deg, #00ff88 0%, #00cc6a 100%);
+		background: linear-gradient(180deg, var(--accent-green) 0%, var(--accent-green-strong) 100%);
 	}
 
 	.pair-card:hover {
 		transform: translateY(-2px);
-		border-color: #00ff88;
-		box-shadow: 0 2px 12px rgba(0, 255, 136, 0.3);
+		border-color: var(--accent-green);
+		box-shadow: 0 2px 12px rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.score-with-rank {
@@ -136,13 +136,13 @@
 	}
 
 	.pair-rank-inline {
-		background: rgba(0, 170, 255, 0.2);
-		color: #00aaff;
+		background: rgba(var(--accent-blue-rgb), 0.2);
+		color: var(--accent-blue);
 		padding: 1px 4px;
 		border-radius: 8px;
 		font-size: 7px;
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		line-height: 1.0;
 		flex-shrink: 0;
 	}
@@ -150,9 +150,9 @@
 	.pair-symbol {
 		font-size: 10px;
 		font-weight: bold;
-		color: #fff;
+		color: var(--text-primary);
 		margin-bottom: 5px;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		padding-left: 3px;
 		line-height: 1.1;
 	}
@@ -172,7 +172,7 @@
 
 	.metric-label {
 		font-size: 9px;
-		color: #888;
+		color: var(--text-secondary);
 		text-transform: uppercase;
 		font-weight: bold;
 		line-height: 1.1;
@@ -180,7 +180,7 @@
 
 	.metric-value {
 		font-size: 10px;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		font-weight: bold;
 		line-height: 1.2;
 		word-break: break-word;
@@ -189,28 +189,28 @@
 	}
 
 	.metric-value.score {
-		color: #00ff88;
+		color: var(--accent-green);
 		font-size: 11px;
 	}
 
 	.metric-value.price {
-		color: #00aaff;
+		color: var(--accent-blue);
 	}
 
 	.metric-value.vol {
-		color: #ffaa00;
+		color: var(--accent-orange);
 	}
 
 	.metric-value.spread {
-		color: #ff00ff;
+		color: var(--accent-purple);
 	}
 
 	.metric-value.depth {
-		color: #00ffff;
+		color: var(--accent-blue);
 	}
 
 	.metric-value.balance {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.no-pairs {
@@ -226,7 +226,7 @@
 
 	.no-pairs-text {
 		font-size: 14px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	/* Mobile */

@@ -15,7 +15,7 @@ from api.price_provider import get_price_provider
 from core.indicators import Indicators
 from config import TRADING_CONFIG, DEBUG_ENABLED, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
 from utils.logger import get_logger
-from utils.effective_config import get_effective_value  # 🔥 NOUVEAU
+from utils.effective_config import get_effective_value, get_effective_config  # 🔥 NOUVEAU (FIX F821: get_effective_config utilisé au snapshot des params de scan)
 
 # 🔥 SPRINT 1.2: Exception Handling System
 try:

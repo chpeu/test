@@ -226,7 +226,7 @@
 	}
 
 	.modal-content {
-		background: var(--bg-primary, #1a1a2e);
+		background: var(--bg-primary, var(--bg-secondary));
 		border-radius: 12px;
 		width: 90%;
 		max-width: 900px;
@@ -242,27 +242,27 @@
 		justify-content: space-between;
 		align-items: center;
 		padding: 1rem 1.5rem;
-		border-bottom: 1px solid var(--border-color, #333);
-		background: var(--bg-secondary, #16213e);
+		border-bottom: 1px solid var(--border-color, var(--border));
+		background: var(--bg-secondary, var(--bg-secondary));
 	}
 
 	.modal-header h2 {
 		margin: 0;
 		font-size: 1.25rem;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.close-btn {
 		background: none;
 		border: none;
 		font-size: 1.5rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		cursor: pointer;
 		padding: 0.25rem;
 	}
 
 	.close-btn:hover {
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.modal-body {
@@ -278,7 +278,7 @@
 		align-items: flex-end;
 		margin-bottom: 1.5rem;
 		padding: 1rem;
-		background: var(--bg-secondary, #16213e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 8px;
 	}
 
@@ -290,16 +290,16 @@
 
 	.param label {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 
 	.param input[type="number"] {
 		width: 80px;
 		padding: 0.5rem;
-		border: 1px solid var(--border-color, #333);
+		border: 1px solid var(--border-color, var(--border));
 		border-radius: 4px;
-		background: var(--bg-primary, #1a1a2e);
-		color: var(--text-primary, #fff);
+		background: var(--bg-primary, var(--bg-secondary));
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.param.checkbox {
@@ -312,12 +312,12 @@
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.85rem;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.run-btn {
 		padding: 0.5rem 1.5rem;
-		background: linear-gradient(135deg, #667eea, #764ba2);
+		background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
 		color: white;
 		border: none;
 		border-radius: 6px;
@@ -336,8 +336,8 @@
 	}
 
 	.error-box {
-		background: #fef2f2;
-		color: #dc2626;
+		background: rgba(var(--accent-red-rgb), 0.10);
+		color: var(--accent-red-strong);
 		padding: 1rem;
 		border-radius: 8px;
 		margin-bottom: 1rem;
@@ -351,7 +351,7 @@
 	}
 
 	.summary-card {
-		background: var(--bg-secondary, #16213e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		padding: 1rem;
 		border-radius: 8px;
 		text-align: center;
@@ -360,14 +360,14 @@
 	.summary-card .label {
 		display: block;
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		margin-bottom: 0.25rem;
 	}
 
 	.summary-card .value {
 		font-size: 1.25rem;
 		font-weight: 600;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.best-section {
@@ -377,7 +377,7 @@
 	.best-section h3 {
 		font-size: 1rem;
 		margin-bottom: 0.75rem;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.best-grid {
@@ -387,27 +387,27 @@
 	}
 
 	.best-card {
-		background: var(--bg-secondary, #16213e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		padding: 1rem;
 		border-radius: 8px;
-		border-left: 3px solid var(--border-color, #333);
+		border-left: 3px solid var(--border-color, var(--border));
 	}
 
 	.best-card.positive {
-		border-left-color: #10b981;
+		border-left-color: var(--accent-green);
 	}
 
 	.best-card .title {
 		display: block;
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		margin-bottom: 0.25rem;
 	}
 
 	.best-card .value {
 		font-size: 1rem;
 		font-weight: 600;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.table-section {
@@ -417,7 +417,7 @@
 	.table-section h3 {
 		font-size: 1rem;
 		margin-bottom: 0.75rem;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	.table-section summary h3 {
@@ -428,7 +428,7 @@
 	.table-wrapper {
 		overflow-x: auto;
 		border-radius: 8px;
-		border: 1px solid var(--border-color, #333);
+		border: 1px solid var(--border-color, var(--border));
 	}
 
 	table {
@@ -440,7 +440,7 @@
 	th, td {
 		padding: 0.5rem 0.75rem;
 		text-align: right;
-		border-bottom: 1px solid var(--border-color, #333);
+		border-bottom: 1px solid var(--border-color, var(--border));
 	}
 
 	th:first-child, td:first-child {
@@ -448,23 +448,23 @@
 	}
 
 	th {
-		background: var(--bg-secondary, #16213e);
-		color: var(--text-secondary, #888);
+		background: var(--bg-secondary, var(--bg-secondary));
+		color: var(--text-secondary, var(--text-secondary));
 		font-weight: 500;
 		font-size: 0.75rem;
 		text-transform: uppercase;
 	}
 
 	td {
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 
 	tr.positive td:last-child {
-		color: #10b981;
+		color: var(--accent-green);
 	}
 
 	tr.negative td:last-child {
-		color: #ef4444;
+		color: var(--accent-red);
 	}
 
 	details summary {

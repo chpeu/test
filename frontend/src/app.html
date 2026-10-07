@@ -1,19 +1,36 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-		<meta name="theme-color" content="#0a0e27" />
-		<meta name="description" content="Trade Cursor v7.0 - MEXC Smart Scalping Scanner" />
+		<meta name="theme-color" content="#0b0f1a" />
+		<meta name="description" content="Trade Cursor v7.0 — MEXC Smart Scalping Scanner" />
 
 		<!-- PWA -->
 		<link rel="manifest" href="/manifest.json" />
-		<!-- 🔥 FIX: Favicon optionnel pour éviter l'erreur URI invalide -->
 		<link rel="icon" href="/favicon.png" />
 		<link rel="apple-touch-icon" href="/favicon.png" />
 
 		<!-- Preconnect to backend -->
 		<link rel="preconnect" href="http://localhost:5000" />
+
+		<!-- Thème appliqué avant le premier paint (évite le flash clair/sombre) -->
+		<script>
+			(function () {
+				try {
+					var saved = localStorage.getItem('theme');
+					var theme =
+						saved ||
+						(window.matchMedia &&
+						window.matchMedia('(prefers-color-scheme: light)').matches
+							? 'light'
+							: 'dark');
+					document.documentElement.setAttribute('data-theme', theme);
+				} catch (e) {
+					document.documentElement.setAttribute('data-theme', 'dark');
+				}
+			})();
+		</script>
 
 		%sveltekit.head%
 	</head>

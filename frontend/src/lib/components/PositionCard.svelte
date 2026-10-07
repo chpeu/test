@@ -406,23 +406,23 @@
 	function eventColor(eventType) {
 		switch (eventType) {
 			case 'ENTRY':
-				return '#3b82f6';
+				return 'var(--accent-blue)';
 			case 'PARTIAL_TP':
-				return '#10b981';
+				return 'var(--accent-green-strong)';
 			case 'BE_TRIGGERED':
-				return '#00ff88';
+				return 'var(--accent-green)';
 			case 'TRAILING_ACTIVATED':
-				return '#f59e0b';
+				return 'var(--accent-orange)';
 			case 'TRAILING_SL_MOVED':
-				return '#f97316';
+				return 'var(--accent-orange)';
 			case 'TRAILING_MFE_TRIGGERED':
-				return '#a855f7';
+				return 'var(--accent-purple)';
 			case 'MAX_PNL_REACHED':
-				return '#22c55e';
+				return 'var(--accent-green)';
 			case 'MIN_PNL_REACHED':
-				return '#ef4444';
+				return 'var(--accent-red-strong)';
 			default:
-				return '#94a3b8';
+				return 'var(--text-secondary)';
 		}
 	}
 </script>
@@ -517,7 +517,7 @@
 			<div class="next-event-section tp-section">
 				<div class="next-event-header">
 					<span class="next-event-label">💰 Prochain TP</span>
-					<span class="next-event-type" style="color: {$activePosition.next_tp?.color || '#10b981'}">
+					<span class="next-event-type" style="color: {$activePosition.next_tp?.color || 'var(--accent-green-strong)'}">
 						{$activePosition.next_tp?.description || 'Take Profit'}
 					</span>
 				</div>
@@ -946,11 +946,11 @@
 
 <style>
 	.position-card {
-		background: linear-gradient(135deg, #1e2749 0%, #2a3a6b 100%);
+		background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--border) 100%);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #00ff88;
-		box-shadow: 0 4px 20px rgba(0, 255, 136, 0.2);
+		border: 2px solid var(--accent-green);
+		box-shadow: 0 4px 20px rgba(var(--accent-green-rgb), 0.2);
 	}
 
 	.position-header {
@@ -963,8 +963,8 @@
 	.symbol {
 		font-size: 24px;
 		font-weight: bold;
-		color: #00ff88;
-		text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+		color: var(--accent-green);
+		text-shadow: 0 0 20px rgba(var(--accent-green-rgb), 0.5);
 	}
 
 	.header-right {
@@ -986,48 +986,48 @@
 		border-radius: 6px;
 		font-size: 12px;
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.ml-badge {
 		background: rgba(138, 43, 226, 0.2);
-		color: #b388ff;
+		color: var(--accent-purple);
 		border: 1px solid rgba(138, 43, 226, 0.5);
 	}
 
 	.calib-badge {
-		background: rgba(0, 255, 136, 0.1);
-		color: #00ff88;
-		border: 1px solid rgba(0, 255, 136, 0.3);
+		background: rgba(var(--accent-green-rgb), 0.1);
+		color: var(--accent-green);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.sizing-badge {
 		background: rgba(64, 196, 255, 0.1);
-		color: #aaa;
+		color: var(--text-secondary);
 		border: 1px solid rgba(100, 100, 100, 0.5);
 	}
 
 	.sizing-badge.boost {
-		background: rgba(0, 255, 136, 0.15);
-		color: #00ff88;
-		border: 1px solid rgba(0, 255, 136, 0.4);
+		background: rgba(var(--accent-green-rgb), 0.15);
+		color: var(--accent-green);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.4);
 	}
 
 	.sizing-badge.reduce {
-		background: rgba(255, 170, 0, 0.15);
-		color: #ffaa00;
-		border: 1px solid rgba(255, 170, 0, 0.4);
+		background: rgba(var(--accent-orange-rgb), 0.15);
+		color: var(--accent-orange);
+		border: 1px solid rgba(var(--accent-orange-rgb), 0.4);
 	}
 
 	.leverage-badge {
 		background: rgba(255, 215, 0, 0.15);
-		color: #ffd700;
+		color: var(--accent-orange);
 		border: 1px solid rgba(255, 215, 0, 0.4);
 	}
 
 	.event-badge {
 		background: rgba(156, 163, 175, 0.15);
-		color: #94a3b8;
+		color: var(--text-secondary);
 		border: 1px solid rgba(156, 163, 175, 0.4);
 		max-width: 200px;
 		overflow: hidden;
@@ -1043,43 +1043,43 @@
 	}
 
 	.tp-sl-mode {
-		background: rgba(0, 170, 255, 0.15);
-		color: #00aaff;
+		background: rgba(var(--accent-blue-rgb), 0.15);
+		color: var(--accent-blue);
 		padding: 4px 12px;
 		border-radius: 6px;
 		font-size: 11px;
 		font-weight: bold;
-		border: 1px solid rgba(0, 170, 255, 0.3);
-		font-family: 'Courier New', monospace;
+		border: 1px solid rgba(var(--accent-blue-rgb), 0.3);
+		font-family: var(--font-ui);
 	}
 
 	.live-badge {
-		background: rgba(0, 255, 136, 0.1);
-		color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.1);
+		color: var(--accent-green);
 		padding: 4px 12px;
 		border-radius: 6px;
 		font-size: 11px;
 		font-weight: bold;
-		border: 1px solid rgba(0, 255, 136, 0.3);
-		font-family: 'Courier New', monospace;
+		border: 1px solid rgba(var(--accent-green-rgb), 0.3);
+		font-family: var(--font-ui);
 	}
 
 	.live-badge.stale {
-		background: rgba(255, 68, 68, 0.15);
-		color: #ff4444;
-		border: 1px solid rgba(255, 68, 68, 0.4);
+		background: rgba(var(--accent-red-rgb), 0.15);
+		color: var(--accent-red);
+		border: 1px solid rgba(var(--accent-red-rgb), 0.4);
 	}
 
 	.direction.long {
-		background: rgba(0, 255, 136, 0.2);
-		color: #00ff88;
-		border: 1px solid #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.2);
+		color: var(--accent-green);
+		border: 1px solid var(--accent-green);
 	}
 
 	.direction.short {
-		background: rgba(255, 68, 68, 0.2);
-		color: #ff4444;
-		border: 1px solid #ff4444;
+		background: rgba(var(--accent-red-rgb), 0.2);
+		color: var(--accent-red);
+		border: 1px solid var(--accent-red);
 	}
 
 	.pnl-section {
@@ -1106,16 +1106,16 @@
 	}
 
 	.price-box {
-		background: #0a0e27;
+		background: var(--bg-primary);
 		padding: 12px;
 		border-radius: 8px;
 		text-align: center;
-		border: 1px solid #2a3a6b;
+		border: 1px solid var(--border);
 	}
 
 	.price-label {
 		font-size: 11px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-bottom: 5px;
 		text-transform: uppercase;
 		font-weight: bold;
@@ -1124,15 +1124,15 @@
 	.price-value {
 		font-size: 14px;
 		font-weight: bold;
-		color: #00aaff;
+		color: var(--accent-blue);
 	}
 
 	.price-subvalue {
 		margin-top: 4px;
 		font-size: 12px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.tpsl-grid {
@@ -1150,15 +1150,15 @@
 	}
 
 	.telemetry-box {
-		background: #0a0e27;
+		background: var(--bg-primary);
 		padding: 12px;
 		border-radius: 8px;
-		border: 1px solid #2a3a6b;
+		border: 1px solid var(--border);
 	}
 
 	.telemetry-title {
 		font-size: 11px;
-		color: #00aaff;
+		color: var(--accent-blue);
 		margin-bottom: 10px;
 		text-transform: uppercase;
 		font-weight: bold;
@@ -1172,31 +1172,31 @@
 	padding: 8px 12px;
 	background: rgba(255, 255, 255, 0.03);
 	border-radius: 4px;
-	border-left: 3px solid rgba(0, 255, 136, 0.3);
+	border-left: 3px solid rgba(var(--accent-green-rgb), 0.3);
 	transition: all 0.2s ease;
 }
 
 .telemetry-row:hover {
 	background: rgba(255, 255, 255, 0.06);
-	border-left-color: rgba(0, 255, 136, 0.6);
+	border-left-color: rgba(var(--accent-green-rgb), 0.6);
 }
 
 	.telemetry-label {
 		font-size: 10px;
-		color: #888;
+		color: var(--text-secondary);
 		text-transform: uppercase;
 		font-weight: 500;
 	}
 
 	.telemetry-value {
-		color: #fff;
+		color: var(--text-primary);
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		text-align: right;
 	}
 
 	.telemetry-value.stale-text {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	.telemetry-progress {
@@ -1217,7 +1217,7 @@
 
 	.telemetry-progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #00aaff 0%, #00ff88 100%);
+		background: linear-gradient(90deg, var(--accent-blue) 0%, var(--accent-green) 100%);
 		border-radius: 8px;
 		transition: width 0.5s ease;
 	}
@@ -1231,15 +1231,15 @@
 	}
 
 	.telemetry-marker.be {
-		background: #00ff88;
+		background: var(--accent-green);
 	}
 
 	.telemetry-marker.trailing {
-		background: #ffaa00;
+		background: var(--accent-orange);
 	}
 
 	.telemetry-marker.mfe {
-		background: #b388ff;
+		background: var(--accent-purple);
 	}
 
 	.telemetry-progress-legend {
@@ -1247,8 +1247,8 @@
 		justify-content: space-between;
 		margin-top: 6px;
 		font-size: 10px;
-		color: #888;
-		font-family: 'Courier New', monospace;
+		color: var(--text-secondary);
+		font-family: var(--font-ui);
 	}
 
 	.event-row {
@@ -1257,7 +1257,7 @@
 		gap: 8px;
 		align-items: center;
 		font-size: 11px;
-		color: #bbb;
+		color: var(--text-secondary);
 		margin-top: 6px;
 		padding: 6px 8px;
 		border-radius: 4px;
@@ -1269,26 +1269,26 @@
 	}
 
 	.event-row.next-event {
-		background: rgba(0, 255, 136, 0.08);
-		border: 1px solid rgba(0, 255, 136, 0.2);
+		background: rgba(var(--accent-green-rgb), 0.08);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.2);
 		border-radius: 6px;
 		margin-bottom: 8px;
 		font-weight: 500;
 	}
 
 	.event-row.next-event .event-type {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.event-price {
-		color: #fff;
-		font-family: 'Courier New', monospace;
+		color: var(--text-primary);
+		font-family: var(--font-ui);
 		font-weight: bold;
 	}
 
 	.event-distance {
-		color: #00ff88;
-		font-family: 'Courier New', monospace;
+		color: var(--accent-green);
+		font-family: var(--font-ui);
 		font-weight: bold;
 		font-size: 12px;
 	}
@@ -1300,31 +1300,31 @@
 	}
 
 	.event-type {
-		color: #fff;
+		color: var(--text-primary);
 		font-weight: 700;
 	}
 
 	.event-time {
-		color: #888;
-		font-family: 'Courier New', monospace;
+		color: var(--text-secondary);
+		font-family: var(--font-ui);
 	}
 
 	.event-pnl {
-		color: #00ff88;
-		font-family: 'Courier New', monospace;
+		color: var(--accent-green);
+		font-family: var(--font-ui);
 	}
 
 	.event-detail {
 		margin-left: 14px;
 		margin-top: 4px;
 		font-size: 10px;
-		color: #999;
+		color: var(--text-secondary);
 	}
 
 	/* 🔥 NOUVEAU: Styles pour les sections TP et SL distinctes */
 	.next-event-section {
-		background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
-		border: 1px solid #2a3a6b;
+		background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+		border: 1px solid var(--border);
 		border-radius: 12px;
 		padding: 16px;
 		margin-bottom: 16px;
@@ -1340,13 +1340,13 @@
 	/* Section TP - thème vert/or */
 	.next-event-section.tp-section {
 		border-color: rgba(16, 185, 129, 0.3);
-		background: linear-gradient(135deg, #0a1f1a 0%, #1a2f2a 100%);
+		background: linear-gradient(135deg, rgba(var(--accent-green-rgb), 0.10) 0%, rgba(var(--accent-green-rgb), 0.12) 100%);
 	}
 
 	/* Section SL - thème rouge/or */
 	.next-event-section.sl-section {
 		border-color: rgba(239, 68, 68, 0.3);
-		background: linear-gradient(135deg, #1f0a0a 0%, #2f1a1a 100%);
+		background: linear-gradient(135deg, rgba(var(--accent-red-rgb), 0.10) 0%, rgba(var(--accent-red-rgb), 0.12) 100%);
 	}
 
 	.next-event-header {
@@ -1358,7 +1358,7 @@
 
 	.next-event-label {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 		text-transform: uppercase;
 		font-weight: bold;
 		letter-spacing: 0.5px;
@@ -1384,13 +1384,13 @@
 	.next-event-price {
 		font-size: 16px;
 		font-weight: bold;
-		color: #fff;
+		color: var(--text-primary);
 	}
 
 	.next-event-distance {
 		font-size: 14px;
-		color: #ccc;
-		font-family: 'Courier New', monospace;
+		color: var(--text-primary);
+		font-family: var(--font-ui);
 	}
 
 	.next-event-progress {
@@ -1411,31 +1411,31 @@
 	/* Barre TP - verte */
 	.next-event-progress-bar.tp-bar {
 		background-color: rgba(16, 185, 129, 0.2);
-		border-color: #10b981;
+		border-color: var(--accent-green);
 		box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
 	}
 
 	/* Barre SL - rouge */
 	.next-event-progress-bar.sl-bar {
 		background-color: rgba(239, 68, 68, 0.2);
-		border-color: #ef4444;
+		border-color: var(--accent-red);
 		box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
 	}
 
 	/* Styles pour les badges TP/SL existants */
 	.tpsl-box {
-		background: #0a0e27;
+		background: var(--bg-primary);
 		padding: 15px;
 		border-radius: 8px;
 		text-align: center;
 	}
 
 	.tpsl-box.tp {
-		border: 2px solid #00ff88;
+		border: 2px solid var(--accent-green);
 	}
 
 	.tpsl-box.sl {
-		border: 2px solid #ff4444;
+		border: 2px solid var(--accent-red);
 	}
 
 	.tpsl-label {
@@ -1445,17 +1445,17 @@
 	}
 
 	.tpsl-box.tp .tpsl-label {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.tpsl-box.sl .tpsl-label {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	.tpsl-price {
 		font-size: 18px;
 		font-weight: bold;
-		color: #fff;
+		color: var(--text-primary);
 		margin-bottom: 5px;
 	}
 
@@ -1465,11 +1465,11 @@
 	}
 
 	.tpsl-box.tp .tpsl-distance {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.tpsl-box.sl .tpsl-distance {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	.tpsl-info {
@@ -1483,7 +1483,7 @@
 
 	.tpsl-pnl, .tpsl-size {
 		font-size: 11px;
-		color: #888;
+		color: var(--text-secondary);
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -1491,15 +1491,15 @@
 
 	.tpsl-value {
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.tpsl-box.tp .tpsl-value {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.tpsl-box.sl .tpsl-value {
-		color: #ff4444;
+		color: var(--accent-red);
 	}
 
 	.force-full-tp-badge {
@@ -1508,9 +1508,9 @@
 		padding: 2px 6px;
 		font-size: 9px;
 		font-weight: bold;
-		color: #ffaa00;
-		background: rgba(255, 170, 0, 0.15);
-		border: 1px solid rgba(255, 170, 0, 0.3);
+		color: var(--accent-orange);
+		background: rgba(var(--accent-orange-rgb), 0.15);
+		border: 1px solid rgba(var(--accent-orange-rgb), 0.3);
 		border-radius: 4px;
 		cursor: help;
 	}
@@ -1518,38 +1518,38 @@
 	.tp-levels {
 		margin-top: 8px;
 		padding-top: 8px;
-		border-top: 1px solid rgba(0, 255, 136, 0.2);
+		border-top: 1px solid rgba(var(--accent-green-rgb), 0.2);
 	}
 
 	.tp-level {
 		font-size: 10px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-top: 4px;
 		padding: 2px 4px;
 		border-radius: 4px;
-		background: rgba(0, 255, 136, 0.05);
+		background: rgba(var(--accent-green-rgb), 0.05);
 	}
 
 	.tp-level.hit {
-		color: #00ff88;
-		background: rgba(0, 255, 136, 0.15);
+		color: var(--accent-green);
+		background: rgba(var(--accent-green-rgb), 0.15);
 		font-weight: bold;
 	}
 
 	.trailing-stop {
 		margin-top: 8px;
 		padding-top: 8px;
-		border-top: 1px solid rgba(255, 68, 68, 0.2);
+		border-top: 1px solid rgba(var(--accent-red-rgb), 0.2);
 		font-size: 11px;
-		color: #ffaa00;
+		color: var(--accent-orange);
 		font-weight: bold;
 	}
 
 	.position-info {
-		background: rgba(0, 170, 255, 0.1);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 		padding: 12px;
 		border-radius: 8px;
-		border: 1px solid #00aaff;
+		border: 1px solid var(--accent-blue);
 		margin-bottom: 15px;
 	}
 
@@ -1561,16 +1561,16 @@
 
 	.info-label {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 		text-transform: uppercase;
 		font-weight: bold;
 	}
 
 	.info-value {
 		font-size: 14px;
-		color: #00aaff;
+		color: var(--accent-blue);
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.duration {
@@ -1580,49 +1580,49 @@
 		gap: 8px;
 		margin: 15px 0;
 		padding: 10px;
-		background: rgba(42, 58, 107, 0.3);
+		background: rgba(var(--border-rgb), 0.3);
 		border-radius: 8px;
 		font-size: 14px;
 	}
 
 	.duration-label {
-		color: #888;
+		color: var(--text-secondary);
 		font-weight: 500;
 	}
 
 	.duration-value {
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		font-size: 16px;
 	}
 
 	.signals {
-		background: rgba(0, 170, 255, 0.1);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 		padding: 12px;
 		border-radius: 8px;
-		border: 1px solid #00aaff;
+		border: 1px solid var(--accent-blue);
 	}
 
 	.signals-label {
 		font-size: 11px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-bottom: 5px;
 		text-transform: uppercase;
 	}
 
 	.signals-list {
 		font-size: 12px;
-		color: #00aaff;
+		color: var(--accent-blue);
 		line-height: 1.6;
 	}
 
 	.no-position {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 40px 20px;
 		text-align: center;
-		border: 2px dashed #2a3a6b;
+		border: 2px dashed var(--border);
 	}
 
 	.no-position-icon {
@@ -1632,19 +1632,19 @@
 
 	.no-position-text {
 		font-size: 16px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	/* 🔥 FIX: Styles pour le bouton de clôture */
 	.close-position-section {
 		margin-top: 20px;
 		padding-top: 20px;
-		border-top: 2px solid #2a3a6b;
+		border-top: 2px solid var(--border);
 		text-align: center;
 	}
 
 	.close-position-btn {
-		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		background: linear-gradient(135deg, var(--accent-red) 0%, var(--accent-red-strong) 100%);
 		color: white;
 		border: none;
 		padding: 12px 24px;
@@ -1655,12 +1655,12 @@
 		transition: all 0.3s;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
-		box-shadow: 0 4px 15px rgba(255, 68, 68, 0.3);
+		box-shadow: 0 4px 15px rgba(var(--accent-red-rgb), 0.3);
 	}
 
 	.close-position-btn:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 6px 20px rgba(255, 68, 68, 0.5);
+		box-shadow: 0 6px 20px rgba(var(--accent-red-rgb), 0.5);
 	}
 
 	.close-position-btn:active {

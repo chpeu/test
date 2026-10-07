@@ -112,15 +112,15 @@
 <style>
 	.history-panel {
 		padding: 1.5rem;
-		background: var(--bg-secondary, #1a1a2e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 12px;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.panel-header {
 		margin-bottom: 1.5rem;
 		padding-bottom: 1rem;
-		border-bottom: 1px solid var(--border-color, #333);
+		border-bottom: 1px solid var(--border-color, var(--border));
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -133,27 +133,27 @@
 	}
 	
 	.header-icon {
-		color: var(--accent-blue, #4a9eff);
+		color: var(--accent-blue, var(--accent-blue));
 	}
 	
 	h2 {
 		margin: 0;
 		font-size: 1.5rem;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.subtitle {
 		margin: 0.25rem 0 0 0;
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.btn-refresh {
 		padding: 0.5rem 1rem;
-		background: var(--bg-tertiary, #252540);
-		border: 1px solid var(--border-color, #333);
+		background: var(--bg-tertiary, var(--bg-tertiary));
+		border: 1px solid var(--border-color, var(--border));
 		border-radius: 6px;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		cursor: pointer;
 		display: flex;
 		align-items: center;
@@ -162,8 +162,8 @@
 	}
 	
 	.btn-refresh:hover {
-		background: var(--bg-hover, #2a2a50);
-		border-color: var(--accent-blue, #4a9eff);
+		background: var(--bg-hover);
+		border-color: var(--accent-blue, var(--accent-blue));
 	}
 	
 	.loading {
@@ -178,8 +178,8 @@
 	.spinner {
 		width: 40px;
 		height: 40px;
-		border: 3px solid var(--border-color, #333);
-		border-top-color: var(--accent-blue, #4a9eff);
+		border: 3px solid var(--border-color, var(--border));
+		border-top-color: var(--accent-blue, var(--accent-blue));
 		border-radius: 50%;
 		animation: spin 1s linear infinite;
 	}
@@ -197,7 +197,7 @@
 	
 	.stat-item {
 		padding: 1rem;
-		background: var(--bg-tertiary, #252540);
+		background: var(--bg-tertiary, var(--bg-tertiary));
 		border-radius: 8px;
 		display: flex;
 		flex-direction: column;
@@ -206,7 +206,7 @@
 	
 	.stat-label {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		text-transform: uppercase;
 		font-weight: 600;
 	}
@@ -214,19 +214,19 @@
 	.stat-value {
 		font-size: 1.5rem;
 		font-weight: 700;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.stat-value.success {
-		color: var(--accent-green, #00ff88);
+		color: var(--accent-green, var(--accent-green));
 	}
 	
 	.stat-value.muted {
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.stat-value.highlight {
-		color: var(--accent-yellow, #ffd700);
+		color: var(--accent-yellow, var(--accent-orange));
 	}
 	
 	.best-trial-section {
@@ -236,13 +236,13 @@
 	.best-trial-section h3 {
 		margin: 0 0 1rem 0;
 		font-size: 1.125rem;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.best-trial-card {
 		padding: 1.25rem;
-		background: var(--bg-tertiary, #252540);
-		border: 2px solid var(--accent-yellow, #ffd700);
+		background: var(--bg-tertiary, var(--bg-tertiary));
+		border: 2px solid var(--accent-yellow, var(--accent-orange));
 		border-radius: 8px;
 	}
 	
@@ -260,7 +260,7 @@
 	
 	.info-label {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		text-transform: uppercase;
 		font-weight: 600;
 	}
@@ -268,12 +268,12 @@
 	.info-value {
 		font-size: 1.25rem;
 		font-weight: 700;
-		color: var(--text-primary, #e0e0e0);
-		font-family: 'Courier New', monospace;
+		color: var(--text-primary, var(--text-primary));
+		font-family: var(--font-ui);
 	}
 	
 	.info-value.highlight {
-		color: var(--accent-yellow, #ffd700);
+		color: var(--accent-yellow, var(--accent-orange));
 	}
 	
 	.trials-list {
@@ -284,33 +284,33 @@
 	
 	.trial-card {
 		padding: 1rem;
-		background: var(--bg-tertiary, #252540);
-		border: 1px solid var(--border-color, #333);
+		background: var(--bg-tertiary, var(--bg-tertiary));
+		border: 1px solid var(--border-color, var(--border));
 		border-radius: 8px;
 		cursor: pointer;
 		transition: all 0.2s;
 	}
 	
 	.trial-card:hover {
-		border-color: var(--accent-blue, #4a9eff);
+		border-color: var(--accent-blue, var(--accent-blue));
 		transform: translateX(4px);
 	}
 	
 	.trial-card.selected {
-		border-color: var(--accent-blue, #4a9eff);
-		background: var(--bg-hover, #2a2a50);
+		border-color: var(--accent-blue, var(--accent-blue));
+		background: var(--bg-hover);
 	}
 	
 	.trial-card.gold {
-		border-left: 3px solid #ffd700;
+		border-left: 3px solid var(--accent-orange);
 	}
 	
 	.trial-card.silver {
-		border-left: 3px solid #c0c0c0;
+		border-left: 3px solid var(--border-strong);
 	}
 	
 	.trial-card.bronze {
-		border-left: 3px solid #cd7f32;
+		border-left: 3px solid var(--accent-orange);
 	}
 	
 	.trial-header {
@@ -328,21 +328,21 @@
 	}
 	
 	.gold-icon {
-		color: #ffd700;
+		color: var(--accent-orange);
 	}
 	
 	.silver-icon {
-		color: #c0c0c0;
+		color: var(--text-secondary);
 	}
 	
 	.bronze-icon {
-		color: #cd7f32;
+		color: var(--accent-orange);
 	}
 	
 	.rank-number {
 		font-size: 1.125rem;
 		font-weight: 700;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.trial-info {
@@ -353,7 +353,7 @@
 	
 	.trial-number {
 		font-weight: 600;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		display: flex;
 		align-items: center;
 		gap: 0.25rem;
@@ -361,7 +361,7 @@
 	
 	.trial-date {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		display: flex;
 		align-items: center;
 		gap: 0.25rem;
@@ -370,20 +370,20 @@
 	.trial-score {
 		font-size: 1.25rem;
 		font-weight: 700;
-		color: var(--accent-green, #00ff88);
-		font-family: 'Courier New', monospace;
+		color: var(--accent-green, var(--accent-green));
+		font-family: var(--font-ui);
 	}
 	
 	.trial-details {
 		margin-top: 1rem;
 		padding-top: 1rem;
-		border-top: 1px solid var(--border-color, #333);
+		border-top: 1px solid var(--border-color, var(--border));
 	}
 	
 	h4 {
 		margin: 0 0 0.75rem 0;
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		text-transform: uppercase;
 	}
 	
@@ -395,7 +395,7 @@
 	
 	.param-row {
 		padding: 0.5rem;
-		background: var(--bg-input, #1a1a2e);
+		background: var(--bg-input, var(--bg-secondary));
 		border-radius: 4px;
 		display: flex;
 		justify-content: space-between;
@@ -404,20 +404,20 @@
 	
 	.param-key {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.param-value {
 		font-size: 0.875rem;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		font-weight: 600;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 	
 	.controls {
 		margin-top: 1.5rem;
 		padding-top: 1rem;
-		border-top: 1px solid var(--border-color, #333);
+		border-top: 1px solid var(--border-color, var(--border));
 		display: flex;
 		justify-content: center;
 	}
@@ -427,15 +427,15 @@
 		align-items: center;
 		gap: 0.5rem;
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	select {
 		padding: 0.5rem;
-		background: var(--bg-input, #1a1a2e);
-		border: 1px solid var(--border-color, #333);
+		background: var(--bg-input, var(--bg-secondary));
+		border: 1px solid var(--border-color, var(--border));
 		border-radius: 4px;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		cursor: pointer;
 	}
 	
@@ -446,7 +446,7 @@
 		justify-content: center;
 		padding: 3rem;
 		text-align: center;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.empty-icon {
@@ -456,7 +456,7 @@
 	
 	.empty-state h3 {
 		margin: 0.5rem 0;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.empty-state p {

@@ -4,8 +4,8 @@
   "description": "MEXC Smart Scalping Scanner",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0e27",
-  "theme_color": "#00ff88",
+  "background_color": "#0b0f1a",
+  "theme_color": "#34d399",
   "icons": [
     {
       "src": "/favicon.png",

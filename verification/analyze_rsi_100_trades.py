@@ -23,6 +23,46 @@ def run_sql(query):
         return []
     return [line.split('|') for line in result.stdout.strip().split('\n') if line]
 
+
+import re as _re
+
+_NUM_RE = _re.compile(r'^-?\d+(\.\d+)?$')
+
+
+def _coerce(cell):
+    """psql renvoie des chaînes : convertir les nombres pour les comparaisons."""
+    return float(cell) if _NUM_RE.match(cell or '') else cell
+
+
+class _PsqlCursor:
+    """Curseur minimaliste adossé à psql (pas de dépendance psycopg)."""
+
+    def __init__(self):
+        self._rows = []
+
+    def execute(self, query, params=None):
+        if params:
+            def lit(p):
+                return "'%s'" % str(p).replace("'", "''") if isinstance(p, str) else str(p)
+            args = params if isinstance(params, tuple) else (params,)
+            query = query % tuple(lit(p) for p in args)
+        self._rows = [[_coerce(c) for c in row] for row in run_sql(query)]
+
+    def fetchall(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+
+class _PsqlConn:
+    def close(self):
+        pass
+
+
+cur = _PsqlCursor()
+conn = _PsqlConn()
+
 print("=" * 80)
 print("ANALYSE RSI DES 100 DERNIERS TRADES")
 print("=" * 80)

@@ -436,10 +436,10 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 <style>
 	.notification-settings {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.settings-header {
@@ -461,7 +461,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.title h3 {
 		font-size: 20px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 	}
 
@@ -470,10 +470,10 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		align-items: center;
 		gap: 8px;
 		padding: 10px 20px;
-		background: #0a0e27;
-		border: 2px solid #2a3a6b;
+		background: var(--bg-primary);
+		border: 2px solid var(--border);
 		border-radius: 8px;
-		color: #fff;
+		color: var(--text-primary);
 		font-size: 14px;
 		font-weight: bold;
 		cursor: pointer;
@@ -481,9 +481,9 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	}
 
 	.toggle-btn.active {
-		background: rgba(0, 255, 136, 0.1);
-		border-color: #00ff88;
-		color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.1);
+		border-color: var(--accent-green);
+		color: var(--accent-green);
 	}
 
 	.toggle-btn:hover {
@@ -501,7 +501,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.info {
 		font-size: 14px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-bottom: 15px;
 	}
 
@@ -515,9 +515,9 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		font-size: 14px;
 		padding: 8px;
 		margin: 5px 0;
-		background: rgba(0, 170, 255, 0.1);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 		border-radius: 6px;
-		border: 1px solid #00aaff;
+		border: 1px solid var(--accent-blue);
 	}
 
 	.request-btn {
@@ -525,20 +525,20 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		align-items: center;
 		gap: 10px;
 		padding: 15px 30px;
-		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
-		color: #0a0e27;
+		background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-green-strong) 100%);
+		color: var(--bg-primary);
 		border: none;
 		border-radius: 10px;
 		font-size: 16px;
 		font-weight: bold;
 		cursor: pointer;
 		transition: all 0.3s;
-		box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+		box-shadow: 0 4px 15px rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.request-btn:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+		box-shadow: 0 6px 20px rgba(var(--accent-green-rgb), 0.4);
 	}
 
 	.btn-icon {
@@ -547,21 +547,21 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.permission-denied {
 		padding: 20px;
-		background: rgba(255, 68, 68, 0.1);
+		background: rgba(var(--accent-red-rgb), 0.1);
 		border-radius: 8px;
-		border: 2px solid #ff4444;
+		border: 2px solid var(--accent-red);
 	}
 
 	.warning {
 		font-size: 16px;
 		font-weight: bold;
-		color: #ff4444;
+		color: var(--accent-red);
 		margin-bottom: 15px;
 	}
 
 	.help {
 		font-size: 14px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-bottom: 15px;
 	}
 
@@ -573,7 +573,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.steps li {
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		margin: 8px 0;
 	}
 
@@ -583,7 +583,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.description {
 		font-size: 14px;
-		color: #888;
+		color: var(--text-secondary);
 		margin-bottom: 20px;
 		text-align: center;
 	}
@@ -595,31 +595,31 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	}
 
 	.type-card {
-		background: #0a0e27;
+		background: var(--bg-primary);
 		padding: 20px;
 		border-radius: 10px;
 		text-align: center;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 		transition: all 0.3s;
 		opacity: 0.6;
 	}
 
 	.type-card.active {
 		opacity: 1;
-		border-color: rgba(0, 255, 136, 0.5);
+		border-color: rgba(var(--accent-green-rgb), 0.5);
 	}
 
 	.type-card:hover {
-		border-color: #00ff88;
+		border-color: var(--accent-green);
 		transform: translateY(-2px);
 	}
 
 	.notification-note {
 		margin-top: 20px;
 		padding: 15px;
-		background: rgba(0, 170, 255, 0.1);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 		border-radius: 8px;
-		border: 1px solid rgba(0, 170, 255, 0.3);
+		border: 1px solid rgba(var(--accent-blue-rgb), 0.3);
 		display: flex;
 		gap: 12px;
 		align-items: flex-start;
@@ -632,12 +632,12 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.note-text {
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		line-height: 1.6;
 	}
 
 	.note-text strong {
-		color: #00aaff;
+		color: var(--accent-blue);
 	}
 
 	.type-icon {
@@ -648,13 +648,13 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	.type-name {
 		font-size: 14px;
 		font-weight: bold;
-		color: #00ff88;
+		color: var(--accent-green);
 		margin-bottom: 5px;
 	}
 
 	.type-desc {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	/* 🔥 FIX: Styles pour les systèmes de notifications séparés */
@@ -666,15 +666,15 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	}
 
 	.system-section {
-		background: #0a0e27;
+		background: var(--bg-primary);
 		padding: 20px;
 		border-radius: 10px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.system-title {
 		font-size: 16px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin-bottom: 15px;
 		text-transform: uppercase;
@@ -683,14 +683,14 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.telegram-config {
 		padding: 15px;
-		background: rgba(0, 170, 255, 0.05);
+		background: rgba(var(--accent-blue-rgb), 0.05);
 		border-radius: 8px;
-		border: 1px solid rgba(0, 170, 255, 0.3);
+		border: 1px solid rgba(var(--accent-blue-rgb), 0.3);
 	}
 
 	.telegram-info {
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		margin-bottom: 15px;
 		line-height: 1.6;
 	}
@@ -713,29 +713,29 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.telegram-steps li {
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		margin: 10px 0;
 		line-height: 1.6;
 	}
 
 	.telegram-steps code {
-		color: #00aaff;
+		color: var(--accent-blue);
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
-		background: rgba(0, 170, 255, 0.1);
+		font-family: var(--font-ui);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 		padding: 2px 6px;
 		border-radius: 4px;
 	}
 
 	.env-example {
-		background: #0a0e27;
-		border: 1px solid #2a3a6b;
+		background: var(--bg-primary);
+		border: 1px solid var(--border);
 		border-radius: 6px;
 		padding: 12px;
 		margin: 10px 0;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		font-size: 12px;
-		color: #00ff88;
+		color: var(--accent-green);
 		overflow-x: auto;
 		white-space: pre;
 	}
@@ -743,42 +743,42 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	.telegram-security {
 		margin-top: 15px;
 		padding: 12px;
-		background: rgba(0, 255, 136, 0.1);
+		background: rgba(var(--accent-green-rgb), 0.1);
 		border-radius: 6px;
-		border: 1px solid rgba(0, 255, 136, 0.3);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.3);
 		font-size: 12px;
-		color: #00ff88;
+		color: var(--accent-green);
 		line-height: 1.6;
 	}
 
 	.telegram-security strong {
-		color: #00ff88;
+		color: var(--accent-green);
 	}
 
 	.telegram-enable-info {
 		margin-bottom: 15px;
 		padding: 12px;
-		background: rgba(0, 170, 255, 0.1);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 		border-radius: 6px;
-		border: 1px solid rgba(0, 170, 255, 0.3);
+		border: 1px solid rgba(var(--accent-blue-rgb), 0.3);
 	}
 
 	.telegram-enable-info .info-text {
 		font-size: 12px;
-		color: #aaa;
+		color: var(--text-secondary);
 		line-height: 1.6;
 		margin: 0;
 	}
 
 	.telegram-enable-info .info-text strong {
-		color: #00aaff;
+		color: var(--accent-blue);
 	}
 
 	.telegram-enable-info .info-text code {
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
-		font-family: 'Courier New', monospace;
-		background: rgba(0, 255, 136, 0.1);
+		font-family: var(--font-ui);
+		background: rgba(var(--accent-green-rgb), 0.1);
 		padding: 2px 6px;
 		border-radius: 4px;
 	}
@@ -789,20 +789,20 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		gap: 10px;
 		margin-top: 15px;
 		padding: 10px;
-		background: rgba(0, 255, 136, 0.1);
+		background: rgba(var(--accent-green-rgb), 0.1);
 		border-radius: 6px;
-		border: 1px solid rgba(0, 255, 136, 0.3);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.status-label {
 		font-size: 13px;
-		color: #888;
+		color: var(--text-secondary);
 		font-weight: bold;
 	}
 
 	.status-value {
 		font-size: 13px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 	}
 
@@ -842,7 +842,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background-color: #2a3a6b;
+		background-color: var(--border);
 		transition: 0.3s;
 		border-radius: 26px;
 	}
@@ -854,18 +854,18 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		width: 20px;
 		left: 3px;
 		bottom: 3px;
-		background-color: #888;
+		background-color: var(--text-secondary);
 		transition: 0.3s;
 		border-radius: 50%;
 	}
 
 	.toggle-switch input:checked + .toggle-slider {
-		background-color: rgba(0, 255, 136, 0.3);
+		background-color: rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.toggle-switch input:checked + .toggle-slider:before {
 		transform: translateX(24px);
-		background-color: #00ff88;
+		background-color: var(--accent-green);
 	}
 
 	.toggle-switch input:disabled + .toggle-slider {
@@ -875,7 +875,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.toggle-label {
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		font-weight: bold;
 	}
 
@@ -888,8 +888,8 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		align-items: center;
 		gap: 8px;
 		padding: 10px 20px;
-		background: linear-gradient(135deg, #00aaff 0%, #0088cc 100%);
-		color: #fff;
+		background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-blue) 100%);
+		color: var(--text-primary);
 		border: none;
 		border-radius: 8px;
 		font-size: 14px;
@@ -900,7 +900,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 
 	.test-btn:hover:not(:disabled) {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 15px rgba(0, 170, 255, 0.3);
+		box-shadow: 0 4px 15px rgba(var(--accent-blue-rgb), 0.3);
 	}
 
 	.test-btn:disabled {
@@ -911,14 +911,14 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	.telegram-notify-types {
 		margin-top: 20px;
 		padding: 15px;
-		background: rgba(0, 170, 255, 0.05);
+		background: rgba(var(--accent-blue-rgb), 0.05);
 		border-radius: 8px;
-		border: 1px solid rgba(0, 170, 255, 0.2);
+		border: 1px solid rgba(var(--accent-blue-rgb), 0.2);
 	}
 
 	.notify-types-title {
 		font-size: 14px;
-		color: #00aaff;
+		color: var(--accent-blue);
 		font-weight: bold;
 		margin-bottom: 15px;
 	}
@@ -935,17 +935,17 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		align-items: center;
 		gap: 12px;
 		padding: 12px 15px;
-		background: #0a0e27;
+		background: var(--bg-primary);
 		border-radius: 8px;
-		border: 1px solid #2a3a6b;
+		border: 1px solid var(--border);
 		cursor: pointer;
 		transition: all 0.2s;
 		-webkit-tap-highlight-color: transparent;
 	}
 
 	.notify-type-item:hover {
-		border-color: #00aaff;
-		background: rgba(0, 170, 255, 0.1);
+		border-color: var(--accent-blue);
+		background: rgba(var(--accent-blue-rgb), 0.1);
 	}
 
 	.notify-type-item:active {
@@ -970,13 +970,13 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		height: 28px !important;
 		min-width: 28px !important;
 		min-height: 28px !important;
-		border: 3px solid #00aaff !important;
+		border: 3px solid var(--accent-blue) !important;
 		border-radius: 6px !important;
 		background-color: transparent !important;
 		flex-shrink: 0 !important;
 		font-size: 18px !important;
 		font-weight: bold !important;
-		color: #0a0e27 !important;
+		color: var(--bg-primary) !important;
 		line-height: 1 !important;
 		-webkit-appearance: none !important;
 		-moz-appearance: none !important;
@@ -985,13 +985,13 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 	}
 
 	.ios-checkbox.checked {
-		background-color: #00ff88 !important;
-		border-color: #00ff88 !important;
+		background-color: var(--accent-green) !important;
+		border-color: var(--accent-green) !important;
 	}
 
 	.notify-type-label {
 		font-size: 14px;
-		color: #ddd;
+		color: var(--text-primary);
 		user-select: none;
 		-webkit-user-select: none;
 	}

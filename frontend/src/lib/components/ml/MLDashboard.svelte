@@ -110,7 +110,7 @@
 	.ml-header h1 {
 		font-size: 2rem;
 		margin-bottom: 0.5rem;
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 	}
@@ -118,7 +118,7 @@
 	.ev-analysis-btn {
 		margin-top: 1rem;
 		padding: 0.6rem 1.2rem;
-		background: linear-gradient(135deg, #667eea, #764ba2);
+		background: linear-gradient(135deg, var(--accent-indigo), var(--accent-purple));
 		color: white;
 		border: none;
 		border-radius: 8px;
@@ -134,7 +134,7 @@
 	}
 
 	.subtitle {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.95rem;
 	}
 
@@ -144,8 +144,8 @@
 	}
 
 	.spinner {
-		border: 4px solid #f3f4f6;
-		border-top: 4px solid #667eea;
+		border: 4px solid var(--border);
+		border-top: 4px solid var(--accent-indigo);
 		border-radius: 50%;
 		width: 50px;
 		height: 50px;
@@ -163,15 +163,15 @@
 	}
 
 	.error-card {
-		background: #fef2f2;
-		border: 1px solid #fecaca;
+		background: rgba(var(--accent-red-rgb), 0.10);
+		border: 1px solid rgba(var(--accent-red-rgb), 0.4);
 		border-radius: 8px;
 		padding: 1.5rem;
 		text-align: center;
 	}
 
 	.error-card h3 {
-		color: #dc2626;
+		color: var(--accent-red-strong);
 		margin-bottom: 0.5rem;
 	}
 
@@ -188,17 +188,17 @@
 	.coming-soon {
 		text-align: center;
 		padding: 4rem 2rem;
-		background: #f9fafb;
+		background: var(--bg-input);
 		border-radius: 12px;
 	}
 
 	.coming-soon h3 {
 		font-size: 1.5rem;
 		margin-bottom: 0.5rem;
-		color: #374151;
+		color: var(--text-primary);
 	}
 
 	.coming-soon p {
-		color: #6b7280;
+		color: var(--text-tertiary);
 	}
 </style>

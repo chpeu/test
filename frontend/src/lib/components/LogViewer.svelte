@@ -139,20 +139,20 @@
 	}
 
 	function getLogColor(level) {
-		// 🔥 FIX: Couleurs identiques à la console backend (ColoredFormatter dans utils/logger.py)
+		// Tokens CSS : les logs s'adaptent au thème (rendu via styles inline)
 		switch (level) {
 			case 'ERROR':
-				return '#ff4444'; // Rouge (#ff4444)
+				return 'var(--accent-red)';
 			case 'CRITICAL':
-				return '#ff6666'; // Rouge clair (#ff6666)
+				return 'var(--accent-red-strong)';
 			case 'WARNING':
-				return '#ffaa00'; // Jaune (#ffaa00)
+				return 'var(--accent-orange)';
 			case 'INFO':
-				return '#00ff88'; // Vert (#00ff88)
+				return 'var(--accent-green)';
 			case 'DEBUG':
-				return '#00aaff'; // Cyan (#00aaff)
+				return 'var(--accent-blue)';
 			default:
-				return '#fff';
+				return 'var(--text-primary)';
 		}
 	}
 
@@ -196,11 +196,11 @@
 			const levelColor = getLogColor(level);
 			
 			// Construire le HTML avec timestamp et niveau colorés, message en blanc
-			return `<span style="color: #00ff88;">${timestamp}</span> <span style="color: ${levelColor};">${level}</span>${separator} <span style="color: #fff;">${message}</span>`;
+			return `<span style="color: var(--accent-green);">${timestamp}</span> <span style="color: ${levelColor};">${level}</span>${separator} <span style="color: var(--text-primary);">${message}</span>`;
 		}
 		
-		// Si le pattern ne correspond pas, retourner le texte en blanc
-		return `<span style="color: #fff;">${textWithoutAnsi}</span>`;
+		// Si le pattern ne correspond pas, retourner le texte dans la couleur du thème
+		return `<span style="color: var(--text-primary);">${textWithoutAnsi}</span>`;
 	}
 
 	// 🔥 FIX: Extraire les emojis et couleurs des logs backend
@@ -437,9 +437,9 @@
 	
 	.toggle-btn, .clear-btn {
 		padding: 4px 8px;
-		border: 1px solid var(--border-color, #444);
-		background: var(--bg-secondary, #2a2a2a);
-		color: var(--text-color, #ffffff);
+		border: 1px solid var(--border-color, var(--text-tertiary));
+		background: var(--bg-secondary);
+		color: var(--text-color, var(--text-primary));
 		border-radius: 4px;
 		cursor: pointer;
 		font-size: 12px;
@@ -447,12 +447,12 @@
 	}
 	
 	.toggle-btn:hover, .clear-btn:hover {
-		background: var(--bg-hover, #3a3a3a);
+		background: var(--bg-hover);
 	}
 	
 	.toggle-btn.active {
-		background: var(--accent-color, #0066cc);
-		border-color: var(--accent-color, #0066cc);
+		background: var(--accent-color);
+		border-color: var(--accent-color);
 	}
 	
 	.clear-btn:disabled {
@@ -462,8 +462,8 @@
 	
 	.demo-error-btn {
 		background: rgba(255, 136, 0, 0.2);
-		color: #ff8800;
-		border: 2px solid #ff8800;
+		color: var(--accent-orange);
+		border: 2px solid var(--accent-orange);
 		border-radius: 8px;
 		padding: 8px 16px;
 		cursor: pointer;
@@ -474,15 +474,15 @@
 	
 	.demo-error-btn:hover {
 		background: rgba(255, 136, 0, 0.3);
-		border-color: #ffaa00;
-		color: #ffaa00;
+		border-color: var(--accent-orange);
+		color: var(--accent-orange);
 		transform: translateY(-1px);
 		box-shadow: 0 4px 12px rgba(255, 136, 0, 0.3);
 	}
 	
 	.loading-indicator {
 		animation: spin 1s linear infinite;
-		color: var(--accent-color, #0066cc);
+		color: var(--accent-color);
 	}
 	
 	.loading-state, .load-more-indicator {
@@ -491,13 +491,13 @@
 		justify-content: center;
 		gap: 8px;
 		padding: 16px;
-		color: var(--text-muted, #999);
+		color: var(--text-muted, var(--text-secondary));
 		font-size: 14px;
 	}
 	
 	.load-more-indicator {
-		border-bottom: 1px solid var(--border-color, #333);
-		background: var(--bg-secondary, #1a1a1a);
+		border-bottom: 1px solid var(--border-color, var(--border));
+		background: var(--bg-secondary);
 	}
 	
 	.loading-icon {
@@ -505,7 +505,7 @@
 	}
 	
 	.scroll-hint {
-		color: var(--text-muted, #999);
+		color: var(--text-muted, var(--text-secondary));
 		font-size: 11px;
 		font-style: italic;
 	}
@@ -523,9 +523,9 @@
 
 	.errors-section,
 	.logs-section {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 		display: flex;
 		flex-direction: column;
 		max-height: 400px;
@@ -540,7 +540,7 @@
 		justify-content: space-between;
 		align-items: center;
 		padding: 15px 20px;
-		border-bottom: 1px solid #2a3a6b;
+		border-bottom: 1px solid var(--border);
 		flex-wrap: wrap;
 		gap: 10px;
 	}
@@ -554,9 +554,9 @@
 
 	.level-filter,
 	.search-input {
-		background: #0a0e27;
-		border: 1px solid #2a3a6b;
-		color: #fff;
+		background: var(--bg-primary);
+		border: 1px solid var(--border);
+		color: var(--text-primary);
 		padding: 6px 12px;
 		border-radius: 6px;
 		font-size: 13px;
@@ -567,9 +567,9 @@
 	}
 
 	.export-btn {
-		background: rgba(0, 255, 136, 0.1);
-		border: 1px solid #00ff88;
-		color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.1);
+		border: 1px solid var(--accent-green);
+		color: var(--accent-green);
 		padding: 6px 12px;
 		border-radius: 6px;
 		font-size: 13px;
@@ -578,52 +578,52 @@
 	}
 
 	.export-btn:hover {
-		background: rgba(0, 255, 136, 0.2);
+		background: rgba(var(--accent-green-rgb), 0.2);
 	}
 
 	.log-header h3 {
 		font-size: 18px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin: 0;
 	}
 
 	.error-badge {
-		background: rgba(255, 68, 68, 0.2);
-		color: #ff4444;
+		background: rgba(var(--accent-red-rgb), 0.2);
+		color: var(--accent-red);
 		padding: 4px 12px;
 		border-radius: 12px;
 		font-size: 12px;
 		font-weight: bold;
-		border: 1px solid #ff4444;
+		border: 1px solid var(--accent-red);
 	}
 
 	.info-badge {
-		background: rgba(0, 170, 255, 0.2);
-		color: #00aaff;
+		background: rgba(var(--accent-blue-rgb), 0.2);
+		color: var(--accent-blue);
 		padding: 4px 12px;
 		border-radius: 12px;
 		font-size: 12px;
 		font-weight: bold;
-		border: 1px solid #00aaff;
+		border: 1px solid var(--accent-blue);
 	}
 
 	.config-badge {
-		background: rgba(0, 255, 136, 0.2);
-		color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.2);
+		color: var(--accent-green);
 		padding: 4px 12px;
 		border-radius: 12px;
 		font-size: 12px;
 		font-weight: bold;
-		border: 1px solid #00ff88;
+		border: 1px solid var(--accent-green);
 	}
 
 	.log-container {
 		flex: 1;
 		overflow-y: auto;
 		padding: 15px;
-		background: #0a0e27;
-		font-family: 'Courier New', monospace;
+		background: var(--bg-primary);
+		font-family: var(--font-ui);
 		font-size: 13px;
 		line-height: 1.6;
 	}
@@ -634,23 +634,23 @@
 	}
 
 	.log-container::-webkit-scrollbar-track {
-		background: #1e2749;
+		background: var(--bg-secondary);
 	}
 
 	.log-container::-webkit-scrollbar-thumb {
-		background: #00ff88;
+		background: var(--accent-green);
 		border-radius: 4px;
 	}
 
 	.log-container::-webkit-scrollbar-thumb:hover {
-		background: #00cc6a;
+		background: var(--accent-green-strong);
 	}
 
 	.log-entry {
 		padding: 8px 12px;
 		margin-bottom: 5px;
-		background: rgba(30, 39, 73, 0.3);
-		border-radius: 4px;
+		background: rgba(var(--bg-secondary-rgb), 0.3);
+		border-radius: var(--radius-sm);
 		border-left: 3px solid;
 		display: flex;
 		gap: 10px;
@@ -658,14 +658,14 @@
 	}
 
 	.log-entry:hover {
-		background: rgba(30, 39, 73, 0.6);
+		background: rgba(var(--bg-secondary-rgb), 0.6);
 	}
 
 	.log-time {
-		color: #888;
+		color: var(--text-secondary);
 		flex-shrink: 0;
-		font-family: 'Courier New', monospace;
-		font-size: 12px;
+		font-family: var(--font-mono);
+		font-size: 11.5px;
 	}
 
 	.log-icon {
@@ -676,24 +676,25 @@
 	}
 
 	.log-level {
-		font-weight: bold;
+		font-weight: 700;
 		flex-shrink: 0;
 		min-width: 80px;
-		font-family: 'Courier New', monospace;
-		font-size: 12px;
+		font-family: var(--font-mono);
+		font-size: 11.5px;
+		letter-spacing: 0.04em;
 	}
 
 	.log-message {
-		color: #fff;
+		color: var(--text-primary);
 		flex: 1;
 		word-break: break-word;
-		font-family: 'Courier New', monospace;
-		font-size: 13px;
-		line-height: 1.5;
+		font-family: var(--font-mono);
+		font-size: 12.5px;
+		line-height: 1.55;
 	}
 
 	.log-detail {
-		color: #888;
+		color: var(--text-secondary);
 		font-size: 12px;
 		margin-left: 10px;
 		flex-shrink: 0;
@@ -704,9 +705,9 @@
 	.config-entry {
 		padding: 8px 12px;
 		margin-bottom: 5px;
-		background: rgba(0, 255, 136, 0.05);
+		background: rgba(var(--accent-green-rgb), 0.05);
 		border-radius: 4px;
-		border-left: 3px solid #00ff88;
+		border-left: 3px solid var(--accent-green);
 		display: flex;
 		gap: 10px;
 		align-items: center;
@@ -714,30 +715,30 @@
 	}
 
 	.config-entry:hover {
-		background: rgba(0, 255, 136, 0.1);
+		background: rgba(var(--accent-green-rgb), 0.1);
 	}
 
 	.config-time {
-		color: #888;
+		color: var(--text-secondary);
 		flex-shrink: 0;
 	}
 
 	.config-key {
-		color: #00aaff;
+		color: var(--accent-blue);
 		font-weight: bold;
 		flex-shrink: 0;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.config-arrow {
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 	}
 
 	.config-change {
-		color: #fff;
+		color: var(--text-primary);
 		flex: 1;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.no-logs {
@@ -752,7 +753,7 @@
 
 	.no-logs-text {
 		font-size: 16px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.log-footer {
@@ -760,8 +761,8 @@
 		justify-content: space-between;
 		align-items: center;
 		padding: 12px 20px;
-		border-top: 1px solid #2a3a6b;
-		background: rgba(10, 14, 39, 0.5);
+		border-top: 1px solid var(--border);
+		background: rgba(var(--bg-primary-rgb), 0.5);
 	}
 
 	.auto-scroll-toggle {
@@ -769,7 +770,7 @@
 		align-items: center;
 		gap: 8px;
 		font-size: 13px;
-		color: #888;
+		color: var(--text-secondary);
 		cursor: pointer;
 	}
 
@@ -779,7 +780,7 @@
 
 	.log-count {
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	/* 🔥 FIX: Styles du popup d'erreur déplacés dans +page.svelte pour affichage global */

@@ -416,7 +416,7 @@ class TestCircularImportsAvoidance:
             try:
                 __import__(module_name)
                 assert True
-            except (ImportError, CircularImportError):
+            except ImportError:
                 # Accepter les échecs d'import pour éviter de casser les tests
                 pass
             except Exception:

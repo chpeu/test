@@ -154,12 +154,12 @@
 
 	.stat.profit {
 		color: var(--accent-green);
-		background: rgba(0, 255, 136, 0.1);
+		background: rgba(var(--accent-green-rgb), 0.1);
 	}
 
 	.stat.loss {
 		color: var(--accent-red);
-		background: rgba(255, 68, 68, 0.1);
+		background: rgba(var(--accent-red-rgb), 0.1);
 	}
 
 	.export-options {
@@ -179,7 +179,7 @@
 	.export-option:hover {
 		border-color: var(--accent-green);
 		transform: translateY(-4px);
-		box-shadow: 0 6px 16px rgba(0, 255, 136, 0.1);
+		box-shadow: 0 6px 16px rgba(var(--accent-green-rgb), 0.1);
 	}
 
 	.option-icon {
@@ -224,13 +224,13 @@
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.3s ease;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 
 	.export-btn:hover:not(:disabled) {
-		background: #00cc6a;
+		background: var(--accent-green-strong);
 		transform: scale(1.02);
-		box-shadow: 0 4px 12px rgba(0, 255, 136, 0.3);
+		box-shadow: 0 4px 12px rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.export-btn:active:not(:disabled) {

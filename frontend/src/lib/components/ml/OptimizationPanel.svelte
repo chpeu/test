@@ -548,15 +548,15 @@
 <style>
 	.optimization-panel {
 		padding: 1.5rem;
-		background: var(--bg-secondary, #1a1a2e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 12px;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.panel-header {
 		margin-bottom: 2rem;
 		padding-bottom: 1rem;
-		border-bottom: 1px solid var(--border-color, #333);
+		border-bottom: 1px solid var(--border-color, var(--border));
 	}
 	
 	.header-content {
@@ -566,25 +566,25 @@
 	}
 	
 	.header-icon {
-		color: var(--accent-yellow, #ffd700);
+		color: var(--accent-yellow, var(--accent-orange));
 	}
 	
 	h2 {
 		margin: 0;
 		font-size: 1.5rem;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.subtitle {
 		margin: 0.25rem 0 0 0;
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.config-section, .progress-section, .result-section, .current-best-section {
 		margin-top: 1.5rem;
 		padding: 1.5rem;
-		background: var(--bg-tertiary, #252540);
+		background: var(--bg-tertiary, var(--bg-tertiary));
 		border-radius: 8px;
 	}
 	
@@ -611,22 +611,22 @@
 	
 	label {
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-weight: 500;
 	}
 	
 	input, select {
 		padding: 0.5rem;
-		background: var(--bg-input, #1a1a2e);
-		border: 1px solid var(--border-color, #333);
+		background: var(--bg-input, var(--bg-secondary));
+		border: 1px solid var(--border-color, var(--border));
 		border-radius: 4px;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		font-size: 0.875rem;
 	}
 	
 	input:focus, select:focus {
 		outline: none;
-		border-color: var(--accent-blue, #4a9eff);
+		border-color: var(--accent-blue, var(--accent-blue));
 	}
 	
 	input:disabled, select:disabled {
@@ -636,7 +636,7 @@
 	
 	.hint {
 		font-size: 0.75rem;
-		color: var(--text-muted, #666);
+		color: var(--text-muted, var(--text-tertiary));
 	}
 	
 	.config-switches {
@@ -674,12 +674,12 @@
 	}
 	
 	.btn-primary {
-		background: var(--accent-blue, #4a9eff);
+		background: var(--accent-blue, var(--accent-blue));
 		color: white;
 	}
 	
 	.btn-primary:hover:not(:disabled) {
-		background: var(--accent-blue-dark, #3a7ecf);
+		background: var(--accent-blue-dark);
 		transform: translateY(-2px);
 	}
 	
@@ -689,23 +689,23 @@
 	}
 	
 	.btn-success {
-		background: var(--accent-green, #00ff88);
-		color: #0a0a0a;
+		background: var(--accent-green, var(--accent-green));
+		color: var(--text-primary);
 	}
 	
 	.btn-success:hover {
-		background: var(--accent-green-light, #33ffaa);
+		background: var(--accent-green-light);
 		transform: translateY(-2px);
 	}
 	
 	.btn-outline {
 		background: transparent;
-		border: 1px solid var(--accent-blue, #4a9eff);
-		color: var(--accent-blue, #4a9eff);
+		border: 1px solid var(--accent-blue, var(--accent-blue));
+		color: var(--accent-blue, var(--accent-blue));
 	}
 	
 	.btn-outline:hover {
-		background: var(--accent-blue, #4a9eff);
+		background: var(--accent-blue, var(--accent-blue));
 		color: white;
 	}
 	
@@ -715,7 +715,7 @@
 		background: rgba(255, 0, 0, 0.1);
 		border: 1px solid rgba(255, 0, 0, 0.3);
 		border-radius: 6px;
-		color: #ff4444;
+		color: var(--accent-red);
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -724,7 +724,7 @@
 	.progress-bar-container {
 		width: 100%;
 		height: 8px;
-		background: var(--bg-input, #1a1a2e);
+		background: var(--bg-input, var(--bg-secondary));
 		border-radius: 4px;
 		overflow: hidden;
 		margin-bottom: 1rem;
@@ -732,7 +732,7 @@
 	
 	.progress-bar {
 		height: 100%;
-		background: linear-gradient(90deg, var(--accent-blue, #4a9eff), var(--accent-green, #00ff88));
+		background: linear-gradient(90deg, var(--accent-blue, var(--accent-blue)), var(--accent-green, var(--accent-green)));
 		transition: width 0.3s ease;
 	}
 	
@@ -746,35 +746,35 @@
 		display: flex;
 		justify-content: space-between;
 		padding: 0.5rem;
-		background: var(--bg-input, #1a1a2e);
+		background: var(--bg-input, var(--bg-secondary));
 		border-radius: 4px;
 	}
 	
 	.label {
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.875rem;
 	}
 	
 	.value {
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		font-weight: 600;
 	}
 	
 	.current-best {
 		margin-top: 1rem;
 		padding: 0.75rem;
-		background: rgba(0, 255, 136, 0.1);
-		border: 1px solid rgba(0, 255, 136, 0.3);
+		background: rgba(var(--accent-green-rgb), 0.1);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.3);
 		border-radius: 6px;
-		color: var(--accent-green, #00ff88);
+		color: var(--accent-green, var(--accent-green));
 	}
 	
 	.result-section.success {
-		border: 1px solid var(--accent-green, #00ff88);
+		border: 1px solid var(--accent-green, var(--accent-green));
 	}
 	
 	.result-section.error {
-		border: 1px solid #ff4444;
+		border: 1px solid var(--accent-red);
 	}
 	
 	.result-stats {
@@ -786,7 +786,7 @@
 	
 	.stat-card {
 		padding: 1rem;
-		background: var(--bg-input, #1a1a2e);
+		background: var(--bg-input, var(--bg-secondary));
 		border-radius: 6px;
 		display: flex;
 		flex-direction: column;
@@ -795,14 +795,14 @@
 	
 	.stat-label {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		text-transform: uppercase;
 	}
 	
 	.stat-value {
 		font-size: 1.5rem;
 		font-weight: 700;
-		color: var(--accent-green, #00ff88);
+		color: var(--accent-green, var(--accent-green));
 	}
 	
 	.best-params, .best-info {
@@ -812,7 +812,7 @@
 	h4 {
 		margin: 0 0 0.75rem 0;
 		font-size: 1rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.params-grid {
@@ -824,7 +824,7 @@
 	
 	.param-item {
 		padding: 0.5rem;
-		background: var(--bg-input, #1a1a2e);
+		background: var(--bg-input, var(--bg-secondary));
 		border-radius: 4px;
 		display: flex;
 		justify-content: space-between;
@@ -833,18 +833,18 @@
 	
 	.param-key {
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.param-value {
 		font-size: 0.875rem;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 		font-weight: 600;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 	
 	.error-text {
-		color: #ff4444;
+		color: var(--accent-red);
 		margin: 0.5rem 0;
 	}
 	
@@ -854,7 +854,7 @@
 		align-items: center;
 		margin-bottom: 1.5rem;
 		padding: 1rem;
-		background: var(--bg-input, #1a1a2e);
+		background: var(--bg-input, var(--bg-secondary));
 		border-radius: 8px;
 		gap: 1rem;
 		flex-wrap: wrap;
@@ -864,18 +864,18 @@
 		padding: 0.5rem 1rem;
 		border-radius: 999px;
 		background: rgba(74, 158, 255, 0.2);
-		color: var(--accent-blue, #4a9eff);
+		color: var(--accent-blue, var(--accent-blue));
 		font-size: 0.875rem;
 		font-weight: 600;
-		border: 2px solid var(--accent-blue, #4a9eff);
+		border: 2px solid var(--accent-blue, var(--accent-blue));
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 	}
 	
 	.source-pill[data-active="false"] {
 		background: rgba(255, 255, 255, 0.05);
-		color: var(--text-secondary, #888);
-		border-color: var(--border-color, #333);
+		color: var(--text-secondary, var(--text-secondary));
+		border-color: var(--border-color, var(--border));
 	}
 	
 	.source-actions {
@@ -890,7 +890,7 @@
 		padding: 0.5rem 1rem;
 		background: transparent;
 		border: none;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		border-radius: 6px;
 		font-size: 0.875rem;
 		font-weight: 500;
@@ -901,12 +901,12 @@
 	
 	.source-actions button:hover:not(:disabled) {
 		background: rgba(74, 158, 255, 0.1);
-		color: var(--accent-blue, #4a9eff);
+		color: var(--accent-blue, var(--accent-blue));
 	}
 	
 	.source-actions button.active {
-		background: var(--accent-blue, #4a9eff);
-		color: #fff;
+		background: var(--accent-blue, var(--accent-blue));
+		color: var(--text-primary);
 		font-weight: 600;
 		box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
 	}
@@ -918,13 +918,13 @@
 	
 	.source-actions button:disabled:hover {
 		background: transparent;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.metrics-section {
 		margin-top: 1.5rem;
 		padding: 1.5rem;
-		background: var(--bg-tertiary, #252540);
+		background: var(--bg-tertiary, var(--bg-tertiary));
 		border-radius: 8px;
 	}
 	
@@ -937,33 +937,33 @@
 	
 	.metric-card {
 		padding: 1.25rem;
-		background: var(--bg-input, #1a1a2e);
-		border: 2px solid var(--border-color, #333);
+		background: var(--bg-input, var(--bg-secondary));
+		border: 2px solid var(--border-color, var(--border));
 		border-radius: 8px;
 		cursor: pointer;
 		transition: all 0.2s;
 	}
 	
 	.metric-card:hover {
-		border-color: var(--accent-blue, #4a9eff);
+		border-color: var(--accent-blue, var(--accent-blue));
 		transform: translateY(-2px);
 	}
 	
 	.metric-card.active {
-		border-color: var(--accent-green, #00ff88);
-		background: rgba(0, 255, 136, 0.05);
+		border-color: var(--accent-green, var(--accent-green));
+		background: rgba(var(--accent-green-rgb), 0.05);
 	}
 	
 	.metric-header h4 {
 		margin: 0 0 0.25rem 0;
 		font-size: 1rem;
-		color: var(--text-primary, #e0e0e0);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.metric-description {
 		margin: 0;
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.metric-content {
@@ -973,14 +973,14 @@
 	.metric-value {
 		font-size: 1.75rem;
 		font-weight: 700;
-		color: var(--accent-green, #00ff88);
+		color: var(--accent-green, var(--accent-green));
 		margin-bottom: 0.75rem;
 	}
 	
 	.metric-hint {
 		margin: 0;
 		font-size: 0.75rem;
-		color: var(--text-muted, #666);
+		color: var(--text-muted, var(--text-tertiary));
 		font-style: italic;
 	}
 	
@@ -993,8 +993,8 @@
 	.metric-source button {
 		padding: 0.5rem;
 		background: transparent;
-		border: 1px solid var(--border-color, #333);
-		color: var(--text-secondary, #888);
+		border: 1px solid var(--border-color, var(--border));
+		color: var(--text-secondary, var(--text-secondary));
 		border-radius: 4px;
 		font-size: 0.75rem;
 		cursor: pointer;
@@ -1002,13 +1002,13 @@
 	}
 	
 	.metric-source button:hover:not(:disabled) {
-		border-color: var(--accent-blue, #4a9eff);
-		color: var(--accent-blue, #4a9eff);
+		border-color: var(--accent-blue, var(--accent-blue));
+		color: var(--accent-blue, var(--accent-blue));
 	}
 	
 	.metric-source button.active {
-		background: var(--accent-blue, #4a9eff);
-		border-color: var(--accent-blue, #4a9eff);
+		background: var(--accent-blue, var(--accent-blue));
+		border-color: var(--accent-blue, var(--accent-blue));
 		color: white;
 		font-weight: 600;
 	}
@@ -1026,18 +1026,18 @@
 	.source-label {
 		margin: 0;
 		font-size: 0.875rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.score-badge {
 		display: inline-block;
 		margin-left: 0.5rem;
 		padding: 0.25rem 0.5rem;
-		background: rgba(0, 255, 136, 0.2);
+		background: rgba(var(--accent-green-rgb), 0.2);
 		border-radius: 4px;
-		color: var(--accent-green, #00ff88);
+		color: var(--accent-green, var(--accent-green));
 		font-weight: 600;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 	}
 	
 	.spin {

@@ -9,11 +9,11 @@
 
 	// Milestones
 	const milestones = [
-		{ name: 'Exploratory', threshold: 10, icon: '📊', color: '#10b981' },
-		{ name: 'Features', threshold: 30, icon: '🔍', color: '#3b82f6' },
-		{ name: 'XGBoost', threshold: 50, icon: '🌲', color: '#8b5cf6' },
-		{ name: 'GRU', threshold: 200, icon: '🧠', color: '#ec4899' },
-		{ name: 'PPO', threshold: 500, icon: '🎮', color: '#f59e0b' }
+		{ name: 'Exploratory', threshold: 10, icon: '📊', color: 'var(--accent-green-strong)' },
+		{ name: 'Features', threshold: 30, icon: '🔍', color: 'var(--accent-blue)' },
+		{ name: 'XGBoost', threshold: 50, icon: '🌲', color: 'var(--accent-purple)' },
+		{ name: 'GRU', threshold: 200, icon: '🧠', color: 'var(--accent-purple)' },
+		{ name: 'PPO', threshold: 500, icon: '🎮', color: 'var(--accent-orange)' }
 	];
 
 	function getMilestoneStatus(threshold) {
@@ -57,7 +57,7 @@
 		{#each milestones as milestone}
 			{@const unlocked = getMilestoneStatus(milestone.threshold)}
 			<div class="milestone-item" class:unlocked>
-				<div class="milestone-icon" style="background: {unlocked ? milestone.color : '#e5e7eb'}">
+				<div class="milestone-icon" style="background: {unlocked ? milestone.color : 'var(--border-strong)'}">
 					{milestone.icon}
 				</div>
 				<div class="milestone-details">
@@ -91,12 +91,12 @@
 
 	.card-header h3 {
 		font-size: 1.1rem;
-		color: #111827;
+		color: var(--text-primary);
 		margin: 0;
 	}
 
 	.count-badge {
-		background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		color: white;
 		padding: 0.5rem 1rem;
 		border-radius: 20px;
@@ -110,7 +110,7 @@
 
 	.progress-bar {
 		height: 24px;
-		background: #f3f4f6;
+		background: var(--bg-input);
 		border-radius: 12px;
 		overflow: hidden;
 		position: relative;
@@ -122,7 +122,7 @@
 
 	.progress-fill {
 		height: 100%;
-		background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+		background: linear-gradient(90deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
 		border-radius: 12px;
 		transition: width 0.5s ease;
 	}
@@ -130,14 +130,14 @@
 	.progress-label {
 		text-align: right;
 		font-size: 0.85rem;
-		color: #6b7280;
+		color: var(--text-tertiary);
 		margin-top: 0.5rem;
 		font-weight: 600;
 	}
 
 	.next-milestone {
-		background: #eff6ff;
-		border: 1px solid #bfdbfe;
+		background: rgba(var(--accent-blue-rgb), 0.12);
+		border: 1px solid rgba(var(--accent-blue-rgb), 0.4);
 		border-radius: 8px;
 		padding: 1rem;
 		margin-bottom: 1.5rem;
@@ -153,11 +153,11 @@
 
 	.milestone-name {
 		font-weight: 600;
-		color: #1e40af;
+		color: var(--accent-blue-dark);
 	}
 
 	.milestone-count {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.85rem;
 	}
 
@@ -171,14 +171,14 @@
 		align-items: center;
 		gap: 1rem;
 		padding: 0.75rem;
-		background: #f9fafb;
+		background: var(--bg-input);
 		border-radius: 8px;
 		transition: all 0.2s;
 	}
 
 	.milestone-item.unlocked {
-		background: #f0fdf4;
-		border: 1px solid #bbf7d0;
+		background: rgba(var(--accent-green-rgb), 0.10);
+		border: 1px solid rgba(var(--accent-green-rgb), 0.4);
 	}
 
 	.milestone-icon {
@@ -198,17 +198,17 @@
 
 	.milestone-details .milestone-name {
 		font-weight: 600;
-		color: #111827;
+		color: var(--text-primary);
 		font-size: 0.95rem;
 	}
 
 	.milestone-details .milestone-threshold {
 		font-size: 0.85rem;
-		color: #6b7280;
+		color: var(--text-tertiary);
 	}
 
 	.check {
-		color: #10b981;
+		color: var(--accent-green);
 		font-size: 1.5rem;
 		font-weight: bold;
 	}

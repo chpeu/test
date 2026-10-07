@@ -6,8 +6,9 @@ Tests pour scripts root avec 0% de couverture - Batch 2
 import pytest
 import sys
 import os
-from unittest.mock import patch, Mock, MagicMock
 import tempfile
+import pandas as pd
+from unittest.mock import patch, Mock, MagicMock
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

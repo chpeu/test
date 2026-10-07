@@ -9,13 +9,13 @@
 	function getStatusColor(status) {
 		switch (status) {
 			case 'good':
-				return '#10b981';
+				return 'var(--accent-green-strong)';
 			case 'acceptable':
-				return '#f59e0b';
+				return 'var(--accent-orange)';
 			case 'poor':
-				return '#ef4444';
+				return 'var(--accent-red-strong)';
 			default:
-				return '#6b7280';
+				return 'var(--text-tertiary)';
 		}
 	}
 
@@ -145,7 +145,7 @@
 
 	.card-header h3 {
 		font-size: 1.1rem;
-		color: #111827;
+		color: var(--text-primary);
 		margin: 0;
 	}
 
@@ -160,7 +160,7 @@
 	.insufficient-data {
 		text-align: center;
 		padding: 2rem 1rem;
-		background: #f9fafb;
+		background: var(--bg-input);
 		border-radius: 8px;
 	}
 
@@ -171,12 +171,12 @@
 
 	.insufficient-data p {
 		margin: 0.5rem 0;
-		color: #6b7280;
+		color: var(--text-tertiary);
 	}
 
 	.insufficient-data .count {
 		font-weight: 600;
-		color: #111827;
+		color: var(--text-primary);
 		font-size: 1.1rem;
 	}
 
@@ -186,7 +186,7 @@
 
 	.status-label {
 		font-size: 1rem;
-		color: #374151;
+		color: var(--text-primary);
 		font-weight: 500;
 	}
 
@@ -195,12 +195,12 @@
 	.variance-section {
 		margin-top: 1.5rem;
 		padding-top: 1.5rem;
-		border-top: 1px solid #e5e7eb;
+		border-top: 1px solid var(--border);
 	}
 
 	h4 {
 		font-size: 0.95rem;
-		color: #374151;
+		color: var(--text-primary);
 		margin: 0 0 1rem 0;
 	}
 
@@ -217,27 +217,27 @@
 
 	.stat-label {
 		font-size: 0.85rem;
-		color: #6b7280;
+		color: var(--text-tertiary);
 		margin-bottom: 0.25rem;
 	}
 
 	.stat-value {
 		font-size: 1.5rem;
 		font-weight: 700;
-		color: #111827;
+		color: var(--text-primary);
 	}
 
 	.stat-value.win {
-		color: #10b981;
+		color: var(--accent-green);
 	}
 
 	.stat-value.loss {
-		color: #ef4444;
+		color: var(--accent-red);
 	}
 
 	.win-loss-bar {
 		height: 12px;
-		background: #fee2e2;
+		background: rgba(var(--accent-red-rgb), 0.12);
 		border-radius: 6px;
 		overflow: hidden;
 		margin-bottom: 0.75rem;
@@ -245,7 +245,7 @@
 
 	.win-fill {
 		height: 100%;
-		background: #10b981;
+		background: var(--accent-green);
 		transition: width 0.5s ease;
 	}
 
@@ -257,26 +257,26 @@
 	}
 
 	.balanced-indicator.success {
-		background: #d1fae5;
-		color: #065f46;
+		background: rgba(var(--accent-green-rgb), 0.12);
+		color: var(--accent-green-strong);
 	}
 
 	.balanced-indicator.warning {
-		background: #fef3c7;
-		color: #92400e;
+		background: rgba(var(--accent-orange-rgb), 0.12);
+		color: var(--accent-orange);
 	}
 
 	.success-msg {
-		color: #065f46;
-		background: #d1fae5;
+		color: var(--accent-green-strong);
+		background: rgba(var(--accent-green-rgb), 0.12);
 		padding: 0.75rem;
 		border-radius: 6px;
 		font-size: 0.9rem;
 	}
 
 	.warning-msg {
-		color: #92400e;
-		background: #fef3c7;
+		color: var(--accent-orange);
+		background: rgba(var(--accent-orange-rgb), 0.12);
 		padding: 0.75rem;
 		border-radius: 6px;
 		font-size: 0.9rem;
@@ -284,8 +284,8 @@
 	}
 
 	.high-missing {
-		background: #fef2f2;
-		border: 1px solid #fecaca;
+		background: rgba(var(--accent-red-rgb), 0.10);
+		border: 1px solid rgba(var(--accent-red-rgb), 0.4);
 		padding: 0.75rem;
 		border-radius: 6px;
 		font-size: 0.85rem;
@@ -297,7 +297,7 @@
 	}
 
 	.variance-section p {
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.9rem;
 	}
 </style>

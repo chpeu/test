@@ -41,12 +41,12 @@
 
 	// Couleurs par régime
 	const REGIME_COLORS: Record<string, { bg: string; border: string; icon: string; text: string }> = {
-		'CALME': { bg: 'rgba(16, 185, 129, 0.15)', border: '#10b981', icon: '🟢', text: '#10b981' },
-		'NORMAL': { bg: 'rgba(59, 130, 246, 0.15)', border: '#3b82f6', icon: '🔵', text: '#3b82f6' },
-		'VOLATILE': { bg: 'rgba(245, 158, 11, 0.15)', border: '#f59e0b', icon: '🟠', text: '#f59e0b' },
-		'CHOPPY': { bg: 'rgba(239, 68, 68, 0.15)', border: '#ef4444', icon: '🔴', text: '#ef4444' },
-		'UNKNOWN': { bg: 'rgba(107, 114, 128, 0.15)', border: '#6b7280', icon: '⚪', text: '#6b7280' },
-		'DISABLED': { bg: 'rgba(75, 85, 99, 0.15)', border: '#4b5563', icon: '⏸️', text: '#4b5563' }
+		'CALME': { bg: 'rgba(16, 185, 129, 0.15)', border: 'var(--accent-green-strong)', icon: '🟢', text: 'var(--accent-green-strong)' },
+		'NORMAL': { bg: 'rgba(59, 130, 246, 0.15)', border: 'var(--accent-blue)', icon: '🔵', text: 'var(--accent-blue)' },
+		'VOLATILE': { bg: 'rgba(245, 158, 11, 0.15)', border: 'var(--accent-orange)', icon: '🟠', text: 'var(--accent-orange)' },
+		'CHOPPY': { bg: 'rgba(239, 68, 68, 0.15)', border: 'var(--accent-red-strong)', icon: '🔴', text: 'var(--accent-red-strong)' },
+		'UNKNOWN': { bg: 'rgba(107, 114, 128, 0.15)', border: 'var(--text-tertiary)', icon: '⚪', text: 'var(--text-tertiary)' },
+		'DISABLED': { bg: 'rgba(75, 85, 99, 0.15)', border: 'var(--text-tertiary)', icon: '⏸️', text: 'var(--text-tertiary)' }
 	};
 
 	// 🔥 FIX: Si désactivé, afficher couleur "DISABLED"
@@ -326,7 +326,7 @@
 	.regime-header h4 {
 		margin: 0;
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		font-weight: 500;
 		flex: 1;
 	}
@@ -350,7 +350,7 @@
 
 	.regime-since {
 		font-size: 11px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.regime-metrics {
@@ -366,15 +366,15 @@
 
 	.metric .label {
 		font-size: 10px;
-		color: #666;
+		color: var(--text-tertiary);
 		text-transform: uppercase;
 	}
 
 	.metric .value {
 		font-size: 14px;
 		font-weight: 600;
-		color: #fff;
-		font-family: 'Courier New', monospace;
+		color: var(--text-primary);
+		font-family: var(--font-ui);
 	}
 
 	.config-preview {
@@ -394,12 +394,12 @@
 
 	.config-item {
 		font-size: 11px;
-		color: #aaa;
+		color: var(--text-secondary);
 		cursor: help;
 	}
 
 	.config-item.sl-exchange {
-		color: #ff9800;
+		color: var(--accent-orange);
 		font-weight: 500;
 		background: rgba(255, 152, 0, 0.1);
 		padding: 2px 6px;
@@ -407,17 +407,17 @@
 	}
 
 	.config-item.atr-max-disabled {
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.config-item.rsi-threshold {
-		color: #a78bfa;
+		color: var(--accent-purple);
 		font-weight: 500;
 	}
 
 	.disabled-badge {
 		background: rgba(136, 136, 136, 0.3);
-		color: #aaa;
+		color: var(--text-secondary);
 		padding: 1px 5px;
 		border-radius: 3px;
 		font-size: 10px;
@@ -434,13 +434,13 @@
 
 	.last-check {
 		font-size: 11px;
-		color: #666;
+		color: var(--text-tertiary);
 	}
 
 	.force-btn {
-		background: rgba(0, 255, 136, 0.15);
-		border: 1px solid #00ff88;
-		color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.15);
+		border: 1px solid var(--accent-green);
+		color: var(--accent-green);
 		padding: 4px 10px;
 		border-radius: 5px;
 		font-size: 11px;
@@ -449,7 +449,7 @@
 	}
 
 	.force-btn:hover:not(:disabled) {
-		background: rgba(0, 255, 136, 0.3);
+		background: rgba(var(--accent-green-rgb), 0.3);
 	}
 
 	.force-btn:disabled {
@@ -464,7 +464,7 @@
 
 	.disabled-badge {
 		background: rgba(239, 68, 68, 0.2);
-		color: #ef4444;
+		color: var(--accent-red);
 		padding: 2px 8px;
 		border-radius: 4px;
 		font-size: 10px;
@@ -480,12 +480,12 @@
 	.disabled-message p {
 		margin: 0 0 8px 0;
 		font-size: 12px;
-		color: #888;
+		color: var(--text-secondary);
 	}
 
 	.disabled-message .hint {
 		font-size: 10px;
-		color: #666;
+		color: var(--text-tertiary);
 		font-style: italic;
 		margin: 0;
 	}

@@ -82,7 +82,7 @@
 	.ml-tabs {
 		display: flex;
 		gap: 0.5rem;
-		border-bottom: 2px solid #e5e7eb;
+		border-bottom: 2px solid var(--border);
 		margin-bottom: 2rem;
 		overflow-x: auto;
 	}
@@ -95,7 +95,7 @@
 		background: none;
 		border: none;
 		border-bottom: 3px solid transparent;
-		color: #6b7280;
+		color: var(--text-tertiary);
 		font-size: 0.95rem;
 		font-weight: 500;
 		cursor: pointer;
@@ -104,13 +104,13 @@
 	}
 
 	.tab:hover:not(.disabled) {
-		color: #667eea;
-		background: #f3f4f6;
+		color: var(--accent-indigo);
+		background: var(--bg-input);
 	}
 
 	.tab.active {
-		color: #667eea;
-		border-bottom-color: #667eea;
+		color: var(--accent-indigo);
+		border-bottom-color: var(--accent-indigo);
 	}
 
 	.tab.disabled {

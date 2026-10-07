@@ -3,6 +3,7 @@ Tests pour core/monitoring/scanner_phase3_dashboard.py
 Dashboard monitoring Scanner Phase 3 - Trade Cursor v7.0
 """
 import pytest
+import asyncio
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 import json
 from datetime import datetime, timedelta

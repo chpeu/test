@@ -53,7 +53,7 @@
 	}
 
 	.label {
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 	}

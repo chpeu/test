@@ -19,15 +19,15 @@ function createTooltip() {
 	tooltipElement.style.cssText = `
 		position: fixed;
 		background: rgba(0, 0, 0, 0.9);
-		color: #00ff88;
+		color: #34d399;
 		padding: 6px 10px;
 		border-radius: 4px;
 		font-size: 12px;
 		font-family: 'Courier New', monospace;
 		pointer-events: none;
 		z-index: 100000;
-		border: 1px solid #00ff88;
-		box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
+		border: 1px solid #34d399;
+		box-shadow: 0 2px 8px rgba(52, 211, 153, 0.3);
 		display: none;
 		white-space: nowrap;
 	`;
@@ -92,8 +92,8 @@ async function copyDebugNameToClipboard() {
 		if (tooltipElement) {
 			const originalText = tooltipElement.textContent;
 			tooltipElement.textContent = `✓ Copié: ${currentDebugName}`;
-			tooltipElement.style.color = '#00ff88';
-			tooltipElement.style.borderColor = '#00ff88';
+			tooltipElement.style.color = '#34d399';
+			tooltipElement.style.borderColor = '#34d399';
 			
 			setTimeout(() => {
 				if (tooltipElement) {

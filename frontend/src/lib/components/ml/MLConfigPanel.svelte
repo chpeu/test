@@ -396,7 +396,7 @@
 <style>
 	.ml-config-panel {
 		padding: 1rem;
-		background: var(--bg-secondary, #1a1a2e);
+		background: var(--bg-secondary, var(--bg-secondary));
 		border-radius: 8px;
 	}
 	
@@ -409,7 +409,7 @@
 	
 	.header h3 {
 		margin: 0;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 	}
 	
 	.header-actions {
@@ -420,7 +420,7 @@
 	
 	.unsaved-indicator {
 		font-size: 0.8rem;
-		color: #ffc107;
+		color: var(--accent-orange);
 		background: rgba(255, 193, 7, 0.15);
 		padding: 0.25rem 0.5rem;
 		border-radius: 4px;
@@ -437,7 +437,7 @@
 	.param-hint {
 		display: block;
 		font-size: 0.75rem;
-		color: var(--text-tertiary, #666);
+		color: var(--text-tertiary, var(--text-tertiary));
 		margin-top: 0.25rem;
 	}
 	
@@ -449,20 +449,20 @@
 	
 	.alert.error {
 		background: rgba(220, 53, 69, 0.2);
-		color: #ff6b6b;
+		color: var(--accent-red);
 		border: 1px solid rgba(220, 53, 69, 0.3);
 	}
 	
 	.alert.success {
 		background: rgba(40, 167, 69, 0.2);
-		color: #51cf66;
+		color: var(--accent-green);
 		border: 1px solid rgba(40, 167, 69, 0.3);
 	}
 	
 	.loading {
 		text-align: center;
 		padding: 2rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 	}
 	
 	.modules {
@@ -472,7 +472,7 @@
 	}
 	
 	.module-card {
-		background: var(--bg-tertiary, #252540);
+		background: var(--bg-tertiary, var(--bg-tertiary));
 		border-radius: 8px;
 		padding: 1rem;
 		border: 1px solid rgba(255, 255, 255, 0.1);
@@ -494,13 +494,13 @@
 	
 	.module-info h4 {
 		margin: 0 0 0.25rem 0;
-		color: var(--text-primary, #fff);
+		color: var(--text-primary, var(--text-primary));
 		font-size: 0.95rem;
 	}
 	
 	.module-info p {
 		margin: 0;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.8rem;
 	}
 	
@@ -518,13 +518,13 @@
 	}
 	
 	.module-params span {
-		color: var(--text-secondary, #aaa);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.85rem;
 	}
 	
 	.module-params input[type="range"] {
 		width: 100%;
-		accent-color: var(--accent-color, #4a9eff);
+		accent-color: var(--accent-color, var(--accent-blue));
 	}
 	
 	.module-stats {
@@ -537,7 +537,7 @@
 	
 	.module-stats span {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		background: rgba(255, 255, 255, 0.05);
 		padding: 0.25rem 0.5rem;
 		border-radius: 4px;
@@ -552,22 +552,22 @@
 	
 	.badge.success {
 		background: rgba(40, 167, 69, 0.2);
-		color: #51cf66;
+		color: var(--accent-green);
 	}
 	
 	.badge.warning {
 		background: rgba(255, 193, 7, 0.2);
-		color: #ffc107;
+		color: var(--accent-orange);
 	}
 	
 	.badge.phase {
 		background: rgba(74, 158, 255, 0.2);
-		color: #4a9eff;
+		color: var(--accent-blue);
 	}
 	
 	.badge.coming {
 		background: rgba(108, 117, 125, 0.2);
-		color: #6c757d;
+		color: var(--text-tertiary);
 	}
 	
 	/* Toggle switch */
@@ -592,7 +592,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background-color: #444;
+		background-color: var(--text-tertiary);
 		transition: 0.3s;
 		border-radius: 24px;
 	}
@@ -610,7 +610,7 @@
 	}
 	
 	.toggle input:checked + .slider {
-		background-color: #28a745;
+		background-color: var(--accent-green);
 	}
 	
 	.toggle input:checked + .slider:before {
@@ -633,14 +633,14 @@
 	.auto-save-info {
 		flex: 1;
 		padding: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--text-secondary, var(--text-secondary));
 		font-size: 0.85rem;
 	}
 	
 	.reset-btn {
 		padding: 0.75rem 1rem;
 		background: rgba(220, 53, 69, 0.2);
-		color: #ff6b6b;
+		color: var(--accent-red);
 		border: 1px solid rgba(220, 53, 69, 0.3);
 		border-radius: 6px;
 		cursor: pointer;

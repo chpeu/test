@@ -1,17 +1,16 @@
 <script>
 	export let tabs = [];
 	export let activeTab = tabs[0]?.id || '';
-	
+
 	$: currentTab = tabs.find(t => t.id === activeTab) || tabs[0];
-	
+
 	function selectTab(tabId) {
 		// 🔥 FIX: Toujours mettre à jour activeTab pour déclencher la réactivité Svelte
 		activeTab = tabId;
-		console.log('Tab changed to:', tabId); // Debug
 	}
 </script>
 
-<div class="tabs-container" data-debug-name="tabsContainer">
+<div class="tabs-container" data-debug-name="tabsContainer" role="tablist" aria-label="Navigation principale">
 	<div class="tabs-header" data-debug-name="tabsHeader">
 		{#each tabs as tab}
 			<button
@@ -26,102 +25,112 @@
 				type="button"
 				data-debug-name="tabButton.{tab.id}"
 			>
-				<span class="tab-icon" data-debug-name="tabIcon.{tab.id}">{tab.icon || ''}</span>
+				{#if tab.icon}
+					<span class="tab-icon" data-debug-name="tabIcon.{tab.id}" aria-hidden="true">{tab.icon}</span>
+				{/if}
 				<span class="tab-label" data-debug-name="tabLabel.{tab.id}">{tab.label}</span>
 			</button>
 		{/each}
 	</div>
-	
+
 	<!-- Tab content is rendered by parent component -->
 </div>
 
 <style>
+	/* Barre segmentée « flottante » façon app native 2025 */
 	.tabs-container {
-		background: #1e2749;
-		border-radius: 10px;
-		border: 2px solid #2a3a6b;
+		background: var(--glass-bg);
+		backdrop-filter: var(--glass-blur);
+		-webkit-backdrop-filter: var(--glass-blur);
+		border-radius: var(--radius-xl);
+		border: 1px solid var(--border-soft);
+		box-shadow: var(--shadow-md);
 		overflow: visible; /* 🔥 FIX: Permettre aux onglets d'être cliquables même avec overflow */
-		margin-bottom: 15px;
+		margin-bottom: 16px;
 		position: relative;
 		z-index: 1; /* 🔥 FIX: S'assurer que les onglets sont au-dessus du contenu */
+		padding: 5px;
 	}
-	
+
 	.tabs-header {
 		display: flex;
-		gap: 0;
-		background: #0a0e27;
-		border-bottom: 2px solid #2a3a6b;
-		overflow-x: auto;
-		overflow-y: visible; /* 🔥 FIX: Permettre les clics même avec scroll */
-		scrollbar-width: thin;
-		scrollbar-color: #2a3a6b #0a0e27;
-		position: relative;
-		z-index: 1002; /* 🔥 FIX: Au-dessus de tout le reste */
-	}
-	
-	.tabs-header::-webkit-scrollbar {
-		height: 6px;
-	}
-	
-	.tabs-header::-webkit-scrollbar-track {
-		background: #0a0e27;
-	}
-	
-	.tabs-header::-webkit-scrollbar-thumb {
-		background: #2a3a6b;
-		border-radius: 3px;
-	}
-	
-	.tab-button {
-		padding: 12px 20px;
+		gap: 2px;
 		background: transparent;
 		border: none;
-		border-bottom: 3px solid transparent;
-		color: #888;
-		font-family: 'Courier New', monospace;
+		overflow-x: auto;
+		overflow-y: visible; /* 🔥 FIX: Permettre les clics même avec scroll */
+		scrollbar-width: none;
+		position: relative;
+		z-index: 1002; /* 🔥 FIX: Au-dessus de tout le reste */
+		border-radius: calc(var(--radius-xl) - 4px);
+	}
+
+	.tabs-header::-webkit-scrollbar {
+		height: 0;
+	}
+
+	.tab-button {
+		padding: 9px 16px;
+		background: transparent;
+		border: none;
+		border-radius: calc(var(--radius-xl) - 6px);
+		color: var(--text-secondary);
+		font-family: var(--font-ui);
 		font-size: 13px;
-		font-weight: bold;
+		font-weight: 600;
+		letter-spacing: 0.01em;
 		cursor: pointer;
-		transition: all 0.3s;
+		transition:
+			color 0.2s ease,
+			background-color 0.2s ease,
+			box-shadow 0.2s ease,
+			transform 0.2s var(--ease-spring);
 		white-space: nowrap;
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		text-transform: uppercase;
+		gap: 7px;
 		position: relative;
 		z-index: 1001; /* 🔥 FIX: Au-dessus du modal pour permettre les clics */
 		pointer-events: auto; /* 🔥 FIX: Permettre les clics même si modal ouvert */
 	}
-	
+
 	.tab-button:hover {
-		background: rgba(0, 255, 136, 0.05);
-		color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.07);
+		color: var(--text-primary);
 	}
-	
+
+	.tab-button:active {
+		transform: scale(0.97);
+	}
+
 	.tab-button.active {
-		background: rgba(0, 255, 136, 0.1);
-		color: #00ff88;
-		border-bottom-color: #00ff88;
-		text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+		background: linear-gradient(180deg, rgba(var(--accent-green-rgb), 0.18) 0%, rgba(var(--accent-green-rgb), 0.10) 100%);
+		color: var(--accent-green);
+		box-shadow:
+			inset 0 0 0 1px rgba(var(--accent-green-rgb), 0.35),
+			0 2px 10px rgba(var(--accent-green-rgb), 0.12);
+		text-shadow: none;
 	}
-	
+
 	.tab-icon {
-		font-size: 16px;
+		font-size: 15px;
+		line-height: 1;
+		filter: saturate(1.15);
 	}
-	
+
 	.tab-label {
-		font-size: 12px;
+		font-size: 12.5px;
 	}
-	
+
 	.tabs-content {
 		padding: 18px;
 		min-height: 200px;
 	}
-	
+
 	.tab-panel {
 		animation: fadeIn 0.3s ease-in;
 	}
-	
+
 	@keyframes fadeIn {
 		from {
 			opacity: 0;
@@ -132,18 +141,24 @@
 			transform: translateY(0);
 		}
 	}
-	
+
 	/* Mobile */
 	@media (max-width: 768px) {
+		.tabs-container {
+			border-radius: var(--radius-lg);
+			padding: 4px;
+		}
+
 		.tab-button {
-			padding: 10px 15px;
-			font-size: 11px;
+			padding: 8px 12px;
+			font-size: 11.5px;
+			border-radius: var(--radius-md);
 		}
-		
+
 		.tab-icon {
-			font-size: 14px;
+			font-size: 13px;
 		}
-		
+
 		.tabs-content {
 			padding: 12px;
 		}

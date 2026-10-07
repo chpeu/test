@@ -8,6 +8,7 @@ Vérifie que:
 3. La config est bien lue
 4. Le filtre rejette les trades à haut risque
 """
+import pandas as pd
 
 import sys
 import warnings

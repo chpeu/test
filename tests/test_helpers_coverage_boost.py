@@ -405,6 +405,7 @@ class TestHistoryUtils:
     def test_load_historical_data_function(self):
         """Test fonction load_historical_data"""
         try:
+            import utils.history_utils
             from utils.history_utils import load_historical_data
             
             # Test avec paramètres mock

@@ -3,6 +3,7 @@ Tests pilotes pour valider la stratégie de refactorisation sécurisée
 Phase 1: Prouver que l'approche fonctionne avant déploiement complet
 """
 import pytest
+import sys
 import time
 import asyncio
 from abc import ABC, abstractmethod

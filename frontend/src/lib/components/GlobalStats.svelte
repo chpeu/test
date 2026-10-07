@@ -163,12 +163,12 @@
 
 	.stat-card.running {
 		border-color: var(--accent-green);
-		background: rgba(0, 255, 136, 0.05);
+		background: rgba(var(--accent-green-rgb), 0.05);
 	}
 
 	.stat-card.paused {
 		border-color: var(--accent-orange);
-		background: rgba(255, 170, 0, 0.05);
+		background: rgba(var(--accent-orange-rgb), 0.05);
 	}
 
 	.stat-card.stopped {
@@ -178,17 +178,17 @@
 
 	.stat-card.profit {
 		border-color: var(--accent-green);
-		background: rgba(0, 255, 136, 0.05);
+		background: rgba(var(--accent-green-rgb), 0.05);
 	}
 
 	.stat-card.loss {
 		border-color: var(--accent-red);
-		background: rgba(255, 68, 68, 0.05);
+		background: rgba(var(--accent-red-rgb), 0.05);
 	}
 
 	.stat-card.winrate {
 		border-color: var(--accent-blue);
-		background: rgba(0, 170, 255, 0.05);
+		background: rgba(var(--accent-blue-rgb), 0.05);
 	}
 
 	.stat-icon {

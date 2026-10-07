@@ -220,10 +220,10 @@
 
 <style>
 	.bot-controls {
-		background: #1e2749;
+		background: var(--bg-secondary);
 		border-radius: 12px;
 		padding: 20px;
-		border: 2px solid #2a3a6b;
+		border: 2px solid var(--border);
 	}
 
 	.controls-header {
@@ -241,26 +241,26 @@
 
 	.controls-header h3 {
 		font-size: 20px;
-		color: #00ff88;
+		color: var(--accent-green);
 		font-weight: bold;
 		margin: 0;
 	}
 
 	.bot-status {
-		background: rgba(255, 68, 68, 0.2);
-		color: #ff4444;
+		background: rgba(var(--accent-red-rgb), 0.2);
+		color: var(--accent-red);
 		padding: 8px 16px;
 		border-radius: 12px;
 		font-size: 13px;
 		font-weight: bold;
-		border: 2px solid #ff4444;
+		border: 2px solid var(--accent-red);
 		transition: all 0.3s;
 	}
 
 	.bot-status.active {
-		background: rgba(0, 255, 136, 0.2);
-		color: #00ff88;
-		border-color: #00ff88;
+		background: rgba(var(--accent-green-rgb), 0.2);
+		color: var(--accent-green);
+		border-color: var(--accent-green);
 		animation: pulse 2s ease-in-out infinite;
 	}
 
@@ -288,7 +288,7 @@
 		font-weight: bold;
 		cursor: pointer;
 		transition: all 0.3s;
-		font-family: 'Courier New', monospace;
+		font-family: var(--font-ui);
 		text-transform: uppercase;
 		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 	}
@@ -299,31 +299,31 @@
 	}
 
 	.btn-primary {
-		background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
-		color: #0a0e27;
+		background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-green-strong) 100%);
+		color: var(--bg-primary);
 	}
 
 	.btn-primary:hover:not(:disabled) {
 		transform: translateY(-2px);
-		box-shadow: 0 6px 20px rgba(0, 255, 136, 0.4);
+		box-shadow: 0 6px 20px rgba(var(--accent-green-rgb), 0.4);
 	}
 
 	.btn-danger {
-		background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%);
+		background: linear-gradient(135deg, var(--accent-red) 0%, var(--accent-red-strong) 100%);
 		color: white;
 	}
 
 	.btn-danger:hover:not(:disabled) {
 		transform: translateY(-2px);
-		box-shadow: 0 6px 20px rgba(255, 68, 68, 0.4);
+		box-shadow: 0 6px 20px rgba(var(--accent-red-rgb), 0.4);
 	}
 
 	.btn-reboot {
 		padding: 8px 14px;
 		border-radius: 8px;
-		border: 1px solid #ffaa33;
+		border: 1px solid var(--accent-orange);
 		background: rgba(255, 170, 51, 0.15);
-		color: #ffaa33;
+		color: var(--accent-orange);
 		font-size: 13px;
 		font-weight: bold;
 		cursor: pointer;
@@ -343,9 +343,9 @@
 	.btn-quiet {
 		padding: 8px 12px;
 		border-radius: 8px;
-		border: 1px solid #5cc8ff;
+		border: 1px solid var(--accent-blue);
 		background: rgba(92, 200, 255, 0.15);
-		color: #5cc8ff;
+		color: var(--accent-blue);
 		font-size: 13px;
 		font-weight: bold;
 		cursor: pointer;
@@ -359,8 +359,8 @@
 
 	.btn-quiet.active {
 		background: rgba(92, 200, 255, 0.4);
-		border-color: #9be0ff;
-		color: #e6f7ff;
+		border-color: var(--accent-blue);
+		color: var(--accent-blue);
 	}
 
 	.btn-quiet:disabled {
@@ -369,15 +369,15 @@
 	}
 
 	.controls-info {
-		background: rgba(0, 170, 255, 0.1);
-		border-left: 3px solid #00aaff;
+		background: rgba(var(--accent-blue-rgb), 0.1);
+		border-left: 3px solid var(--accent-blue);
 		padding: 12px;
 		border-radius: 6px;
 	}
 
 	.info-text {
 		font-size: 13px;
-		color: #aaa;
+		color: var(--text-secondary);
 		margin: 0;
 		line-height: 1.5;
 	}

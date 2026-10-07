@@ -16,6 +16,7 @@ import hmac
 import json
 import logging
 import time
+from decimal import Decimal  # FIX F821: utilisé dans _get_symbol_precision (précision volUnit/priceUnit)
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any, Dict, List, Optional, Union
