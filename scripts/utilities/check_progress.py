@@ -9,7 +9,7 @@ import sys
 import json
 import psycopg2
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()

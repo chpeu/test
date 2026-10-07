@@ -10,10 +10,9 @@ Fonctionnalités :
 - Historique
 """
 
-import asyncio
 import logging
 from typing import Optional, Dict, List, Callable, Union
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict, deque
 import time
 

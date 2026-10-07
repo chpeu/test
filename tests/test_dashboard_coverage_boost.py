@@ -2,9 +2,6 @@
 Tests de couverture massifs pour dashboard/ et routes
 """
 import pytest
-import json
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from datetime import datetime
 
 
 class TestDashboardRoutes:

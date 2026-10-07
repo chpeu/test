@@ -12,7 +12,7 @@ import re
 import json
 from collections import Counter, defaultdict
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 import logging
 
 logging.basicConfig(level=logging.INFO)

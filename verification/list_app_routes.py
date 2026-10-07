@@ -1,7 +1,6 @@
 
 import sys
 import os
-from pathlib import Path
 
 # Ajouter le répertoire racine au PYTHONPATH
 root_dir = os.getcwd()

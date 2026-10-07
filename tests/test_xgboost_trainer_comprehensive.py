@@ -4,10 +4,9 @@ Objectif: maximiser couverture rapidement
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
 
 class TestFeatureSelector:

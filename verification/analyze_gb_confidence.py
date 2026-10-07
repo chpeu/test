@@ -9,7 +9,6 @@ import sys
 import os
 import json
 import numpy as np
-import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -18,7 +17,6 @@ if sys.platform == 'win32':
 
 from pathlib import Path
 from sklearn.ensemble import HistGradientBoostingClassifier, GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
 import joblib
 
 PROJECT_ROOT = Path(__file__).parent.parent

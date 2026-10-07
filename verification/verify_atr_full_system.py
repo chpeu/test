@@ -16,7 +16,6 @@ Usage: python verification/verify_atr_full_system.py
 import os
 import sys
 import json
-import time
 from datetime import datetime
 
 # Add parent directory to path
@@ -225,7 +224,7 @@ class ATRSystemVerifier:
     def verify_whatif(self):
         """Verifier le What-If Simulator"""
         try:
-            from core.analysis.what_if_simulator import WhatIfSimulator, TradeData, process_trade_whatif
+            from core.analysis.what_if_simulator import WhatIfSimulator, TradeData
             print_ok("Import WhatIfSimulator OK")
             
             # Test simulation simple

@@ -1,7 +1,6 @@
 """
 Tests pour les indicateurs techniques
 """
-import pytest
 from core.indicators import Indicators
 
 

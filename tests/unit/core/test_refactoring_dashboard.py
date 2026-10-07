@@ -4,7 +4,7 @@ Couverture: toutes les méthodes publiques et privées
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 import json
 

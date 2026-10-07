@@ -16,10 +16,7 @@ warnings.filterwarnings('ignore')
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-import os
-import numpy as np
-import pandas as pd
-from datetime import datetime, timezone
+from datetime import datetime
 
 print("=" * 70)
 print("  BOUCLE DE VERIFICATION COMPLETE - MODELES ML")
@@ -37,7 +34,7 @@ print("[1/7] CONFIGURATION ML")
 print("-" * 50)
 
 try:
-    from config import ML_CONFIG, TRADING_CONFIG
+    from config import ML_CONFIG
     
     results['config'] = {
         'enabled': ML_CONFIG.get('enabled', False),

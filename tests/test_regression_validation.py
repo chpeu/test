@@ -5,11 +5,8 @@ Valider que nouvelle implémentation = comportement legacy identique
 CRITIQUE pour ZÉRO RISQUE - Détecter toute régression avant déploiement
 """
 
-import pytest
 import asyncio
 import logging
-from unittest.mock import Mock, patch
-from typing import Dict, Any
 
 # Import nouvelles interfaces
 from core.interfaces.position_manager_interface import PositionSetup, PositionManagerConfig

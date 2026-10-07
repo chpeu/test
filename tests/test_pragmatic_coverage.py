@@ -2,10 +2,7 @@
 Stratégie pragmatique finale pour augmenter la couverture core/
 Focus sur l'execution de code simple et direct plutôt que tests complexes
 """
-import pytest
-import sys
 import os
-import importlib
 from unittest.mock import Mock, patch
 import math
 
@@ -245,7 +242,7 @@ class TestPragmaticCoreExecution:
             
             for cmd in test_commands:
                 try:
-                    ws_manager.register_command(cmd, lambda data, ws: {'result': f'{cmd}_executed'})
+                    ws_manager.register_command(cmd, lambda data, ws, _c=cmd: {'result': f'{_c}_executed'})
                 except Exception:
                     pass
             

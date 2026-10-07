@@ -1,6 +1,5 @@
 
 import os
-import json
 import psycopg2
 from urllib.parse import quote_plus
 

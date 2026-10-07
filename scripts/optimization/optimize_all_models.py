@@ -19,12 +19,10 @@ if sys.platform == 'win32':
 
 import os
 import json
-import pickle
 import joblib
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import Dict, Tuple, List
 
 # ML
 from sklearn.model_selection import TimeSeriesSplit

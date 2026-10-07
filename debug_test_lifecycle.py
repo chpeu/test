@@ -2,7 +2,6 @@
 import sys
 import os
 import asyncio
-import unittest
 from unittest.mock import Mock, AsyncMock, patch
 
 # Add the project root to the path
@@ -11,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 async def test_full_position_lifecycle():
     """Test cycle complet: scanner trouve setup → position ouverte → position fermée"""
     try:
-        from core.callbacks import scanner_loop, position_check_loop
+        from core.callbacks import scanner_loop
 
         # Mock analyzer qui trouve un setup
         mock_analyzer = AsyncMock()

@@ -4,7 +4,7 @@ Tests pour optimization.prediction_logger
 
 import pytest
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from optimization.prediction_logger import (
     get_postgres_connection,
     log_prediction,

@@ -5,10 +5,6 @@ Tests unitaires légers - initialisation et fonctions utilitaires
 """
 
 import pytest
-import logging
-from unittest.mock import patch, MagicMock
-from pathlib import Path
-import numpy as np
 import pandas as pd
 
 

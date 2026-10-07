@@ -4,7 +4,6 @@ Test de vérification des notifications Telegram
 Vérifie que les paramètres sont bien chargés et que notification_manager est configuré
 """
 import os
-import sys
 
 def test_telegram_config():
     """Vérifier la configuration Telegram depuis .env"""

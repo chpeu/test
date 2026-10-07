@@ -5,7 +5,7 @@ Sépare validation métier des vérifications techniques
 
 import logging
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from ..interfaces.position_interfaces import (
     IPositionValidator, ValidationResult, PositionSize

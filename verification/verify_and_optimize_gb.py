@@ -15,11 +15,11 @@ if sys.platform == 'win32':
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import RobustScaler
 from sklearn.feature_selection import SelectKBest, f_classif
-from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 import json

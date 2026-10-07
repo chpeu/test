@@ -2,15 +2,12 @@
 Tests pour api/reliability.py
 """
 import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from core.exceptions import NetworkError
 import api.reliability as reliability_mod
 from api.reliability import (
     AdaptiveCircuitBreaker,
     fetch_with_retry,
-    with_circuit_breaker,
-    fetch_with_all_protections,
     WebSocketManager,
     _adaptive_circuit_breaker
 )

@@ -30,7 +30,7 @@ Impact: -60 à -130 lignes de code dupliqué
 
 import json
 import logging
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Union
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class PositionHelper:
                 position = json.loads(position)
             except json.JSONDecodeError as e:
                 logger.error(f"❌ Erreur parse JSON position: {e}")
-                raise ValueError(f"Invalid position JSON: {e}")
+                raise ValueError(f"Invalid position JSON: {e}") from e
 
         # Dict → convert to PositionProxy
         if isinstance(position, dict):

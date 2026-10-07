@@ -4,7 +4,7 @@ Tests pour api/price_provider.py
 import pytest
 import asyncio
 import time
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from api.price_provider import HybridPriceProvider, get_price_provider
 
 

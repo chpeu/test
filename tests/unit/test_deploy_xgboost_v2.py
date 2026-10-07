@@ -4,8 +4,6 @@ Tests complets pour deploy_xgboost_v2.py
 
 import pytest
 from unittest.mock import patch, mock_open, MagicMock
-from pathlib import Path
-import sys
 
 
 class TestDeployXGBoostV2Step1:

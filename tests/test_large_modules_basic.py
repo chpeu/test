@@ -4,7 +4,6 @@ Objectif: obtenir couverture basique rapidement
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 
 class TestXGBoostTrainer:

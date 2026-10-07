@@ -5,7 +5,7 @@ Charge les modèles XGBoost V2 entraînés et prédit le PNL% exact
 
 import os
 import logging
-import pickle
+from optimization.data.feature_engineering import calculate_derived_features  # noqa: F401 — re-export : patché par tests/test_predictor_v2.py
 import json
 from typing import Dict, Optional, List, Tuple
 import pandas as pd
@@ -14,7 +14,6 @@ from datetime import datetime
 import joblib
 
 # Imports pour feature engineering et logging
-from optimization.data.feature_engineering import calculate_derived_features
 from optimization.prediction_logger import log_prediction
 
 logger = logging.getLogger(__name__)

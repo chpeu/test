@@ -13,7 +13,6 @@ except Exception:
 import sqlite3
 import json
 from collections import defaultdict
-from datetime import datetime
 
 # Connexion à la base de données
 db_path = 'data/analytics.db'

@@ -25,8 +25,8 @@ try:
 except Exception:
     pass
 from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from datetime import datetime
+from typing import Dict, Any, List
 
 # Couleurs pour output
 GREEN = '\033[92m'

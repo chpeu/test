@@ -251,6 +251,7 @@
 	const AUTO_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
 	
 	// Variables pour l'onglet "Variables en cours"
+	/** @type {any} */
 	let completeConfig = null;
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
@@ -1517,7 +1518,8 @@
 	}
 
 	// 🔥 BIDIRECTIONNEL: Écouter les mises à jour de config depuis le backend
-	onMount(async () => {
+	onMount(() => { void (async () => {
+		// FIX: destructeur async ignoré par Svelte (voir MDashboard) — return déplacé dehors.
 		const { getWebSocket } = await import('$lib/utils/websocket');
 		const ws = getWebSocket();
 		if (ws) {
@@ -1585,13 +1587,13 @@
 			});
 		}
 		
-		// 🔥 NOUVEAU: Nettoyer le timer quand le composant est détruit
-		return () => {
-			if (debounceTimer) {
-				clearTimeout(debounceTimer);
-				debounceTimer = null;
-			}
-		};
+	})().catch(console.error);
+	return () => {
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+			debounceTimer = null;
+		}
+	};
 	});
 </script>
 

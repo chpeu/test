@@ -190,7 +190,7 @@
 
 	function formatDuration(openedAt, closedAt) {
 		if (!openedAt || !closedAt) return 'N/A';
-		const diff = new Date(closedAt) - new Date(openedAt);
+		const diff = new Date(closedAt).getTime() - new Date(openedAt).getTime();
 		const seconds = Math.floor(diff / 1000);
 		const minutes = Math.floor(seconds / 60);
 		const hours = Math.floor(minutes / 60);

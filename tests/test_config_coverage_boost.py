@@ -2,8 +2,6 @@
 Tests de couverture pour les modules config et autres
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
 
 
 class TestConfigModule:

@@ -141,7 +141,6 @@ class TestStartScannerRoute:
 
     def test_start_scanner_without_dependencies(self, client):
         """Test démarrage scanner sans dépendances disponibles"""
-        from main import app
 
         # Ne pas injecter les dépendances (simuler indisponibilité)
         # get_scanner lèvera une HTTPException 503

@@ -6,7 +6,6 @@ Calculateur de scores d'analyse découplé et testable
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
-import numpy as np
 
 from ..interfaces.analyzer_interfaces import (
     IScoreCalculator, TechnicalIndicators, MarketContext, 
@@ -171,7 +170,10 @@ class TestableScoreCalculator(IScoreCalculator):
             final_score = normalized_score * data_quality_multiplier
             
             logger.debug(f"Score 5m pour {market_context.symbol}: {final_score:.2f} (components: {score_components})")
-            
+
+            processing_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            logger.debug(f"Score 5m calculation time: {processing_time:.1f}ms")
+
             return round(final_score, 2)
             
         except Exception as e:

@@ -10,7 +10,6 @@ Tests pour tous les helpers créés:
 - PositionHelper
 """
 import pytest
-import asyncio
 from unittest.mock import Mock, AsyncMock, patch
 import json
 

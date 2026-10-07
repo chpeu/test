@@ -83,7 +83,6 @@ async def test_sauvegarde():
         
         # 4. Vérifier fichiers saved_models
         logger.info("4️⃣ Vérification fichiers saved_models...")
-        import os
         from pathlib import Path
         
         models_dir = Path("optimization/saved_models")

@@ -11,7 +11,7 @@ Date: 07/12/2025
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Callable
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -416,29 +416,7 @@ class TradingCircuitBreaker:
     def get_events(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Retourne l'historique des événements"""
         return [event.to_dict() for event in self.events[-limit:]]
-    
-    def update_config(
-        self,
-        max_consecutive_losses: Optional[int] = None,
-        daily_drawdown_pause_pct: Optional[float] = None,
-        daily_drawdown_stop_pct: Optional[float] = None,
-        pause_duration_minutes: Optional[int] = None,
-        score_boost_per_loss: Optional[float] = None
-    ) -> None:
-        """Met à jour la configuration"""
-        if max_consecutive_losses is not None:
-            self.max_consecutive_losses = max_consecutive_losses
-        if daily_drawdown_pause_pct is not None:
-            self.daily_drawdown_pause_pct = daily_drawdown_pause_pct
-        if daily_drawdown_stop_pct is not None:
-            self.daily_drawdown_stop_pct = daily_drawdown_stop_pct
-        if pause_duration_minutes is not None:
-            self.pause_duration = timedelta(minutes=pause_duration_minutes)
-        if score_boost_per_loss is not None:
-            self.score_boost_per_loss = score_boost_per_loss
-        
-        logger.info(f"⚙️ Config Circuit Breaker mise à jour")
-    
+
     def _log_event_to_db(self, event: CircuitBreakerEvent) -> None:
         """
         🔥 SPRINT 1: Logger l'événement dans circuit_breaker_events

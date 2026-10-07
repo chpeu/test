@@ -1,8 +1,6 @@
 
 import pytest
-import asyncio
 from unittest.mock import Mock, AsyncMock, patch
-from tenacity import RetryError
 from api.reliability import fetch_with_retry, AdaptiveCircuitBreaker, RateLimitError, ExchangeError
 
 @pytest.mark.asyncio

@@ -11,7 +11,6 @@ pour chaque paire du top 5-10, avec:
 Les paires peu tradées utilisent le modèle global par défaut.
 """
 
-import os
 import json
 import joblib
 import logging
@@ -22,12 +21,12 @@ from datetime import datetime
 from typing import Dict, Optional, List, Tuple
 from dataclasses import dataclass, field
 
-from sklearn.model_selection import cross_val_score, StratifiedKFold, TimeSeriesSplit
+from sklearn.model_selection import cross_val_score, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score
 
 logger = logging.getLogger(__name__)
 

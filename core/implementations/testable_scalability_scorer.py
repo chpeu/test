@@ -7,7 +7,6 @@ import logging
 import math
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-import numpy as np
 
 from ..interfaces.scanner_interfaces import (
     IScalabilityScorer, MarketData, ScoringResult, ScoringMetrics,
@@ -54,9 +53,8 @@ class TestableScalabilityScorer(IScalabilityScorer):
         try:
             start_time = datetime.utcnow()
             self.scoring_count += 1
-            
-            # Configuration effective (local override ou globale)
-            effective_config = {**self.config, **(config or {})}
+
+            # 🔥 FIX F841: `config` (override local) était construit puis jeté.
             
             # Valider données d'entrée
             validation_errors = ScannerValidationUtils.validate_market_data(market_data)
@@ -72,6 +70,9 @@ class TestableScalabilityScorer(IScalabilityScorer):
             
             # Récupération paramètres dynamiques du régime
             scoring_params = self._get_effective_scoring_params(market_data.symbol)
+            # 🔥 FIX F841: appliquer l'override local `config` sur les paramètres du régime
+            if config:
+                scoring_params = {**scoring_params, **config}
             
             # Vérifier filtres de base
             rejection_reason = self._check_basic_filters(market_data, metrics, scoring_params)

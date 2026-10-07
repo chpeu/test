@@ -144,6 +144,9 @@ export function exportSummary() {
 		return;
 	}
 
+	const winRatePct = allTrades.length > 0 && currentStats.wins !== undefined
+		? ((currentStats.wins / allTrades.length) * 100).toFixed(1)
+		: 0;
 	const totalPnL = allTrades.reduce((sum, t) => sum + (t.net_pnl_usdt || 0), 0);
 	const wins = allTrades.filter(t => (t.net_pnl_usdt || 0) > 0);
 	const losses = allTrades.filter(t => (t.net_pnl_usdt || 0) <= 0);
@@ -165,7 +168,7 @@ export function exportSummary() {
 | **Total Trades** | ${allTrades.length} |
 | **Wins** | ${wins.length} (${((wins.length / allTrades.length) * 100).toFixed(1)}%) |
 | **Losses** | ${losses.length} (${((losses.length / allTrades.length) * 100).toFixed(1)}%) |
-| **Win Rate** | ${currentStats.winrate?.toFixed(1) || 0}% |
+| **Win Rate** | ${winRatePct}% |
 | **Total PnL** | ${totalPnL >= 0 ? '🟢' : '🔴'} ${totalPnL.toFixed(2)} USDT |
 | **Avg Win** | +${avgWin.toFixed(2)} USDT |
 | **Avg Loss** | ${avgLoss.toFixed(2)} USDT |
@@ -343,7 +346,7 @@ function getDailyPnL(allTrades) {
 
 	return Object.entries(dailyPnL)
 		.map(([date, pnl]) => ({ date, pnl: parseFloat(pnl.toFixed(2)) }))
-		.sort((a, b) => new Date(a.date) - new Date(b.date));
+		.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
 /**

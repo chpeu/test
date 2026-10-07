@@ -3,9 +3,7 @@ Tests complets pour optimization/ml_optimizer.py (439 lignes)
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 import pandas as pd
-import numpy as np
 
 
 class TestMLOptimizerInit:

@@ -5,8 +5,7 @@ Coverage target: 80%+
 
 import pytest
 import time
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
 from trading.live_order_manager import (
     LiveOrderManager,

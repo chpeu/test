@@ -9,7 +9,6 @@ import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from urllib.parse import quote_plus
-from datetime import datetime
 
 password = quote_plus("@Cmtr1di12345")
 conn = psycopg2.connect(f"postgresql://postgres:{password}@localhost:5432/trade_cursor_ml")

@@ -5,9 +5,7 @@ Couverture des fonctionnalités principales de gestion d'ordres MEXC Futures
 """
 
 import pytest
-import logging
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock
 
 
 # Tests pour l'import du module
@@ -60,7 +58,7 @@ class TestCircuitBreaker:
 
     def test_circuit_breaker_allows_request_when_closed(self):
         """Le circuit breaker permet les requêtes quand CLOSED"""
-        from trading.live_order_manager_futures import CircuitBreaker, CircuitState
+        from trading.live_order_manager_futures import CircuitBreaker
 
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         result = cb.can_execute()

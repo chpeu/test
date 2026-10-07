@@ -8,12 +8,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from sklearn.ensemble import HistGradientBoostingClassifier
-from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-from sklearn.metrics import accuracy_score, f1_score, precision_score, classification_report
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.metrics import accuracy_score, f1_score, precision_score
 from optimization.data.feature_loader import load_features_from_postgres
 from optimization.data.feature_engineering import calculate_derived_features
-import numpy as np
-import pandas as pd
 
 print("=" * 60)
 print("  VERIFICATION RESULTATS GRADIENTBOOSTING")

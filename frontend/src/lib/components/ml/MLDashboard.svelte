@@ -15,26 +15,29 @@
 	let error = null;
 	let showEVAnalysis = false;
 
-	onMount(async () => {
-		try {
-			await loadAllMLData();
-			loading = false;
-		} catch (err) {
-			console.error('Error loading ML dashboard:', err);
-			error = err.message;
-			loading = false;
-		}
-
-		// Refresh toutes les 30 secondes
-		const interval = setInterval(async () => {
+	onMount(() => {
+		// FIX: onMount ne doit PAS être async — Svelte ignore le destructeur renvoyé
+		// par une fonction async → l'interval n'était jamais nettoyé (fuite).
+		let interval = null;
+		void (async () => {
 			try {
 				await loadAllMLData();
+				loading = false;
 			} catch (err) {
-				console.error('Error refreshing ML data:', err);
+				console.error('Error loading ML dashboard:', err);
+				error = err.message;
+				loading = false;
 			}
-		}, 30000);
-
-		return () => clearInterval(interval);
+			// Refresh toutes les 30 secondes
+			interval = setInterval(async () => {
+				try {
+					await loadAllMLData();
+				} catch (err) {
+					console.error('Error refreshing ML data:', err);
+				}
+			}, 30000);
+		})();
+		return () => { if (interval) clearInterval(interval); };
 	});
 </script>
 

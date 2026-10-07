@@ -28,7 +28,7 @@ def main():
             return
             
         try:
-            from core.callbacks.post_exit_loop import start_post_exit_loop, is_running
+            from core.callbacks.post_exit_loop import is_running
             print("✅ core.callbacks.post_exit_loop importé")
         except Exception as e:
             print(f"❌ Erreur import post_exit_loop: {e}")

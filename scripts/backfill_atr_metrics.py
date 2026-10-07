@@ -5,8 +5,6 @@ dans la table trade_atr_metrics à partir des données existantes dans trades.
 """
 
 import os
-import sys
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()

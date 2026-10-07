@@ -3,7 +3,6 @@ Script de validation complète XGBoost V2
 Vérifie tous les prérequis et composants avant déploiement
 """
 import sys
-import os
 from pathlib import Path
 
 def print_header(text):

@@ -10,7 +10,6 @@ Date: 16/01/2026
 Objectif: Permettre l'analyse des seuils ML utilisés lors des rejets
 """
 
-import os
 import sys
 import asyncio
 import logging

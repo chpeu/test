@@ -18,7 +18,6 @@ def get_mexc_client():
 
 
 import asyncio
-import json
 import logging
 import threading
 import time
@@ -43,7 +42,6 @@ from core.position.recovery_mode import RecoveryModeManager, RecoveryModeConfig
 from core.position.partial_tp_manager import PartialTPManager
 from core.position.tp_escalier_manager import TPEscalierManager
 from core.position.analytics_logger import AnalyticsLogger
-from utils.helpers import ConfigHelper
 from core.state_manager import get_state_manager
 
 logger = logging.getLogger(__name__)
@@ -5940,7 +5938,6 @@ class PositionManager:
         # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detector
         if not phase2d_feedback_done:
             try:
-                from config import TRADING_CONFIG
 
                 # Récupérer le contexte du trade (stocké lors de l'entrée)
                 # 🔥 FIX: Utiliser 'position' (snapshot avant fermeture) et non 'self.active_position' (qui est None ici)

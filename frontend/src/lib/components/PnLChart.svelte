@@ -8,7 +8,7 @@
 	let chart;
 
 	// Configuration du chart
-	const chartConfig = {
+	const chartConfig = /** @type {any} */ ({
 		type: 'line',
 		data: {
 			labels: [],
@@ -16,15 +16,15 @@
 				{
 					label: 'PnL Cumulatif (USDT)',
 					data: [],
-					borderColor: null,
-					backgroundColor: null,
+					borderColor: undefined,
+					backgroundColor: undefined,
 					borderWidth: 3,
 					fill: true,
 					tension: 0.4,
 					pointRadius: 5,
 					pointHoverRadius: 8,
-					pointBackgroundColor: null,
-					pointBorderColor: null,
+					pointBackgroundColor: undefined,
+					pointBorderColor: undefined,
 					pointBorderWidth: 2
 				}
 			]
@@ -41,7 +41,7 @@
 					display: true,
 					position: 'top',
 					labels: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 12,
 							family: "ui-monospace, 'JetBrains Mono', monospace"
@@ -50,10 +50,10 @@
 					}
 				},
 				tooltip: {
-					backgroundColor: null,
-					titleColor: null,
-					bodyColor: null,
-					borderColor: null,
+					backgroundColor: undefined,
+					titleColor: undefined,
+					bodyColor: undefined,
+					borderColor: undefined,
 					borderWidth: 1,
 					padding: 12,
 					displayColors: false,
@@ -80,10 +80,10 @@
 				y: {
 					beginAtZero: true,
 					grid: {
-						color: null
+						color: undefined
 					},
 					ticks: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 11,
 							family: "ui-monospace, 'JetBrains Mono', monospace"
@@ -101,10 +101,10 @@
 				},
 				x: {
 					grid: {
-						color: null
+						color: undefined
 					},
 					ticks: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 10,
 							family: "ui-monospace, 'JetBrains Mono', monospace"
@@ -115,7 +115,7 @@
 				}
 			}
 		}
-	};
+	});
 
 	onMount(() => {
 		// Créer chart avec les couleurs du thème courant

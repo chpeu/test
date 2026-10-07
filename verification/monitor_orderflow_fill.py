@@ -10,7 +10,7 @@ que les nouvelles colonnes order flow sont bien remplies.
 import sys
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Setup path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

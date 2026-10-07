@@ -7,7 +7,6 @@ import logging
 import json
 import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 

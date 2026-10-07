@@ -16,7 +16,7 @@ import os
 import sys
 import time
 import argparse
-from datetime import datetime, timedelta
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

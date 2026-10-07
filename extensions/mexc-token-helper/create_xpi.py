@@ -4,9 +4,7 @@ Script pour créer une extension Firefox XPI fonctionnelle pour MEXC Token Helpe
 Supprime l'ancienne archive et crée une nouvelle version propre
 """
 
-import os
 import zipfile
-import shutil
 from pathlib import Path
 
 def create_mexc_extension():

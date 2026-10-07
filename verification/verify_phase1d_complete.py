@@ -12,7 +12,6 @@ Tests:
     5. Comportement bot avec toggles ON (V2)
     6. Persistance apres modification
 """
-import os
 import sys
 import json
 from pathlib import Path
@@ -175,7 +174,7 @@ def check_v2_behavior_simulation():
     print("=" * 60)
     
     try:
-        from core.market_regime_selector import MarketRegimeSelector, MarketRegime
+        from core.market_regime_selector import MarketRegimeSelector
         import statistics
         
         rs = MarketRegimeSelector()

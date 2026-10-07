@@ -11,13 +11,11 @@ Usage:
 """
 
 import sys
-import os
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
-import pandas as pd
 import numpy as np
 from sklearn.model_selection import cross_val_score, StratifiedKFold
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score

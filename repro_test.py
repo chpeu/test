@@ -2,7 +2,6 @@
 import unittest
 import sys
 import os
-import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 
 # Add root path

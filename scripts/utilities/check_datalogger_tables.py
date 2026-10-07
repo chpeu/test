@@ -3,7 +3,6 @@
 Script de diagnostic pour vérifier les données du DataLogger PostgreSQL
 """
 
-import os
 import sys
 import argparse
 

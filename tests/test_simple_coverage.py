@@ -3,7 +3,6 @@ Tests simples pour augmenter la couverture de code
 Focus sur des fonctions utilitaires et modules simples
 """
 import pytest
-from unittest.mock import Mock, patch
 import os
 import json
 import time

@@ -734,7 +734,6 @@ class TestScannerPhase3DashboardHealthCheck:
 
 if __name__ == "__main__":
     """Exécution des tests avec couverture"""
-    import asyncio
     import coverage
 
     print("=" * 60)

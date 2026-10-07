@@ -71,16 +71,21 @@ class TrailingStopManager:
             
         if current_pnl_pct < self.config.trigger_pnl:
             return None
-            
+
         # Distance simple basée sur config
         distance_pct = self.config.min_distance
-        
+
+        # 🔥 FIX F841: un trailing stop s'accroche à l'EXTREME atteinte (max_price),
+        # pas au prix courant — sinon le SL se desserre quand le prix refluence et les
+        # gains acquis sont redonnés. max_price défaut = current_price quand absent →
+        # comportement inchangé pour les appelants qui ne le passent pas. Si le prix a
+        # déjà traversé le SL (reflux > distance), le SL renvoyé est "de l'autre côté" : 
+        # c'est le signal pour l'appelant que le seuil est violé → déclenchement.
+        ref_price = max(max_price, current_price) if direction == 'LONG' else min(max_price, current_price)
         if direction == 'LONG':
-            # SL en-dessous du prix actuel
-            return current_price * (1 - distance_pct / 100)
+            return ref_price * (1 - distance_pct / 100)
         else:  # SHORT
-            # SL au-dessus du prix actuel
-            return current_price * (1 + distance_pct / 100)
+            return ref_price * (1 + distance_pct / 100)
     
     def update_max_price(self, position_data: Dict[str, Any], new_price: float) -> float:
         """Helper method pour compatibility tests"""

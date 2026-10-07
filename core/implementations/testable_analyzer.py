@@ -7,14 +7,12 @@ ZÉRO RISQUE - Code existant inchangé, wrapper testable à côté
 
 import logging
 import asyncio
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from core.interfaces.analyzer_interface import (
     IAnalyzer, 
     AnalysisSetup, 
     AnalyzerConfig,
-    setup_from_legacy_dict,
-    result_from_legacy_dict,
-    setup_to_legacy_dict
+    setup_from_legacy_dict
 )
 from core.interfaces.analyzer_interfaces import AnalysisStatus, AnalysisResult
 

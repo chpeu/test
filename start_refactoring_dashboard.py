@@ -5,14 +5,13 @@ Lance le serveur Flask avec toutes les configurations nécessaires
 """
 
 import sys
-import os
 import logging
 from pathlib import Path
 
 # Ajouter le répertoire courant au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.monitoring.refactoring_dashboard import create_dashboard, RefactoringDashboard
+from core.monitoring.refactoring_dashboard import create_dashboard
 from core.feature_flags import get_feature_flags_manager
 
 # Configuration logging

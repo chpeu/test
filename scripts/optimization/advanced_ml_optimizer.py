@@ -7,7 +7,6 @@ pour depasser les objectifs ML
 import sys
 import os
 import time
-import json
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -20,21 +19,18 @@ os.environ['POSTGRES_DB'] = 'trades_db'
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, cross_val_score
-from sklearn.preprocessing import RobustScaler, StandardScaler
-from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif, RFE
+from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import RobustScaler
+from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.ensemble import (
     GradientBoostingClassifier, 
     HistGradientBoostingClassifier,
     RandomForestClassifier,
     AdaBoostClassifier,
     BaggingClassifier,
-    VotingClassifier,
-    StackingClassifier
+    VotingClassifier
 )
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score
 from sklearn.utils.class_weight import compute_class_weight
 import optuna
 from optuna.samplers import TPESampler
@@ -56,8 +52,6 @@ def load_data():
     """Charge les donnees depuis le modele existant"""
     log("Chargement des donnees via API backend...")
     try:
-        import requests
-        import joblib
         from pathlib import Path
         
         # Charger les donnees via le backend qui tourne deja

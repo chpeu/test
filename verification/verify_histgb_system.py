@@ -14,12 +14,10 @@ Usage:
 """
 
 import sys
-import os
 import json
-import pickle
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Tuple, List, Optional
+from typing import Dict, List
 
 # Fix encoding Windows
 if sys.platform == 'win32':

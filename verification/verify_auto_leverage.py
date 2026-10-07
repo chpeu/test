@@ -19,11 +19,9 @@ Date: 2024-12-04
 """
 
 import sys
-import os
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple
-from unittest.mock import MagicMock, patch
 import logging
 
 # Setup path
@@ -265,7 +263,6 @@ def run_tests():
     print("-" * 60)
     
     try:
-        from trading.live_order_manager_futures import LiveOrderManagerFutures
         
         # Vérifier que MAX_AUTO_LEVERAGE = 5 dans le code
         # On lit le fichier source directement

@@ -12,9 +12,8 @@ Fonctionnalités :
 
 import asyncio
 import logging
-from typing import Optional, Dict, List, Union
-import hashlib
-from datetime import datetime, timedelta
+from typing import Optional, Dict, Union
+from datetime import datetime
 import time
 from collections import deque
 

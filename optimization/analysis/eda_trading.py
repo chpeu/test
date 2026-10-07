@@ -3,13 +3,10 @@ EDA (Exploratory Data Analysis) pour Trading ML
 Identifie les problèmes de données et features
 """
 import pandas as pd
-import numpy as np
 import logging
 from typing import Dict, List
 import matplotlib
 matplotlib.use('Agg')  # Backend non-interactif
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 from optimization.data.feature_loader import load_features_from_postgres
 from optimization.data.feature_engineering import calculate_derived_features

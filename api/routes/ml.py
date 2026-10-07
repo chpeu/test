@@ -23,7 +23,7 @@ This file serves as the main router aggregator.
 """
 
 import logging
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks  # noqa: F401 — BackgroundTasks patché par tests/test_ml_routes.py
 
 # Import modular routers
 from .ml_tasks import router as tasks_router
@@ -36,7 +36,7 @@ from .ml_ev_analysis import router as ev_analysis_router
 from .ml_legacy import router as legacy_router
 
 # Re-export common utilities for backward compatibility with tests
-from .ml_common import (
+from .ml_common import (  # noqa: F401 — réexports consommés par les tests via api.routes.ml.*
     ml_tasks,
     METRIC_OPTIONS,
     LAST_RUNS_FILE,
@@ -49,11 +49,9 @@ from .ml_common import (
     update_task_status,
     create_task,
 )
+from .ml_legacy import _train_xgboost_background  # noqa: F401 — re-export patché par tests
 
 # Re-export legacy functions for backward compatibility with tests
-from .ml_legacy import (
-    _train_xgboost_background,
-)
 
 # Alias for test compatibility
 def get_ml_task_status(task_id: str):

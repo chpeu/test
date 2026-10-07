@@ -5,7 +5,7 @@ Script pour vérifier le système Post-Exit Analysis
 
 import psycopg2
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Configuration - Utiliser connection string pour éviter problèmes d'encodage
 def get_connection():

@@ -1,7 +1,6 @@
 """
 Tests pour core/analyzer/filters.py
 """
-import pytest
 from unittest.mock import patch
 from core.analyzer.filters import (
     check_volume_filter,

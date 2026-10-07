@@ -6,7 +6,6 @@ Vérifie le schéma, la connexion, et les données
 
 import os
 import sys
-import json
 
 # Encodage UTF-8 pour Windows
 if sys.platform == 'win32':

@@ -7,13 +7,12 @@ Version refactorisée - Délègue aux modules dans core/analyzer/
 import asyncio
 import time
 from typing import List, Dict, Optional, Any
-import math
 import os
 
 from api.mexc import get_mexc_client
-from api.price_provider import get_price_provider
+from api.price_provider import get_price_provider  # noqa: F401 — re-export : patché par tests/test_unit_classes.py
 from core.indicators import Indicators
-from config import TRADING_CONFIG, DEBUG_ENABLED, CONDITION_WEIGHTS, TREND_BONUS_CONFIG
+from config import DEBUG_ENABLED
 from utils.logger import get_logger
 from utils.effective_config import get_effective_value, get_effective_config  # 🔥 NOUVEAU (FIX F821: get_effective_config utilisé au snapshot des params de scan)
 
@@ -51,15 +50,12 @@ from core.analyzer.signal_generator import (
 )
 from core.analyzer.scoring import (
     calculate_weighted_score,
-    get_min_score_required,
-    apply_trend_bonus,
     apply_divergence_bonus,
     evaluate_setup_score,
 )
 from core.analyzer.market_data import check_spread, check_orderbook_imbalance
 from core.analyzer.risk_detector import (
     detect_manipulation,
-    check_price_action_coherence,
 )
 from core.analyzer.correlation import (
     check_static_correlation,

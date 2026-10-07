@@ -8,7 +8,6 @@ import os
 import sys
 import subprocess
 import time
-from pathlib import Path
 
 # Ajouter le répertoire racine au path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

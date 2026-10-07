@@ -3,10 +3,8 @@ Callbacks pour rafraîchissement de scalabilité
 🔥 OPT #8: Intervalle adaptatif basé sur volatilité globale
 """
 
-import asyncio
 import logging
 import time
-from typing import Optional
 
 from config import TRADING_CONFIG
 

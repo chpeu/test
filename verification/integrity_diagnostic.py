@@ -10,8 +10,6 @@ sys.path.append(os.getcwd())
 
 from core.state_manager import get_state_manager
 from core.market_regime_selector import get_regime_selector
-from api.price_provider import get_price_provider
-from trading.live_order_manager_futures import LiveOrderManagerFutures
 from utils.effective_config import get_effective_config, get_active_adjustments
 
 logging.basicConfig(level=logging.INFO)

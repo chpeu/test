@@ -3,9 +3,7 @@ Tests stratégiques pour augmenter la couverture de code
 Ciblé sur les fichiers critiques avec beaucoup de lignes non couvertes
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import asyncio
-from typing import Dict, Any
+from unittest.mock import Mock, patch
 
 
 class TestCoreScanner:

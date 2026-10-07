@@ -5,10 +5,8 @@ Test complet de toutes les améliorations de la Phase 6-8
 """
 
 import asyncio
-import sys
 import logging
 from datetime import datetime
-from typing import Dict, List
 
 # Setup logging
 logging.basicConfig(

@@ -7,11 +7,9 @@ import sys
 import logging
 import asyncio
 from datetime import datetime
-from typing import Any, Optional, List, Dict
 
 # Core imports
 from core.state_manager import get_state_manager
-from core.websocket_manager import get_websocket_manager
 
 # Note: Many imports are done inside functions to avoid circular dependencies
 
@@ -120,7 +118,7 @@ async def init_instances() -> None:
     # 5. Initialize Notification Manager
     start = time.time()
     if not state.get_notification_manager():
-        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_ENABLED
+        from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
         from config import NOTIFICATION_BATCHING_ENABLED
         from notifications import create_notification_manager
         
@@ -403,7 +401,6 @@ async def run_initial_top_pairs_scan() -> None:
     Launch initial top pairs scan in background.
     """
     from utils.logging_utils import add_log
-    from core.exceptions import MarketDataError, NetworkError, WebSocketError
     
     # 🔥 REMOVED redundant init_instances() - already done in lifespan
     state = get_state_manager()

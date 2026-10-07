@@ -6,23 +6,20 @@ import logging
 import time
 import json
 import os
-from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
+from typing import Dict, Any, Optional, List
 import numpy as np
-from pathlib import Path
 
 import optuna
-from optuna.pruners import MedianPruner, HyperbandPruner
+from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 from optuna.trial import Trial
 from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, recall_score, f1_score, roc_auc_score
 import xgboost as xgb
 
 from optimization.data.feature_loader import load_features_from_postgres
 from optimization.data.feature_engineering import calculate_derived_features
 from optimization.data.preprocessor import FeaturePreprocessor
-from config import ML_CONFIG, TRADING_CONFIG
 
 logger = logging.getLogger(__name__)
 

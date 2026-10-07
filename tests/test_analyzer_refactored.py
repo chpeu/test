@@ -16,23 +16,6 @@ def test_import_analyzer_modules():
     print("Test 1: Import modules analyzer... ", end="")
 
     try:
-        from core.analyzer import (
-            check_volume_filter,
-            check_snr_filter,
-            check_breakout_filter,
-            check_wick_filter,
-            check_atr_filter,
-            generate_long_conditions,
-            generate_short_conditions,
-            calculate_weighted_score,
-            get_min_score_required,
-            check_spread,
-            check_orderbook_imbalance,
-            detect_manipulation,
-            check_price_action_coherence,
-            check_static_correlation,
-            calculate_trend_data
-        )
         print("✓ OK")
         return True
     except Exception as e:

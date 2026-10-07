@@ -15,7 +15,7 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, List
 
 import joblib
 import pandas as pd
@@ -28,7 +28,6 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
     confusion_matrix,
-    classification_report,
     brier_score_loss,
 )
 from sklearn.calibration import CalibratedClassifierCV

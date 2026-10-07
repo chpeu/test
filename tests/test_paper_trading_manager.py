@@ -3,7 +3,7 @@ Tests pour trading.paper_trading_manager
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 from trading.paper_trading_manager import PaperTradingManager
 
 

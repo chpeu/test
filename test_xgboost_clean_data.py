@@ -11,12 +11,11 @@ if sys.platform == 'win32':
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import RobustScaler
-from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
+from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.metrics import accuracy_score, f1_score, precision_score, mean_absolute_error, r2_score
 from xgboost import XGBClassifier, XGBRegressor
-from pathlib import Path
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 

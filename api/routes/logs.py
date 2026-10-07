@@ -1,8 +1,6 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 import logging
-from typing import Optional, Dict, List
-import time
 from utils.error_history import get_error_history
 
 logger = logging.getLogger(__name__)

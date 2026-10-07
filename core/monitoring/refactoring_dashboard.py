@@ -14,7 +14,6 @@ except ImportError:
     jsonify = None
     request = None
 
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional

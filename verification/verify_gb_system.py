@@ -55,7 +55,6 @@ def main():
         print_status("optuna", "ERROR", str(e))
     
     try:
-        from sklearn.ensemble import GradientBoostingClassifier
         print_status("sklearn", "OK", "GradientBoostingClassifier disponible")
     except Exception as e:
         all_ok = False
@@ -82,7 +81,6 @@ def main():
     
     try:
         from optimization.data.feature_engineering import calculate_derived_features
-        import pandas as pd
         import numpy as np
         
         if df is not None and len(df) > 0:

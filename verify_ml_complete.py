@@ -6,9 +6,7 @@ import sys
 sys.path.append('.')
 import json
 import joblib
-import pandas as pd
 from pathlib import Path
-from datetime import datetime
 
 def main():
     print('='*70)

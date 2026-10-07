@@ -6,7 +6,6 @@ import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-from datetime import datetime
 
 def analyze_sl_slippage():
     load_dotenv()

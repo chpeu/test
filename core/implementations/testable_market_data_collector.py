@@ -5,10 +5,8 @@ Collecteur de données de marché découplé et testable
 
 import logging
 import asyncio
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
-import time
-import math
+from typing import Dict, Any, List, Optional
+from datetime import datetime
 
 from ..interfaces.scanner_interfaces import (
     IMarketDataCollector, OrderbookData, TickerData, OHLCVData, MarketData,

@@ -24,8 +24,6 @@ if sys.platform == 'win32':
 import optuna
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
-import numpy as np
-import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score

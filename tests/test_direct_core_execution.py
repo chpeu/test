@@ -5,7 +5,7 @@ Tests simples qui exécutent vraiment du code au lieu de simples imports
 import sys
 import os
 import importlib.util
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 
 

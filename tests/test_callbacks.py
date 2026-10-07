@@ -3,8 +3,7 @@ Tests pour core/callbacks/*.py
 """
 import pytest
 import asyncio
-from unittest.mock import Mock, AsyncMock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import Mock, AsyncMock, patch
 
 
 class TestPositionCheckLoop:
@@ -570,7 +569,7 @@ class TestCallbacksIntegration:
     @pytest.mark.asyncio
     async def test_full_position_lifecycle(self):
         """Test cycle complet: scanner trouve setup → position ouverte → position fermée"""
-        from core.callbacks import scanner_loop, position_check_loop
+        from core.callbacks import scanner_loop
 
         # Mock analyzer qui trouve un setup
         mock_analyzer = AsyncMock()

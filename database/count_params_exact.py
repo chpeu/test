@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """Comptage exact des paramètres dans log_trade"""
 
-import re
 import sys
 
 if sys.platform == 'win32':

@@ -2,7 +2,6 @@
 Tests complets pour PerSymbolModelManager
 """
 
-import pytest
 from unittest.mock import Mock, patch, mock_open
 import pandas as pd
 import numpy as np
@@ -246,7 +245,7 @@ class TestPerSymbolModelManagerTrainSymbolModel:
 
 class TestPerSymbolModelManagerOptimizeHyperparams:
     def test_optimize_hyperparams_success(self):
-        from optimization.per_symbol_models import PerSymbolModelManager, RANDOM_SEED
+        from optimization.per_symbol_models import PerSymbolModelManager
 
         manager = PerSymbolModelManager()
         X_train = pd.DataFrame({"f1": np.random.randn(100), "f2": np.random.randn(100)})

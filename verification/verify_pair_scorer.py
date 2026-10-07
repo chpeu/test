@@ -133,7 +133,7 @@ def check_pair_scorer_module():
     print_header("4. MODULE pair_scorer")
     
     try:
-        from core.pair_scorer import PairScorer, get_pair_scorer
+        from core.pair_scorer import get_pair_scorer
         print_result("Import PairScorer", True)
         
         # Test instanciation

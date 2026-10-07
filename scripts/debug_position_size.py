@@ -17,7 +17,6 @@ if sys.platform == 'win32':
 from dotenv import load_dotenv
 load_dotenv()
 
-import time
 from trading.live_order_manager_futures import LiveOrderManagerFutures
 from config import TRADING_CONFIG
 

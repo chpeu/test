@@ -4,8 +4,7 @@ Dashboard monitoring Scanner Phase 3 - Trade Cursor v7.0
 """
 import pytest
 import asyncio
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-import json
+from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
 
 # Mock toutes les dépendances avant import

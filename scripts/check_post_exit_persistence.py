@@ -2,7 +2,6 @@
 Script pour vérifier la persistance des trackers post-exit après shutdown/restart
 """
 import psycopg2
-from datetime import datetime
 
 # Connexion PostgreSQL
 conn = psycopg2.connect(

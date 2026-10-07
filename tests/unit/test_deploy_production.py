@@ -2,10 +2,8 @@
 Tests pour deploy_production.py
 """
 
-import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
-import os
 
 
 class TestDeployProductionInfrastructure:

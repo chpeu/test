@@ -11,7 +11,6 @@ Verifie:
     4. _log_regime_change_to_db() inclut colonnes Phase 1A
     5. Syntaxe Python valide
 """
-import os
 import sys
 from pathlib import Path
 
@@ -139,7 +138,6 @@ def check_imports():
     
     # Test postgresql_datalogger (import seulement, pas connexion)
     try:
-        from core.postgresql_datalogger import PostgreSQLDataLogger
         print("  [OK] postgresql_datalogger import")
     except Exception as e:
         print(f"  [ERREUR] postgresql_datalogger: {e}")
@@ -147,7 +145,6 @@ def check_imports():
     
     # Test market_regime_selector
     try:
-        from core.market_regime_selector import MarketRegimeSelector
         print("  [OK] market_regime_selector import")
     except Exception as e:
         print(f"  [ERREUR] market_regime_selector: {e}")

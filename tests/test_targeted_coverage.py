@@ -3,10 +3,6 @@ Tests ciblés pour augmenter la couverture des modules à 0%
 Focus sur l'exécution de code dans les modules non couverts
 """
 import pytest
-from unittest.mock import Mock, patch
-import os
-import sys
-import importlib
 
 
 class TestCoreAnalyzerInit:

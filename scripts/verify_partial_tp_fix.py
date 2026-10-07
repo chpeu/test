@@ -13,8 +13,6 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
 
 
 def test_futures_order_result_has_min_contract():
@@ -113,7 +111,6 @@ def test_force_full_tp_calculation():
 def test_partial_tp_manager():
     """Test que PartialTPManager respecte force_full_tp"""
     from core.position.partial_tp_manager import PartialTPManager
-    from config import TRADING_CONFIG
     
     manager = PartialTPManager()
     

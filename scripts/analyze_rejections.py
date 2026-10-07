@@ -6,7 +6,6 @@ load_dotenv()
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import json
 
 conn = psycopg2.connect(
     host=os.environ.get('POSTGRES_HOST', 'localhost'),

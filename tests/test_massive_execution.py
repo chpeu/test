@@ -3,9 +3,8 @@ Tests massifs pour augmenter drastiquement la couverture
 Focus sur l'exécution de code réel dans les gros modules
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 import importlib.util
-import sys
 import os
 
 
@@ -280,7 +279,7 @@ class TestCoreModulesMassive:
             # Enregistrer commandes
             for j in range(5):
                 cmd_name = f"cmd_{i}_{j}"
-                ws.register_command(cmd_name, lambda data, websocket: {'result': cmd_name})
+                ws.register_command(cmd_name, lambda data, websocket, _c=cmd_name: {'result': _c})
         
         # Test opérations sur toutes les instances
         for ws in ws_managers:

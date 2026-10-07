@@ -15,7 +15,6 @@ if env_path.exists():
     load_dotenv(env_path)
 
 import psycopg2
-from datetime import datetime, timedelta
 from collections import defaultdict
 
 def main():

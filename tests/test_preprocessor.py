@@ -5,7 +5,6 @@ Tests pour optimization.data.preprocessor
 import pytest
 import pandas as pd
 import numpy as np
-from unittest.mock import Mock, patch, MagicMock
 from optimization.data.preprocessor import FeaturePreprocessor
 
 

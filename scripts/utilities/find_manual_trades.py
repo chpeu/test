@@ -2,7 +2,6 @@
 import pandas as pd
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
-from pathlib import Path
 
 env_vars = {}
 with open('.env', 'r') as f:

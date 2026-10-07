@@ -3,7 +3,6 @@ Script de vérification pour LightGBM Trainer
 """
 import logging
 import sys
-import os
 from pathlib import Path
 
 # Ajouter la racine du projet au path

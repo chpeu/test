@@ -18,7 +18,6 @@ warnings.filterwarnings('ignore')
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-import os
 import json
 import joblib
 import numpy as np
@@ -26,13 +25,13 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 
-from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
+from sklearn.model_selection import cross_val_score, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, 
-    roc_auc_score, confusion_matrix, classification_report
+    roc_auc_score, confusion_matrix
 )
 
 import optuna

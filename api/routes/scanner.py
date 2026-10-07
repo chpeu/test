@@ -2,12 +2,11 @@
 Routes API pour le scanner - Gestion des top pairs et analyses
 """
 
-import asyncio
 import logging
 import time
 from fastapi import APIRouter, Request, Query, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from typing import Optional, Dict, List, Any
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 

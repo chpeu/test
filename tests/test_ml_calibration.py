@@ -1,6 +1,5 @@
 import types
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock
 
 import pytest
 

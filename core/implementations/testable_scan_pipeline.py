@@ -7,7 +7,6 @@ import logging
 import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-import time
 
 from ..interfaces.scanner_interfaces import (
     IScanPipeline, IScanStep, ScanPipelineStep, ScanPipelineResult, 

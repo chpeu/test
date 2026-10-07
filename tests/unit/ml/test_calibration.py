@@ -9,8 +9,8 @@ Ces tests vérifient:
 """
 
 import pytest
-from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime, timezone
+from unittest.mock import Mock, patch
 import sys
 import os
 

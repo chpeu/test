@@ -4,10 +4,9 @@ Surveille la performance du modèle en production et détecte la dégradation
 """
 
 import logging
-import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+from datetime import datetime
 from dataclasses import dataclass
 import json
 

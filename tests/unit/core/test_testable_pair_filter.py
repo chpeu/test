@@ -6,11 +6,9 @@ Tests adaptés à la structure réelle du code
 """
 
 import pytest
-from unittest.mock import Mock, patch
 from datetime import datetime
 import sys
 import os
-import math
 
 # Ajout du chemin parent pour imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -21,7 +19,6 @@ from core.interfaces.scanner_interfaces import (
     ScoringResult,
     ScoringMetrics,
     FilterConfig,
-    PairFilterResult,
     OrderbookData,
     TickerData,
     DataSource,

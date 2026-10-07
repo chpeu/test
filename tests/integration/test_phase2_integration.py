@@ -5,7 +5,6 @@ Valide le fonctionnement complet de tous les composants Phase 2
 
 import pytest
 import logging
-from typing import Dict, Any, List
 from datetime import datetime
 import numpy as np
 

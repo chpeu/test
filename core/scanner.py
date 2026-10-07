@@ -11,7 +11,7 @@ Identifie les meilleures paires pour le scalping basé sur:
 - 🔥 OPT: Direction bias (bid/ask imbalance)
 """
 import asyncio
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 import math
 import time
 

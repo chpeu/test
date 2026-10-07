@@ -2,8 +2,7 @@
 Tests pour core/callbacks/scanner_loop.py - Module critique du scanner
 """
 import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, AsyncMock, patch
 from core.callbacks import scanner_loop
 
 

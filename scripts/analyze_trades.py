@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Analyse des trades de l'après-midi"""
 import sqlite3
-from datetime import datetime, timedelta
 
 conn = sqlite3.connect('data/analytics.db')
 c = conn.cursor()

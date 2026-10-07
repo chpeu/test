@@ -2,9 +2,7 @@
 Tests de couverture pour les modules utils/
 """
 import pytest
-import os
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock, patch
 
 
 class TestPricingUtils:
@@ -233,7 +231,6 @@ class TestLoggerBasic:
     def test_setup_logger_different_levels(self):
         """Test setup_logger avec différents niveaux"""
         from utils.logger import setup_logger
-        import logging
         
         for level in ['DEBUG', 'INFO', 'WARNING', 'ERROR']:
             logger = setup_logger(log_to_file=False, level=level)

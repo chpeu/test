@@ -3,7 +3,6 @@ Tests ciblés pour augmenter la couverture des modules à 0%
 Focus sur l'exécution de code réel dans pricing.py, indicators.py, metrics.py
 """
 import pytest
-from unittest.mock import Mock, patch
 import math
 import time
 

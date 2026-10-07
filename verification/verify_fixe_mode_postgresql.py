@@ -19,7 +19,6 @@ else:
     print(f"⚠️ Fichier .env non trouvé: {env_path}")
 
 import psycopg2
-from typing import List, Dict, Any
 
 def main():
     """Fonction principale"""

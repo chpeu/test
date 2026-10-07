@@ -2,7 +2,6 @@
 """Vérifie l'activité récente : scans, setups et trades."""
 
 import os
-import sys
 from pathlib import Path
 from dotenv import load_dotenv
 

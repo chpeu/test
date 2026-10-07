@@ -3,7 +3,6 @@ Script de vérification de compatibilité base de données
 Vérifie que les colonnes config_* existent et sont remplies
 """
 import sys
-from pathlib import Path
 
 def print_header(text):
     print("\n" + "=" * 80)

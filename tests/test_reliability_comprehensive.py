@@ -3,9 +3,6 @@ Tests complets pour api/reliability.py (558 lignes)
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
-import asyncio
 
 
 class TestCircuitBreaker:

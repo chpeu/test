@@ -2,11 +2,8 @@
 Tests unitaires pour PostgreSQLDataLogger
 """
 import pytest
-import os
 import uuid
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
-import json
+from unittest.mock import patch, MagicMock
 
 # Mock psycopg2 si non disponible
 try:

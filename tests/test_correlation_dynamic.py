@@ -3,7 +3,6 @@ Tests pour core/correlation_dynamic.py
 """
 import pytest
 from unittest.mock import Mock, patch
-from collections import deque
 
 
 class TestDynamicCorrelationFilter:

@@ -8,7 +8,6 @@ Vérifie:
 """
 
 import sys
-import os
 import json
 import pickle
 from pathlib import Path
@@ -21,11 +20,9 @@ if sys.platform == 'win32':
 # Ajouter le répertoire parent au path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import numpy as np
-import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
 from sklearn.model_selection import cross_val_score, StratifiedKFold, train_test_split
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 # ========== CONFIGURATION ==========
 

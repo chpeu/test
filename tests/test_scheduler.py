@@ -3,7 +3,7 @@ Tests pour core/scheduler.py
 """
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 from core.scheduler import Scheduler
 
 

@@ -8,7 +8,6 @@ Usage:
     python verification/verify_auto_optimize_integration.py
 """
 
-import os
 import sys
 import json
 import requests

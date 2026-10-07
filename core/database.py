@@ -5,10 +5,8 @@ Persistance illimitée avec requêtes rapides
 import sqlite3
 import logging
 import json
-import os
 import sys
 from typing import List, Dict, Optional
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 

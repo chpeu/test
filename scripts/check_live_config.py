@@ -8,7 +8,6 @@ Vérifie les paramètres ATR actuellement chargés dans l'instance live du bot.
 
 import os
 import requests
-import json
 
 # URL de l'API du bot (ajuster si nécessaire)
 API_BASE = os.getenv("BOT_API_URL", "http://localhost:8000")

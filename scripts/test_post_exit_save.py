@@ -18,7 +18,6 @@ load_dotenv()
 
 import asyncio
 from datetime import datetime, timezone
-import uuid
 
 def main():
     print("=" * 60)

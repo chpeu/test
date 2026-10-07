@@ -6,10 +6,6 @@ Tests complets pour modules utils/ - Couverture maximale
 import pytest
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
-import json
-import tempfile
-from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -26,7 +22,7 @@ class TestConfigPersistence:
 
     def test_config_persistence_init(self):
         """Test initialisation config_persistence functions"""
-        from utils.config_persistence import save_config_overrides, load_config_overrides
+        from utils.config_persistence import load_config_overrides
         # Test basic functionality
         result = load_config_overrides()
         assert isinstance(result, dict)

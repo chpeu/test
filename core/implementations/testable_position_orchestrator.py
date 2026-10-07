@@ -4,8 +4,6 @@ Coordonne tous les composants position avec gestion d'erreurs robuste
 """
 
 import logging
-import asyncio
-import random
 from typing import Dict, Any
 from datetime import datetime
 

@@ -6,10 +6,8 @@ Coverage target: 70%+
 import pytest
 import numpy as np
 import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
-import joblib
+from unittest.mock import Mock, patch
 import json
-from pathlib import Path
 
 from optimization.predictor_v2 import (
     MLPredictorV2,

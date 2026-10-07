@@ -6,7 +6,6 @@ import argparse
 import sys
 import logging
 from typing import Optional
-import json
 
 from ml.hyperparameter_tuning import (
     HyperparameterTuner,

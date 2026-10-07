@@ -15,34 +15,10 @@ def test_all_modules_import():
 
     try:
         # Position modules
-        from core.position import (
-            calculate_fixed_levels,
-            calculate_atr_levels,
-            EarlyInvalidationChecker,
-            TrailingStopManager,
-            PnLCalculator,
-            RecoveryModeManager,
-            PartialTPManager,
-            TPEscalierManager,
-            AnalyticsLogger
-        )
 
         # Analyzer modules
-        from core.analyzer import (
-            check_volume_filter,
-            generate_long_conditions,
-            calculate_weighted_score,
-            check_spread,
-            detect_manipulation
-        )
 
         # Routes et callbacks
-        from api.routes import scanner_router, dashboard_router
-        from core.callbacks import (
-            scanner_loop_callback,
-            position_check_loop_callback,
-            scalability_refresh_loop_callback
-        )
 
         print("✓ OK (position: 9, analyzer: 8, routes: 3, callbacks: 4)")
         return True

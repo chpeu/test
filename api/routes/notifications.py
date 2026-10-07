@@ -4,9 +4,8 @@ Routes API pour les notifications (Telegram, etc.)
 import logging
 import os
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])

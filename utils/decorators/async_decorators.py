@@ -34,7 +34,7 @@ Impact: -250 à -350 lignes de code dupliqué
 import asyncio
 import logging
 from functools import wraps
-from typing import Any, Callable, Optional, TypeVar, Union
+from typing import Any, Callable, TypeVar
 import os
 
 logger = logging.getLogger(__name__)

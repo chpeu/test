@@ -4,12 +4,12 @@ API Routes pour la configuration - Inclut endpoint token MEXC
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional
 import os
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -615,7 +615,7 @@ async def update_mexc_token(request: MexcTokenRequest):
         raise
     except Exception as e:
         logger.error(f"❌ Erreur mise à jour token MEXC: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/mexc-token/status")

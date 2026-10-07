@@ -10,9 +10,8 @@ Outil pour optimiser les seuils de filtrage :
 
 import json
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict
 from datetime import datetime
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

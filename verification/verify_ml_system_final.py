@@ -10,9 +10,7 @@ warnings.filterwarnings('ignore')
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-import os
 import json
-import numpy as np
 import pandas as pd
 from pathlib import Path
 from datetime import datetime

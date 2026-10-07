@@ -12,15 +12,10 @@ import sys
 import atexit
 import asyncio
 import logging
-import json
 import os
 import time
 import threading
-import traceback
 import uvicorn
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any, Tuple, Callable
-from collections import OrderedDict
 
 # 🔥 SPRINT 2.1: StateManager for centralized state management
 from core.state_manager import get_state_manager
@@ -31,8 +26,8 @@ from core.state_manager import get_state_manager
 from core.exceptions import TradeCursorError, ConfigurationError
 
 # FastAPI imports
-from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, Request, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -390,10 +385,6 @@ global_error_history = ErrorHistoryManager(max_errors=1000)
 logger.info("✅ ErrorHistoryManager global initialisé")
 
 # Fonctions de support (importées des modules dédiés)
-from core.bootstrap import init_instances, run_initial_top_pairs_scan
-from utils.logging_utils import add_log
-from utils.history_utils import get_trade_history_file, save_trade_history, load_trade_history
-from core.position.sl_services import setup_realtime_sl_check, schedule_sl_order_placement, cancel_pending_sl_task
 
 # 🔥 FIX: Injecter app_state dans le router APRÈS définition
 if api_router and set_app_state:

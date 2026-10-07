@@ -6,8 +6,7 @@ import sys
 sys.path.append('.')
 import json
 from pathlib import Path
-from datetime import datetime, timedelta
-import pandas as pd
+from datetime import datetime
 
 def main():
     print('='*80)

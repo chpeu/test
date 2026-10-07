@@ -25,7 +25,6 @@ import argparse
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import Dict, Any
-from datetime import datetime
 
 # Paramètres actuels de la config (lus depuis config_overrides.json)
 CURRENT_CONFIG = {

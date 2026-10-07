@@ -3,13 +3,9 @@ API Routes ML - Endpoints pour Machine Learning
 Dashboard, Features, Models, Backtesting, Live Predictions
 """
 
-import asyncio
-import copy
 import json
 import logging
 import os
-import threading
-from pathlib import Path
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body, Request
 from fastapi.responses import JSONResponse
 from typing import Optional, Dict, Any, List
@@ -27,8 +23,9 @@ router = APIRouter(prefix="/api/ml", tags=["ML"])
 from .ml_common import (
     ml_tasks,
     METRIC_OPTIONS,
-    LAST_RUNS_FILE,
-    get_metric_runs_snapshot
+    get_metric_runs_snapshot,
+    _load_metric_runs_cache,
+    record_metric_run,
 )
 
 
@@ -47,45 +44,9 @@ async def get_metric_summary():
 # METRIC_OPTIONS = ["trading_composite", "f1_score", "accuracy", "roc_auc"]
 
 # LAST_RUNS_FILE = Path("data/optuna_last_runs.json")
-_metric_cache_lock = threading.Lock()
-metric_runs_cache = {"metrics": {}}
-
-
-def _load_metric_runs_cache():
-    global metric_runs_cache
-    if LAST_RUNS_FILE.exists():
-        try:
-            with LAST_RUNS_FILE.open('r') as f:
-                metric_runs_cache = json.load(f)
-        except Exception as e:
-            logger.warning(f"[WARN] Impossible de charger {LAST_RUNS_FILE}: {e}")
-            metric_runs_cache = {"metrics": {}}
-    else:
-        metric_runs_cache = {"metrics": {}}
-
-
-def _save_metric_runs_cache():
-    LAST_RUNS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with LAST_RUNS_FILE.open('w') as f:
-        json.dump(metric_runs_cache, f, indent=2)
-
-
-def record_metric_run(metric: str, run_data: Dict[str, Any]):
-    """Enregistrer la dernière optimisation et le record global pour chaque métrique."""
-    if not metric:
-        return
-    with _metric_cache_lock:
-        metrics_map = metric_runs_cache.setdefault("metrics", {})
-        metrics_map[metric] = {
-            'metric': metric,
-            'last_run': {**run_data, 'metric': metric, 'source': 'latest'}
-        }
-        _save_metric_runs_cache()
-
-
-def get_metric_runs_snapshot() -> Dict[str, Any]:
-    with _metric_cache_lock:
-        return copy.deepcopy(metric_runs_cache)
+# 🔥 FIX F811: le cache, son lock et ses fonctions VIVENT dans ml_common
+# (état partagé). La duplication locale faisait deux états divergents
+# pour le même fichier data/optuna_last_runs.json.
 
 
 _load_metric_runs_cache()
@@ -883,7 +844,7 @@ async def get_model_metrics(model_name: str):
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur get_model_metrics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _generate_recommendations(test_acc: float, overfitting_gap: float, total_samples: int, zero_importance_count: int) -> list:
@@ -979,7 +940,7 @@ async def get_predictions_analytics(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur get_predictions_analytics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/predictions/recent")
@@ -1005,7 +966,7 @@ async def get_recent_predictions(limit: int = Query(20, ge=1, le=100)):
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur get_recent_predictions: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predictor/reload")
@@ -1039,7 +1000,7 @@ async def reload_predictor(model_name: str = Query('xgboost_v1')):
             
     except Exception as e:
         logger.error(f"[FAIL] Erreur reload_predictor: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict")
@@ -1075,7 +1036,7 @@ async def predict_opportunity(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur predict_opportunity: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict/batch")
@@ -1111,7 +1072,7 @@ async def predict_batch(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur predict_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== V2 PREDICTIONS (REGRESSION PNL%) ==========
@@ -1149,7 +1110,7 @@ async def predict_pnl_v2(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur predict_pnl_v2: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict_v2/batch")
@@ -1196,7 +1157,7 @@ async def predict_pnl_v2_batch(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur predict_pnl_v2_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict_v2/filter")
@@ -1234,7 +1195,7 @@ async def filter_setup_with_v2(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur filter_setup_with_v2: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== ALERTS ==========
@@ -1263,7 +1224,7 @@ async def get_alerts_history(limit: int = Query(20, ge=1, le=100)):
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur get_alerts_history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/alerts/test")
@@ -1314,7 +1275,7 @@ async def test_alert(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur test_alert: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== TRAINING ==========
@@ -1340,7 +1301,7 @@ async def check_retrain_status():
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur check_retrain_status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/retrain")
@@ -1426,7 +1387,7 @@ async def trigger_retrain(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur trigger_retrain: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/train")
@@ -1655,7 +1616,7 @@ async def start_hyperparameter_optimization(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur start_optimization: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def _optimize_hyperparameters_background(
@@ -2008,7 +1969,7 @@ async def apply_best_hyperparameters(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur apply_best_hyperparameters: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== GRADIENTBOOSTING OPTIMIZATION ==========
@@ -2097,7 +2058,7 @@ async def start_gradientboosting_optimization(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur start_gb_optimization: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def _optimize_gradientboosting_background(
@@ -2292,7 +2253,7 @@ async def apply_gradientboosting_params(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur apply_gb_params: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/optimize/gb/results")
@@ -2400,7 +2361,7 @@ async def start_auto_optimization(request: Request):
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur start_auto_optimization: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Logger dédié pour l'optimisation
@@ -2697,7 +2658,7 @@ async def apply_auto_optimization_results(request: Request):
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur apply_auto_optimization: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 """
@@ -2722,7 +2683,6 @@ async def train_xgboost_v2_model(
         task_id pour suivre progression ou résultats si terminé
     """
     try:
-        from config import TRADING_CONFIG
         
         # Créer task ID
         task_id = str(uuid.uuid4())
@@ -2753,7 +2713,7 @@ async def train_xgboost_v2_model(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur train_v2: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/task/{task_id}")
@@ -2801,7 +2761,7 @@ async def get_ml_task_status(task_id: str):
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur get_ml_task_status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def _train_xgboost_v2_background(task_id: str, force: bool):
@@ -2815,7 +2775,6 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         from xgboost import XGBRegressor
         from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
         from sklearn.feature_selection import mutual_info_regression
-        import numpy as np
         import pandas as pd
         import json
         
@@ -3266,7 +3225,7 @@ async def start_hyperparameter_optimization_v2(
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur start_optimization_v2: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 async def _optimize_hyperparameters_v2_background(n_trials: int):
@@ -3449,7 +3408,7 @@ async def get_optimization_v2_status():
         }
     except Exception as e:
         logger.error(f"[FAIL] Erreur get_optimization_v2_status: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/optimize_v2/apply")
@@ -3538,7 +3497,7 @@ async def apply_best_hyperparameters_v2(params_dict: Dict[str, Any] = Body(None)
         raise
     except Exception as e:
         logger.error(f"[FAIL] Erreur apply_v2_hyperparameters: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== GRADIENTBOOSTING: TRAIN OPTIMIZED MODEL ==========
@@ -3621,7 +3580,7 @@ async def train_gradientboosting_model(
         
     except Exception as e:
         logger.error(f"[FAIL] Erreur train_gb: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/verify_gb")
@@ -3706,7 +3665,6 @@ async def _train_gradientboosting_background(task_id: str):
     """Fonction background pour entraînement GradientBoosting"""
     try:
         from sklearn.ensemble import GradientBoostingClassifier
-        from sklearn.preprocessing import RobustScaler
         from sklearn.metrics import accuracy_score, f1_score, precision_score
         from sklearn.pipeline import Pipeline
         from optimization.data.feature_loader import load_features_from_postgres

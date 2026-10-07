@@ -3,7 +3,7 @@ Tests pour le module d'authentification API (api/auth.py)
 """
 import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi import HTTPException
 from api.auth import (
     load_api_keys,

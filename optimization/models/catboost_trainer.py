@@ -8,11 +8,8 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Optional, List
+from typing import Dict
 
-import joblib
-import pandas as pd
-import numpy as np
 
 # Try import CatBoost (user needs to install it)
 try:

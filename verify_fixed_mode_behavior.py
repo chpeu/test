@@ -5,9 +5,7 @@ Vérification comportement mode FIXE - cas principaux (TP/SL, BE, Trailing liné
 from __future__ import annotations
 
 import asyncio
-import math
 import os
-import time
 from copy import deepcopy
 
 # Désactiver PostgreSQL logger pour ce script

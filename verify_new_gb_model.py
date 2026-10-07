@@ -7,7 +7,6 @@ fonctionne correctement après redémarrage.
 """
 import os
 import sys
-import json
 from pathlib import Path
 
 if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':

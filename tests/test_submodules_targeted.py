@@ -3,10 +3,7 @@ Stratégie ciblée : Tester les sous-modules individuellement
 Au lieu de tester les gros fichiers monolithiques, tester leurs composants
 """
 import pytest
-import sys
-import os
-from unittest.mock import Mock, patch, MagicMock
-import importlib.util
+from unittest.mock import Mock, patch
 
 
 class TestPositionSubmodules:
@@ -107,7 +104,14 @@ class TestPositionSubmodules:
             
             # Doit être activé car max_price (46500) - entry (45000) = 1500 > activation (2.0 * 500)
             assert trailing_sl is not None
-            assert trailing_sl < current_price  # SL doit être en dessous du prix actuel
+            # FIX F841: le SL se calcule depuis max_price (ratchet). Ici le reflux
+            # (46500→46200) dépasse la distance → le SL tombé au-dessus du prix courant
+            # EST le signal que le seuil est violé (déclenchement par l'appelant).
+            assert trailing_sl > current_price
+            assert abs(trailing_sl - 46500.0 * (1 - manager.config.min_distance / 100)) < 0.01
+            # Sans reflux (prix courant = extrême), SL bien sous le prix courant
+            sl_ok = manager.calculate_trailing_stop({**position_data, 'max_price': current_price}, current_price)
+            assert sl_ok < current_price
             
             # Test update max price
             new_max = manager.update_max_price(position_data, 47000.0)

@@ -4,7 +4,6 @@ Prediction Logger - Service pour logger les prédictions ML et leurs résultats
 
 import os
 import logging
-import json
 from typing import Dict, Optional
 from datetime import datetime
 import psycopg2

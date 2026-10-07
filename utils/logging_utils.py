@@ -3,9 +3,7 @@ Logging Utilities - Centralized logging with WebSocket support
 """
 
 import logging
-import asyncio
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 

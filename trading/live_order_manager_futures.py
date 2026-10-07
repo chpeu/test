@@ -24,8 +24,7 @@ import time
 import asyncio
 import ccxt
 from typing import Optional, Dict, Any, List, Tuple
-from dataclasses import dataclass, field
-import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import wraps
 import threading

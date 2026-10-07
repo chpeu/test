@@ -5,10 +5,7 @@ Valide le fonctionnement complet de tous les composants Scanner Phase 3
 
 import pytest
 import logging
-import asyncio
-from typing import Dict, Any, List
 from datetime import datetime
-import numpy as np
 
 from core.factories.position_factory import get_configured_scanner_factory
 from core.interfaces.scanner_interfaces import (

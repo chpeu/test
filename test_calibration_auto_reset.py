@@ -11,7 +11,6 @@ Usage:
 
 import sys
 import os
-import asyncio
 import logging
 
 # Ajouter le répertoire du projet au path

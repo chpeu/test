@@ -6,7 +6,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import requests
 from fastapi import FastAPI
 from fastapi.testclient import TestClient

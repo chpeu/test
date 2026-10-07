@@ -7,7 +7,6 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 import requests
-import json
 from datetime import datetime
 
 BASE_URL = "http://localhost:5000"

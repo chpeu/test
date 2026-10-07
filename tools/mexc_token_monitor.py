@@ -10,7 +10,7 @@ import subprocess
 import json
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 class MEXCTokenMonitor:

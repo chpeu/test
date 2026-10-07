@@ -24,18 +24,16 @@ import pickle
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from typing import Dict, Any, Tuple, Optional
 
 # ML imports
 from sklearn.ensemble import (
     GradientBoostingClassifier, RandomForestClassifier, 
-    VotingClassifier, AdaBoostClassifier
+    VotingClassifier
 )
 from sklearn.linear_model import LogisticRegression
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (
     accuracy_score, f1_score, precision_score, recall_score,
-    roc_auc_score, classification_report, precision_recall_curve
+    roc_auc_score, precision_recall_curve
 )
 import xgboost as xgb
 

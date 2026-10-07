@@ -11,7 +11,6 @@ Usage:
 """
 
 import sys
-import os
 import argparse
 import json
 import logging
@@ -25,13 +24,11 @@ sys.path.insert(0, str(ROOT_DIR))
 import optuna
 from optuna.samplers import TPESampler
 import numpy as np
-import pandas as pd
 from sklearn.model_selection import cross_val_score, StratifiedKFold
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score, roc_auc_score
 from xgboost import XGBClassifier
 
 from optimization.ml_pipeline import prepare_training_dataset, split_training_dataset
-from optimization.data.feature_loader import build_config_filter_conditions
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

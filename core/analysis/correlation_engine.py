@@ -13,8 +13,8 @@ Fournit des recommandations basées sur les données historiques.
 import logging
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List
+from datetime import datetime
 
 import psycopg2
 from dotenv import load_dotenv

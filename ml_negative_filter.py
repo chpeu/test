@@ -19,13 +19,10 @@ warnings.filterwarnings('ignore')
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-import json
 import pickle
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import xgboost as xgb
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

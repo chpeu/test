@@ -6,8 +6,7 @@ Dashboard monitoring pour rollout Scanner Phase 3
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
-import json
+from typing import Dict, Any
 import time
 
 from core.feature_flags import get_feature_flags_manager

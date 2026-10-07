@@ -83,7 +83,6 @@ async def main():
         print("-" * 40)
         
         import uuid
-        from datetime import datetime, timezone
         
         test_trade_id = str(uuid.uuid4())
         test_symbol = "BTCUSDT"

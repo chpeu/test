@@ -1,6 +1,5 @@
 
 import os
-import re
 
 def fix_position_manager_syntax():
     path = "core/position_manager.py"

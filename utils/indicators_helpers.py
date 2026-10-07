@@ -1,7 +1,7 @@
 """
 Indicator extraction helpers to avoid code duplication.
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 
 # Standard indicator field names for 1m timeframe

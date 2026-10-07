@@ -1,7 +1,6 @@
 """
 Unit tests for utils/indicators_helpers.py
 """
-import pytest
 from utils.indicators_helpers import (
     extract_indicators_1m,
     extract_indicators_5m,

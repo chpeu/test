@@ -18,7 +18,6 @@ COMPORTEMENT ATTENDU:
 """
 
 import sys
-import os
 import re
 from pathlib import Path
 

@@ -6,7 +6,6 @@ Vérification post-redémarrage: colonnes anti-giveback + invert_signals sur les
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime
 from dotenv import load_dotenv
 
 def verify_post_restart():

@@ -10,8 +10,6 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 
 print("=" * 70)

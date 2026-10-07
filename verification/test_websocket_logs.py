@@ -10,7 +10,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import logging
 from core.state_manager import StateManager
-from core.websocket_manager import get_websocket_manager
 from utils.logger import WebSocketLogHandler
 
 def test_websocket_handler():

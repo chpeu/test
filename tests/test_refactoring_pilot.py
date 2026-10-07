@@ -2,13 +2,10 @@
 Tests pilotes pour valider la stratégie de refactorisation sécurisée
 Phase 1: Prouver que l'approche fonctionne avant déploiement complet
 """
-import pytest
 import sys
 import time
 import asyncio
 from abc import ABC, abstractmethod
-from unittest.mock import Mock, patch, MagicMock
-from typing import Dict, Any, Optional
 
 
 # =============================================================================
@@ -559,7 +556,6 @@ class TestPilotRegression:
 
 def run_pilot_tests():
     """Exécuter tous les tests pilotes et retourner rapport"""
-    import sys
     
     print("🧪 EXÉCUTION TESTS PILOTES DE REFACTORISATION")
     print("=" * 60)

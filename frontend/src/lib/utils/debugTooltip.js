@@ -151,6 +151,7 @@ export function initDebugTooltips() {
 		let debugName = null;
 		
 		// Remonter dans le DOM jusqu'à trouver un élément avec data-debug-name
+		if (!(target instanceof Element)) return;
 		while (target && target !== document.body) {
 			debugName = target.getAttribute('data-debug-name');
 			if (debugName) {
@@ -164,7 +165,11 @@ export function initDebugTooltips() {
 	document.addEventListener('mouseout', (event) => {
 		// Vérifier si on quitte un élément avec data-debug-name
 		const relatedTarget = event.relatedTarget;
-		if (!relatedTarget || !relatedTarget.closest('[data-debug-name]')) {
+		if (!(relatedTarget instanceof Element)) {
+			hideTooltip();
+			return;
+		}
+		if (!relatedTarget.closest('[data-debug-name]')) {
 			hideTooltip();
 			// Réinitialiser currentDebugName seulement si on ne survole plus aucun élément avec data-debug-name
 			setTimeout(() => {

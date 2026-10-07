@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-import time
 import sys
 from datetime import datetime
 

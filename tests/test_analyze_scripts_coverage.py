@@ -3,10 +3,7 @@ Tests de couverture pour les scripts analyze_*.py (impact élevé)
 Ces scripts représentent des milliers de lignes avec 0% de couverture
 """
 import pytest
-import os
-import sys
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import patch
 
 
 class TestAnalyzeMarketToday:

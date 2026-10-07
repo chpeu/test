@@ -19,7 +19,7 @@ if sys.platform == 'win32':
         pass
 
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from dotenv import load_dotenv
 load_dotenv()

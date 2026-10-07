@@ -1,7 +1,6 @@
 """
 Tests pour le calcul de score
 """
-import pytest
 from core.analyzer.scoring import (
     calculate_weighted_score,
     get_min_score_required,

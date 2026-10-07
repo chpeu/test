@@ -4,7 +4,6 @@ Script de vérification des 47 derniers trades en mode FIXE
 
 import sqlite3
 from pathlib import Path
-from typing import List, Dict, Any
 
 ROOT_DIR = Path(__file__).parent.parent
 db_path = ROOT_DIR / 'data' / 'analytics.db'

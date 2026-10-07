@@ -6,12 +6,10 @@ Version finale corrigée pour atteindre 100% de réussite
 Date: 16/01/2026
 """
 
-import os
 import sys
 import asyncio
 import logging
 import json
-import tempfile
 from datetime import datetime
 from pathlib import Path
 

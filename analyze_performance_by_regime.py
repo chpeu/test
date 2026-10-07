@@ -1,7 +1,6 @@
 import sys
 import sqlite3
 import json
-from datetime import datetime, timedelta
 
 def _setup_stdout_utf8() -> None:
     try:

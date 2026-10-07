@@ -194,7 +194,7 @@ def check_phase1c_whatif():
     
     # 1. Verifier methode simulate_regime_scenarios
     try:
-        from core.analysis.what_if_simulator import WhatIfSimulator, TradeData
+        from core.analysis.what_if_simulator import WhatIfSimulator
         simulator = WhatIfSimulator()
         
         if hasattr(simulator, 'simulate_regime_scenarios'):

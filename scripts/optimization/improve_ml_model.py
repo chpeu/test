@@ -15,7 +15,6 @@ if sys.platform == 'win32':
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-import numpy as np
 import pandas as pd
 from pathlib import Path
 

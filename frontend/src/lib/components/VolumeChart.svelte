@@ -9,7 +9,7 @@
 	let maxTrades = 10; // Afficher les 10 derniers trades
 
 	// Configuration du chart
-	const chartConfig = {
+	const chartConfig = /** @type {any} */ ({
 		type: 'bar',
 		data: {
 			labels: [],
@@ -33,7 +33,7 @@
 					display: true,
 					position: 'top',
 					labels: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 12,
 							family: "'Courier New', monospace"
@@ -42,10 +42,10 @@
 					}
 				},
 				tooltip: {
-					backgroundColor: null,
-					titleColor: null,
-					bodyColor: null,
-					borderColor: null,
+					backgroundColor: undefined,
+					titleColor: undefined,
+					bodyColor: undefined,
+					borderColor: undefined,
 					borderWidth: 1,
 					padding: 12,
 					callbacks: {
@@ -90,10 +90,10 @@
 				y: {
 					beginAtZero: true,
 					grid: {
-						color: null
+						color: undefined
 					},
 					ticks: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 11,
 							family: "'Courier New', monospace"
@@ -113,7 +113,7 @@
 						display: false
 					},
 					ticks: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 10,
 							family: "'Courier New', monospace"
@@ -124,7 +124,7 @@
 				}
 			}
 		}
-	};
+	});
 
 	let lastTrades = [];
 

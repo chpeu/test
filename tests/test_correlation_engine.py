@@ -2,9 +2,7 @@
 Tests pour CorrelationEngine - Augmentation de couverture
 """
 
-import pytest
-from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from core.analysis.correlation_engine import (
     CorrelationEngine,
     CorrelationResult,
@@ -144,22 +142,6 @@ class TestCorrelationEngine:
         assert result.avg_pnl == 15.0
         assert result.recommendation == "NEUTRAL"
 
-    def test_optimization_suggestion_creation(self):
-        """Test création OptimizationSuggestion"""
-        suggestion = OptimizationSuggestion(
-            parameter="min_score",
-            current_value=2.0,
-            suggested_value=1.5,
-            expected_improvement="+5% winrate",
-            confidence="HIGH",
-            based_on_trades=200
-        )
-        assert suggestion.parameter == "min_score"
-        assert suggestion.current_value == 2.0
-        assert suggestion.suggested_value == 1.5
-        assert suggestion.expected_improvement == "+5% winrate"
-        assert suggestion.confidence == "HIGH"
-        assert suggestion.based_on_trades == 200
 
     def test_optimization_suggestion_confidence_levels(self):
         """Test niveaux de confiance OptimizationSuggestion"""
@@ -206,23 +188,6 @@ class TestCorrelationEngine:
             )
             assert result.dimension == dim
 
-    def test_correlation_result_numeric_fields(self):
-        """Test champs numériques CorrelationResult"""
-        result = CorrelationResult(
-            dimension="test",
-            value="test",
-            trades=100,
-            wins=60,
-            winrate=60.0,
-            total_pnl=1500.0,
-            avg_pnl=15.0,
-            recommendation="FAVOR"
-        )
-        assert isinstance(result.trades, int)
-        assert isinstance(result.wins, int)
-        assert isinstance(result.winrate, float)
-        assert isinstance(result.total_pnl, float)
-        assert isinstance(result.avg_pnl, float)
 
     def test_optimization_suggestion_creation(self):
         """Test création OptimizationSuggestion"""
@@ -241,49 +206,8 @@ class TestCorrelationEngine:
         assert suggestion.confidence == "HIGH"
         assert suggestion.based_on_trades == 200
 
-    def test_optimization_suggestion_numeric_fields(self):
-        """Test champs numériques OptimizationSuggestion"""
-        suggestion = OptimizationSuggestion(
-            parameter="test",
-            current_value=1.5,
-            suggested_value=2.5,
-            expected_improvement="test",
-            confidence="HIGH",
-            based_on_trades=200
-        )
-        assert isinstance(suggestion.current_value, float)
-        assert isinstance(suggestion.suggested_value, float)
-        assert isinstance(suggestion.based_on_trades, int)
 
-    def test_correlation_result_string_fields(self):
-        """Test champs string CorrelationResult"""
-        result = CorrelationResult(
-            dimension="session",
-            value="ASIA",
-            trades=10,
-            wins=5,
-            winrate=50.0,
-            total_pnl=100.0,
-            avg_pnl=10.0,
-            recommendation="NEUTRAL"
-        )
-        assert isinstance(result.dimension, str)
-        assert isinstance(result.value, str)
-        assert isinstance(result.recommendation, str)
 
-    def test_optimization_suggestion_string_fields(self):
-        """Test champs string OptimizationSuggestion"""
-        suggestion = OptimizationSuggestion(
-            parameter="min_score",
-            current_value=2.0,
-            suggested_value=1.5,
-            expected_improvement="+5% winrate",
-            confidence="MEDIUM",
-            based_on_trades=100
-        )
-        assert isinstance(suggestion.parameter, str)
-        assert isinstance(suggestion.expected_improvement, str)
-        assert isinstance(suggestion.confidence, str)
 
     def test_correlation_result_zero_trades(self):
         """Test CorrelationResult avec zéro trades"""

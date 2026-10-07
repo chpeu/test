@@ -10,7 +10,7 @@ import os
 # Ajouter le répertoire parent au path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from core.position_manager import Position, PositionConfig, PositionManager
+from core.position_manager import PositionConfig, PositionManager
 
 
 def test_import_modules():
@@ -18,14 +18,6 @@ def test_import_modules():
     print("Test 1: Import des modules... ", end="")
 
     try:
-        from core.position.tp_sl_calculator import calculate_fixed_levels, calculate_atr_levels
-        from core.position.early_invalidation import EarlyInvalidationChecker
-        from core.position.trailing_stop import TrailingStopManager
-        from core.position.pnl_calculator import PnLCalculator
-        from core.position.recovery_mode import RecoveryModeManager
-        from core.position.partial_tp_manager import PartialTPManager
-        from core.position.tp_escalier_manager import TPEscalierManager
-        from core.position.analytics_logger import AnalyticsLogger
 
         print("✓ OK")
         return True

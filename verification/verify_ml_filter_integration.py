@@ -34,7 +34,7 @@ print("TEST 1: Configuration ML")
 print("-" * 50)
 
 try:
-    from config import ML_CONFIG, TRADING_CONFIG
+    from config import ML_CONFIG
     
     enabled = ML_CONFIG.get('enabled', False)
     mode = ML_CONFIG.get('mode', 'STRICT')

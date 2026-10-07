@@ -1,7 +1,6 @@
 
 import os
 import json
-import pandas as pd
 
 # Nettoyage de l'environnement pour éviter UnicodeDecodeError sur Windows
 for k, v in list(os.environ.items()):

@@ -18,7 +18,6 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import TRADING_CONFIG
 from utils.effective_config import set_regime_adjustments, get_effective_value
 from core.market_regime_selector import DEFAULT_REGIME_CONFIGS
 from core.position_manager import PositionManager, PositionConfig

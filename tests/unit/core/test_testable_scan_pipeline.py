@@ -6,7 +6,7 @@ Tests adaptés à la structure réelle du code
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 import asyncio
 import sys
@@ -27,13 +27,6 @@ from core.interfaces.scanner_interfaces import (
     ScanPipelineStep,
     ScanPipelineStepType,
     ScanPipelineResult,
-    ScanResult,
-    ScanStatus,
-    MarketData,
-    DataSource,
-    OrderbookData,
-    TickerData,
-    OHLCVData,
 )
 
 
@@ -257,10 +250,9 @@ class TestTestableScanPipelineExecutePipelineSuccess:
                 retry_attempts=1,
             )
             mock_step.is_enabled.return_value = True
-            async def execute_func(_, __):
-
-                return {f"result_{i}": "success"}
+            async def execute_func(_, __, _i=i):
                 await asyncio.sleep(0.001)
+                return {f"result_{_i}": "success"}
             mock_step.execute = execute_func
 
             pipeline.add_step(mock_step)

@@ -6,7 +6,6 @@ Générateur de signaux techniques découplé et testable
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-import numpy as np
 
 from ..interfaces.analyzer_interfaces import (
     ISignalGenerator, SignalResult, SignalType, SignalStrength,

@@ -1,7 +1,6 @@
 """
 Tests pour core/position/analytics_logger.py
 """
-import pytest
 from unittest.mock import Mock
 from datetime import datetime
 from core.position.analytics_logger import AnalyticsLogger

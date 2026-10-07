@@ -8,7 +8,7 @@ Ce script verifie que tous les parametres sont correctement configures et foncti
 import json
 import os
 import sys
-from typing import Dict, List, Tuple
+from typing import Tuple
 
 def _setup_stdout_utf8() -> None:
     try:

@@ -5,7 +5,6 @@ Analyse des 13 derniers trades avec nouvelle configuration
 """
 import psycopg2
 import pandas as pd
-from datetime import datetime
 
 def analyze_last_13_trades():
     """Analyser les 13 derniers trades"""

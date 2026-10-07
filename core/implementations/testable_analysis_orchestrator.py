@@ -5,15 +5,13 @@ Orchestrateur d'analyse pour coordination complète des composants
 
 import logging
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
-import asyncio
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 from ..interfaces.analyzer_interfaces import (
     IAnalysisOrchestrator, IAnalyzer, ISignalValidator,
-    AnalysisResult, AnalysisStatus, SignalResult, SignalStrength,
-    ValidationUtils
+    AnalysisResult, AnalysisStatus, ValidationUtils
 )
 
 logger = logging.getLogger(__name__)

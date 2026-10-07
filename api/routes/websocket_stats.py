@@ -5,7 +5,6 @@ import logging
 import time
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 

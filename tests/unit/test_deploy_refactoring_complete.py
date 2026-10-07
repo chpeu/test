@@ -2,10 +2,7 @@
 Tests pour deploy_refactoring_complete.py
 """
 
-import pytest
 from unittest.mock import patch, MagicMock, mock_open
-import os
-from pathlib import Path
 
 
 class TestDeployRefactoringBanner:

@@ -14,7 +14,6 @@ sys.stdout.reconfigure(encoding='utf-8')
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine, text
-import math
 
 load_dotenv()
 

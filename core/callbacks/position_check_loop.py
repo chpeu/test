@@ -5,7 +5,6 @@ Exécuté toutes les 2 secondes pour vérifier la position active
 
 import asyncio
 import logging
-from typing import Optional
 from datetime import datetime
 
 from utils.pricing import get_preferred_price
@@ -590,7 +589,6 @@ async def _emit_stats_update():
         return
     
     try:
-        import time
         stats_dict = {
             'total_trades': 0,
             'wins': 0,

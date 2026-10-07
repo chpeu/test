@@ -9,7 +9,7 @@ export const tradeHistory = writable([]);
 
 // Computed: Sorted by date (most recent first)
 export const sortedTrades = derived(tradeHistory, $trades =>
-	[...$trades].sort((a, b) => new Date(b.closed_at) - new Date(a.closed_at))
+	[...$trades].sort((a, b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime())
 );
 
 // Computed: Winning trades only

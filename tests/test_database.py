@@ -4,7 +4,6 @@ Tests pour core/database.py
 import pytest
 import os
 import tempfile
-from datetime import datetime
 from core.database import TradeDatabase
 
 

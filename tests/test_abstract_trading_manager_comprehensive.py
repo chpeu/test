@@ -3,8 +3,6 @@ Tests complets pour trading.abstract_trading_manager (616 lignes)
 """
 
 import pytest
-from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
 from trading.abstract_trading_manager import AbstractTradingManager, TradingPosition
 
 

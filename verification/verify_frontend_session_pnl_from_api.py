@@ -10,7 +10,7 @@ Le but est d'expliquer un cas du type: -0.34 USDT mais -0.05%.
 from __future__ import annotations
 
 import statistics
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import requests
 

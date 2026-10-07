@@ -32,7 +32,6 @@ from core.analyzer.scoring import (
     get_min_score_required,
     apply_trend_bonus,
     apply_divergence_bonus,
-    calculate_final_score,
     evaluate_setup_score
 )
 from core.analyzer.risk_detector import (

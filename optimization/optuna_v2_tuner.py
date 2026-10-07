@@ -250,7 +250,7 @@ class OptunaV2Tuner:
             )
         except Exception as e:
             logger.warning(f"Trial {trial.number} failed: {e}")
-            raise optuna.TrialPruned()
+            raise optuna.TrialPruned() from e
         
         # Évaluer sur train (pour détecter overfitting)
         y_train_pred = model.predict(X_train)

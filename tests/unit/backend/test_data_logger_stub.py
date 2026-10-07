@@ -1,8 +1,6 @@
 """Tests pour le stub data_logger de backend/ml."""
 
 import pytest
-import asyncio
-from unittest.mock import MagicMock, patch
 
 
 class TestDataLoggerStub:

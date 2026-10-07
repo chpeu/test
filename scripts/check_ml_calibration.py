@@ -8,7 +8,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def check_calibration():
     from core.postgresql_datalogger import PostgreSQLDataLogger

@@ -7,7 +7,7 @@ import io
 import csv
 import os
 from typing import Optional, List, Dict, Any, Tuple, Callable
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime
 

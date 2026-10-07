@@ -38,9 +38,6 @@ print(f"   adaptive_sizing_poor_mult: {TRADING_CONFIG.get('adaptive_sizing_poor_
 print("\n[2/5] Test du AdaptiveSizingManager...")
 
 from core.position.adaptive_sizing import (
-    AdaptiveSizingManager, 
-    AdaptiveSizingConfig,
-    load_adaptive_sizing_config,
     reset_adaptive_sizing_manager,
     get_adaptive_sizing_manager
 )

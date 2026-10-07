@@ -56,7 +56,6 @@ def test_get_calibration_stats_success(monkeypatch, app):
 
 
 def test_get_calibration_stats_exception(monkeypatch, app):
-    from api.routes import ml_calibration
 
     cfg_mod = types.SimpleNamespace(TRADING_CONFIG={})
     monkeypatch.setitem(__import__('sys').modules, 'config', cfg_mod)
@@ -125,7 +124,6 @@ def test_seed_calibration_exception(monkeypatch, app):
 
 
 def test_update_calibration_config_no_updates(monkeypatch, app):
-    from api.routes import ml_calibration
 
     cfg_mod = types.SimpleNamespace(TRADING_CONFIG={})
     monkeypatch.setitem(__import__('sys').modules, 'config', cfg_mod)

@@ -5,9 +5,8 @@ Migrated from ml_legacy.py as part of Phase 5 modularization
 
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -489,8 +488,6 @@ def simulate_optimal_performance(cursor, trade_id_texts=None):
     Simule les performances si les paramètres ML optimaux étaient appliqués.
     Utilise les paramètres RÉELS utilisés par chaque trade (stockés en DB).
     """
-    import json
-    import os
     from collections import defaultdict
     
     try:

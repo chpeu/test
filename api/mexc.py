@@ -5,11 +5,10 @@ Utilise ccxt pour les appels API directs (pas de proxy CORS nécessaire)
 import asyncio
 import ccxt.async_support as ccxt
 from typing import Dict, List, Optional, Any
-import time
 import aiohttp
 
-from config import MEXC_FUTURES_URL, DEBUG_ENABLED
-from api.reliability import fetch_with_all_protections, WebSocketManager
+from config import DEBUG_ENABLED
+from api.reliability import fetch_with_all_protections
 from utils.decorators import async_safe
 
 # 🔥 REFACTORING SPRINT 1.1: Exception Handling System

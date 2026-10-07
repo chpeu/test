@@ -6,7 +6,6 @@ Vérifie les colonnes corrigées et l'état général des scan_logs
 import sys
 import os
 from pathlib import Path
-from datetime import datetime, timedelta
 import asyncio
 
 # Ajouter le répertoire parent au path

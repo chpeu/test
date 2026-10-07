@@ -2,8 +2,7 @@
 Tests de couverture pour les modules core/
 """
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import patch
 from datetime import datetime
 
 

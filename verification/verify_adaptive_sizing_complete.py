@@ -10,7 +10,6 @@ import sys
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-import time
 from datetime import datetime
 
 print("=" * 70)
@@ -67,8 +66,6 @@ for key in required_keys:
 print("\n[2/6] Verification module adaptive_sizing...")
 
 from core.position.adaptive_sizing import (
-    AdaptiveSizingManager,
-    AdaptiveSizingConfig,
     load_adaptive_sizing_config,
     get_adaptive_sizing_manager,
     reset_adaptive_sizing_manager

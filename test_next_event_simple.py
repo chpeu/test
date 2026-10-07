@@ -4,7 +4,6 @@ Test simple pour vérifier next_event
 """
 import requests
 import time
-import json
 
 BASE_URL = "http://localhost:5000"
 

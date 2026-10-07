@@ -1,8 +1,6 @@
 import sqlite3
 import sys
 import os
-import json
-from datetime import datetime
 
 # Connect to database
 db_path = "data/analytics.db"

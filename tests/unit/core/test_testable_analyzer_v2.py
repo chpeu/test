@@ -6,8 +6,7 @@ Tests adaptés à la structure réelle du code
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
 import os
 
@@ -20,7 +19,6 @@ from core.interfaces.analyzer_interfaces import (
     AnalysisStatus,
     AnalyzerConfig,
     TechnicalIndicators,
-    MarketContext,
     SignalResult,
     SignalType,
     SignalStrength,

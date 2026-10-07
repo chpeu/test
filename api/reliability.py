@@ -475,28 +475,28 @@ class WebSocketManager:
             # Module websockets non disponible
             self._connected = False
             logger.error(f"❌ Module websockets manquant: {e}", exc_info=True)
-            raise WebSocketError(f"Module websockets non disponible: {e}")
+            raise WebSocketError(f"Module websockets non disponible: {e}") from e
         except (ConnectionError, TimeoutError, asyncio.TimeoutError) as e:
             # Erreur réseau (timeout, connexion refusée)
             self._connected = False
             if DEBUG_ENABLED:
                 logger.warning(f"⚠️ Erreur réseau connexion WebSocket: {e}")
-            raise NetworkError(f"Impossible de se connecter au WebSocket: {e}")
+            raise NetworkError(f"Impossible de se connecter au WebSocket: {e}") from e
         except ssl.SSLError as e:
             # Erreur SSL/certificat
             self._connected = False
             logger.error(f"❌ Erreur SSL WebSocket: {e}", exc_info=True)
-            raise WebSocketError(f"Erreur SSL: {e}")
+            raise WebSocketError(f"Erreur SSL: {e}") from e
         except ValueError as e:
             # URL invalide ou configuration incorrecte
             self._connected = False
             logger.error(f"❌ Configuration WebSocket invalide: {e}", exc_info=True)
-            raise WebSocketError(f"Configuration invalide: {e}")
+            raise WebSocketError(f"Configuration invalide: {e}") from e
         except Exception as e:
             # Erreur inattendue
             self._connected = False
             logger.error(f"❌ Erreur inattendue connexion WebSocket: {type(e).__name__}: {e}", exc_info=True)
-            raise WebSocketError(f"Erreur connexion WebSocket: {e}")
+            raise WebSocketError(f"Erreur connexion WebSocket: {e}") from e
     
     async def disconnect(self, stop_running: bool = True):
         """

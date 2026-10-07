@@ -5,8 +5,6 @@ Analyse complète de toutes les données de trading dans la base PostgreSQL
 """
 import psycopg2
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 
 def complete_analysis():
     """Analyse complète de toutes les données de trading"""

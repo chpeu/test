@@ -18,7 +18,8 @@
 
 	let logContainer;
 	let errorContainer;
-	let configContainer;
+	/** @type {HTMLElement | null} */
+	let configContainer = null;
 	let autoScroll = true;
 	let autoScrollErrors = true;
 	let autoScrollConfig = true;

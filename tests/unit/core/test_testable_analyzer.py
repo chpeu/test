@@ -6,7 +6,7 @@ Tests adaptés à la structure réelle du code
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from datetime import datetime
 import sys
 import os
@@ -18,7 +18,6 @@ from core.implementations.testable_analyzer import TestableAnalyzer
 from core.interfaces.analyzer_interfaces import (
     AnalyzerConfig,
     AnalysisResult,
-    AnalysisStatus,
 )
 
 

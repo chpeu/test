@@ -11,19 +11,21 @@
 	let trainingTasks = {}; // { modelType: { taskId, polling } }
 	let pollingIntervals = {};
 
-	onMount(async () => {
-		await loadModelsStatus();
-		loading = false;
-
-		// Refresh every 30s (sauf si training en cours)
-		const interval = setInterval(() => {
-			const hasTrainingInProgress = Object.values(trainingTasks).some(t => t.polling);
-			if (!hasTrainingInProgress) {
-				loadModelsStatus();
-			}
-		}, 30000);
-
-		return () => clearInterval(interval);
+	onMount(() => {
+		// FIX: destructeur async ignoré par Svelte → fuite d'interval (voir MDashboard).
+		let interval = null;
+		void (async () => {
+			await loadModelsStatus();
+			loading = false;
+			// Refresh every 30s (sauf si training en cours)
+			interval = setInterval(() => {
+				const hasTrainingInProgress = Object.values(trainingTasks).some(t => t.polling);
+				if (!hasTrainingInProgress) {
+					loadModelsStatus();
+				}
+			}, 30000);
+		})();
+		return () => { if (interval) clearInterval(interval); };
 	});
 
 	onDestroy(() => {

@@ -10,24 +10,18 @@ Tests for:
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, AsyncMock
-from decimal import Decimal
 
 from core.exceptions import (
     TradeCursorError,
     ConfigurationError,
     ValidationError,
-    MarketDataError,
     PriceDataError,
-    IndicatorCalculationError,
     InsufficientDataError,
     PositionError,
     PositionAlreadyExistsError,
     PositionNotFoundError,
     InvalidPositionStateError,
     PositionSizingError,
-    OrderExecutionError,
     OrderRejectedError,
     OrderTimeoutError,
     InsufficientBalanceError,
@@ -35,14 +29,8 @@ from core.exceptions import (
     RateLimitError,
     AuthenticationError,
     NetworkError,
-    WebSocketError,
     WebSocketDisconnectedError,
-    WebSocketMessageError,
-    DatabaseError,
-    DatabaseConnectionError,
     DatabaseCorruptionError,
-    DatabaseIntegrityError,
-    NotificationError,
     TelegramError,
     CircuitBreakerError,
     is_retryable,

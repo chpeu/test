@@ -16,9 +16,8 @@ import json
 import logging
 import sys
 import hashlib
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 from datetime import datetime
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

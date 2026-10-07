@@ -7,7 +7,6 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.position_manager import PositionConfig, PositionManager
-from config import TRADING_CONFIG
 
 
 def test_position_sizing_recovery_refactor_enabled():

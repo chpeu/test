@@ -18,8 +18,6 @@ if sys.platform == 'win32':
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 import json
-import numpy as np
-import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier

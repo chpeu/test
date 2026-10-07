@@ -11,7 +11,6 @@ except Exception:
     pass
 
 import json
-from collections import defaultdict
 
 print('=' * 120)
 

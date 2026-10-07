@@ -4,15 +4,13 @@ Filtreur de paires découplé et testable
 """
 
 import logging
-from typing import Dict, Any, List, Optional, Tuple, Callable
+from typing import Dict, Any, Optional, Tuple, Callable
 from datetime import datetime
 import math
 
 from ..interfaces.scanner_interfaces import (
-    IPairFilter, MarketData, ScoringResult, FilterConfig, PairFilterResult,
-    ScannerValidationUtils
+    IPairFilter, MarketData, ScoringResult, FilterConfig, PairFilterResult
 )
-from utils.effective_config import get_effective_value
 
 logger = logging.getLogger(__name__)
 

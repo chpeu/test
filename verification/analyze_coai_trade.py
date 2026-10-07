@@ -1,6 +1,5 @@
 """Analyze COAI trade with -0.68% PnL"""
 import os
-import sys
 from dotenv import load_dotenv
 from urllib.parse import quote_plus
 from sqlalchemy import create_engine, text

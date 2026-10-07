@@ -4,7 +4,7 @@ Modules: scanner_ml_integration, auto_retrain, ml_pipeline, ml_alerts
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pandas as pd
 import numpy as np
 

@@ -8,7 +8,6 @@ import asyncio
 import websockets
 import json
 import time
-import sys
 
 async def test_websocket_connection():
     """Test simple de connexion WebSocket"""

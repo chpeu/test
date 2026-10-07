@@ -3,7 +3,6 @@
 Debug Trailing Stop Logic - Analyse détaillée du problème de fermeture
 """
 import sys
-import os
 from pathlib import Path
 from dotenv import load_dotenv
 

@@ -17,7 +17,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import TRADING_CONFIG
-from core.market_regime_selector import get_regime_selector, MarketRegime
+from core.market_regime_selector import get_regime_selector
 
 
 def test_config_variables():

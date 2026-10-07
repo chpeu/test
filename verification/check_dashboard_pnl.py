@@ -4,7 +4,6 @@ Calculer le PnL exact du dashboard avec les positions ouvertes
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from urllib.parse import quote_plus
-from datetime import datetime
 import requests
 
 password = quote_plus("@Cmtr1di12345")

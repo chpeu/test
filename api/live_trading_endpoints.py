@@ -8,7 +8,7 @@ import logging
 import os
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -298,7 +298,7 @@ async def get_live_config():
 
     except Exception as e:
         logger.error(f"Erreur récupération config live: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/config")
@@ -343,7 +343,6 @@ async def update_live_config(data: Dict[str, Any]):
 
         # Si mode LIVE, réinitialiser LiveOrderManager
         if config['trading_mode'] == 'LIVE':
-            from main import live_order_manager
             from trading.live_order_manager_futures import LiveOrderManagerFutures
 
             # Créer nouveau LiveOrderManagerFutures avec nouvelle config
@@ -395,7 +394,7 @@ async def update_live_config(data: Dict[str, Any]):
 
     except Exception as e:
         logger.error(f"Erreur mise à jour config live: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/test-connection")
@@ -498,7 +497,7 @@ async def emergency_stop():
 
     except Exception as e:
         logger.error(f"Erreur arrêt d'urgence: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/reset-circuit-breaker")
@@ -547,7 +546,7 @@ async def reset_circuit_breaker():
         raise
     except Exception as e:
         logger.error(f"Erreur réinitialisation Circuit Breaker: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/positions")
@@ -647,7 +646,7 @@ async def set_trailing_stop(data: Dict[str, Any]):
         raise
     except Exception as e:
         logger.error(f"Erreur configuration trailing stop: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/set-tp-sl")
@@ -697,7 +696,7 @@ async def set_tp_sl(data: Dict[str, Any]):
         raise
     except Exception as e:
         logger.error(f"Erreur configuration TP/SL: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/funding-rate/{symbol}")

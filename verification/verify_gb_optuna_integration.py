@@ -15,7 +15,6 @@ if sys.platform == 'win32':
 import json
 import requests
 from datetime import datetime
-import time
 
 BASE_URL = "http://localhost:5000"  # Port du backend
 

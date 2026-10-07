@@ -16,10 +16,9 @@ Parfait pour :
 """
 
 from trading.abstract_trading_manager import AbstractTradingManager, TradingPosition
-from typing import Dict, Optional
+from typing import Dict
 import logging
 import time
-import asyncio
 
 logger = logging.getLogger(__name__)
 

@@ -13,12 +13,12 @@ import pandas as pd
 import joblib
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from xgboost import XGBClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import RobustScaler
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score
 from sklearn.pipeline import Pipeline
 
 logging.basicConfig(

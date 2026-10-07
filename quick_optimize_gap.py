@@ -15,7 +15,6 @@ from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import accuracy_score, f1_score, precision_score
 from sklearn.utils.class_weight import compute_class_weight
-from pathlib import Path
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 

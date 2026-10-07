@@ -22,9 +22,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import RobustScaler
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.pipeline import Pipeline
 
 logging.basicConfig(

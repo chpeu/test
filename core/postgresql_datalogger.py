@@ -6,7 +6,6 @@ Logging des scans, opportunités et trades vers PostgreSQL pour ML
 
 import logging
 import os
-import time
 from typing import Dict, Any, Optional, List, Sequence
 from datetime import datetime, timezone, date
 from decimal import Decimal

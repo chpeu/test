@@ -1,7 +1,6 @@
 """
 Tests pour core/metrics.py
 """
-import pytest
 from core.metrics import ConditionMetrics, MetricsCollector, get_metrics_collector, condition_metrics
 
 

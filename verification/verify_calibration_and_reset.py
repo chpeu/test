@@ -5,8 +5,6 @@ Vérification complète de la Calibration ML et du Reset Automatique.
 import sys
 import os
 import logging
-import json
-from datetime import datetime
 
 # Ajouter la racine du projet au path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

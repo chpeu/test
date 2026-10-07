@@ -6,7 +6,7 @@ Date: 07/12/2025
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 

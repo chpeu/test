@@ -4,8 +4,7 @@ Factory patterns pour injection de dépendances et basculement feature flags
 """
 
 import logging
-from typing import Dict, Any, Optional, Type
-from core.feature_flags import get_feature_flags_manager
+from typing import Dict, Any, Optional
 from core.interfaces.position_interfaces import (
     IPositionCalculator,
     IPositionValidator,

@@ -4,7 +4,6 @@
 Verification detaillee des colonnes NULL sur les trades recents
 """
 import psycopg2
-from datetime import datetime, timedelta
 
 def check_recent_trades():
     """Verifier les colonnes NULL sur les trades des dernieres heures"""

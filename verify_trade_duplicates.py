@@ -5,7 +5,7 @@ Boucle de vérification automatique des doublons de trades
 """
 import sys
 sys.path.append('.')
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def check_and_alert_duplicates():
     """Vérifier les doublons et alerter si nécessaire"""

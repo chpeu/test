@@ -2,8 +2,6 @@
 Tests basiques pour optimization.ml_optimizer
 """
 
-import pytest
-from unittest.mock import Mock, patch
 from optimization.ml_optimizer import MLOptimizer
 
 

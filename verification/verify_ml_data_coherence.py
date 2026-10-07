@@ -17,9 +17,7 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 import json
-import pandas as pd
 import requests
-from typing import Dict, Any, Optional
 
 print("=" * 80)
 print("  VÉRIFICATION COHÉRENCE DONNÉES ML")

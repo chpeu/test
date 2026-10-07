@@ -4,9 +4,7 @@ Tests complets pour trading/live_order_manager.py - Couverture 100%
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-import time
-from datetime import datetime, timezone
+from unittest.mock import Mock, patch
 import ccxt
 from trading.live_order_manager import (
     OrderResult,
@@ -619,7 +617,6 @@ class TestMainExecution:
             mock_mexc.return_value = mock_exchange
             
             # Importer et exécuter le main
-            from trading.live_order_manager import __name__ as module_name
             
             # Le code main ne s'exécute que si __name__ == "__main__"
             # Pour tester, on peut simuler les calls

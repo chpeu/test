@@ -1,5 +1,4 @@
 """Check partial_tp_profit and partial_tp_percent columns"""
-import sys
 import os
 
 # Set environment variable for password before importing psycopg2

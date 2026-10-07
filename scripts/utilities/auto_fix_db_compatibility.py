@@ -3,7 +3,6 @@ Script automatique de correction de compatibilité base de données
 Détecte et corrige automatiquement les colonnes config_* manquantes
 """
 import sys
-from pathlib import Path
 
 def print_header(text):
     print("\n" + "=" * 80)

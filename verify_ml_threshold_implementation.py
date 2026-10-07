@@ -13,7 +13,7 @@ import logging
 import time
 import json
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 if os.environ.get('PYTEST_CURRENT_TEST') is not None or __name__ != '__main__':

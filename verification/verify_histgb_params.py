@@ -155,7 +155,6 @@ def verify_confidence_threshold():
     
     try:
         from config import TRADING_CONFIG
-        import numpy as np
         
         threshold = TRADING_CONFIG.get('gb_min_confidence', 0.5)
         filter_enabled = TRADING_CONFIG.get('gb_filter_enabled', True)

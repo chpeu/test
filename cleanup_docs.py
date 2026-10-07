@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Script de nettoyage de la documentation obsolète"""
-import os
 import shutil
 from pathlib import Path
 

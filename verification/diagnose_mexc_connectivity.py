@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 import time
 from dotenv import load_dotenv
 import ccxt.async_support as ccxt

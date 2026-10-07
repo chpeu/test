@@ -3,9 +3,7 @@ Simple PostgreSQL Logger - Sans batch, sans complexity
 """
 import logging
 import os
-from datetime import datetime
-from typing import Dict, Any, Optional
-import json
+from typing import Dict, Any
 
 try:
     import psycopg2

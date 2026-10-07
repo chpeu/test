@@ -12,7 +12,7 @@ if sys.platform == 'win32':
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedKFold, cross_val_score
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import RobustScaler
 from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
@@ -21,7 +21,6 @@ from sklearn.utils.class_weight import compute_class_weight
 from pathlib import Path
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
-import time
 
 print("=" * 70)
 print("  AMELIORATION DES FEATURES ML")

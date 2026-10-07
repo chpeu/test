@@ -25,7 +25,6 @@ load_dotenv()
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
-import json
 
 def get_db_connection():
     """Connexion PostgreSQL"""

@@ -4,7 +4,6 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 import psycopg2
-from datetime import datetime, timedelta
 
 conn = psycopg2.connect(
     host='localhost',

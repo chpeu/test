@@ -16,7 +16,6 @@ from trading.abstract_trading_manager import AbstractTradingManager, TradingPosi
 from core.analytics_database import AnalyticsDatabase
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timedelta
-from functools import lru_cache
 import logging
 import time
 import pandas as pd

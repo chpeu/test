@@ -20,7 +20,6 @@ load_dotenv()
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, timedelta
 
 def backfill_market_regime():
     """Remplit les colonnes market_regime NULL dans opportunities"""

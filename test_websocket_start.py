@@ -4,7 +4,6 @@
 Script pour démarrer le WebSocket et vérifier l'état
 """
 import requests
-import json
 import time
 import sys
 import io

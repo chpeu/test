@@ -4,8 +4,8 @@ Validation découplée et testable des signaux d'analyse technique
 """
 
 import logging
-from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, Any, List
+from datetime import datetime
 
 from ..interfaces.analyzer_interfaces import (
     ISignalValidator, SignalResult, SignalType, SignalStrength,

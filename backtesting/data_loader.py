@@ -13,11 +13,10 @@ Fonctionnalités :
 import ccxt
 import pandas as pd
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 import logging
 from typing import Optional, List, Dict
-import asyncio
 
 logger = logging.getLogger(__name__)
 

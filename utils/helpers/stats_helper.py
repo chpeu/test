@@ -30,7 +30,7 @@ stats_dict = StatsHelper.calculate_stats_from_trades(trades)
 Impact: -40 à -60 lignes de code dupliqué
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 
 logger = logging.getLogger(__name__)

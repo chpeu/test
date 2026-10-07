@@ -4,7 +4,7 @@ Tests complets pour trading/paper_trading_manager.py - Couverture 100%
 """
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 import time
 from trading.paper_trading_manager import (
     PaperTradingManager,

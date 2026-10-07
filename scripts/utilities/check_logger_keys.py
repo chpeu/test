@@ -1,4 +1,3 @@
-import re
 
 f = open('core/position/analytics_logger.py', 'r', encoding='utf-8').read()
 

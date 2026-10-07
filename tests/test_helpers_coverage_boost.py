@@ -3,9 +3,8 @@ Tests de couverture pour les modules utils/helpers/
 Ces modules montrent déjà 28-35% de couverture, optimisation à impact élevé
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 from datetime import datetime
-import json
 
 
 class TestDataLoggerHelper:

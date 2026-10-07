@@ -1,7 +1,6 @@
 import os
 import psycopg2
 from dotenv import load_dotenv
-import json
 
 def apply_migration_robust():
     load_dotenv()

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 
 with open('core/analytics_database.py', 'r', encoding='utf-8') as f:
     lines = f.readlines()

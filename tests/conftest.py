@@ -4,7 +4,6 @@ Configuration pytest - Fixtures globales
 
 import asyncio
 import logging
-import sys
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +12,6 @@ from fastapi.testclient import TestClient
 # CRITICAL: Apply logger fixes BEFORE any imports
 import logging
 import logging.handlers
-import sys
 
 # Immediately disable all file-based logging
 def _disable_file_logging():

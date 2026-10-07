@@ -9,7 +9,7 @@
 	let chart;
 
 	// Configuration du chart
-	const chartConfig = {
+	const chartConfig = /** @type {any} */ ({
 		type: 'line',
 		data: {
 			labels: [],
@@ -17,15 +17,15 @@
 				{
 					label: 'PnL Cumulatif (%)',
 					data: [],
-					borderColor: null,
-					backgroundColor: null,
+					borderColor: undefined,
+					backgroundColor: undefined,
 					borderWidth: 3,
 					fill: true,
 					tension: 0.4,
 					pointRadius: 5,
 					pointHoverRadius: 8,
-					pointBackgroundColor: null,
-					pointBorderColor: null,
+					pointBackgroundColor: undefined,
+					pointBorderColor: undefined,
 					pointBorderWidth: 2
 				}
 			]
@@ -42,7 +42,7 @@
 					display: true,
 					position: 'top',
 					labels: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 12,
 							family: "'Courier New', monospace"
@@ -51,10 +51,10 @@
 					}
 				},
 				tooltip: {
-					backgroundColor: null,
-					titleColor: null,
-					bodyColor: null,
-					borderColor: null,
+					backgroundColor: undefined,
+					titleColor: undefined,
+					bodyColor: undefined,
+					borderColor: undefined,
 					borderWidth: 1,
 					padding: 12,
 					displayColors: false,
@@ -75,10 +75,10 @@
 				y: {
 					beginAtZero: false,
 					grid: {
-						color: null
+						color: undefined
 					},
 					ticks: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 11,
 							family: "'Courier New', monospace"
@@ -90,10 +90,10 @@
 				},
 				x: {
 					grid: {
-						color: null
+						color: undefined
 					},
 					ticks: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 11,
 							family: "'Courier New', monospace"
@@ -104,7 +104,7 @@
 				}
 			}
 		}
-	};
+	});
 
 	onMount(() => {
 		// Créer chart
@@ -133,7 +133,7 @@
 			const sortedTrades = [...trades].sort((a, b) => {
 				const dateA = new Date(a.closed_at || a.opened_at || 0);
 				const dateB = new Date(b.closed_at || b.opened_at || 0);
-				return dateA - dateB;
+				return dateA.getTime() - dateB.getTime();
 			});
 
 			// Calculer PnL cumulatif en %

@@ -4,10 +4,6 @@ Test complet de la logique ML Calibration
 """
 import sys
 sys.path.append('.')
-import json
-from pathlib import Path
-from datetime import datetime, timedelta
-import pandas as pd
 
 def test_calibration_buckets():
     """Test 1: Vérifier le calcul des buckets de confidence"""

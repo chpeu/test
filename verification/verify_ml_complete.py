@@ -13,7 +13,6 @@ Vérifie:
 import logging
 import sys
 import json
-import numpy as np
 import pandas as pd
 import joblib
 from datetime import datetime
@@ -272,28 +271,24 @@ class MLVerificationLoop:
         
         # 1. Feature loader
         try:
-            from optimization.data.feature_loader import load_features_from_postgres
             checks_passed.append("feature_loader")
         except Exception:
             checks_failed.append("feature_loader")
         
         # 2. Feature engineering
         try:
-            from optimization.data.feature_engineering import calculate_derived_features
             checks_passed.append("feature_engineering")
         except Exception:
             checks_failed.append("feature_engineering")
         
         # 3. Temporal split
         try:
-            from optimization.utils.temporal_split import temporal_train_test_split
             checks_passed.append("temporal_split")
         except Exception:
             checks_failed.append("temporal_split")
         
         # 4. Preprocessor
         try:
-            from optimization.data.preprocessor import FeaturePreprocessor
             checks_passed.append("preprocessor")
         except Exception:
             checks_failed.append("preprocessor")

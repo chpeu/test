@@ -7,7 +7,7 @@ import pytest
 import asyncio
 import sys
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Ajouter le répertoire parent au path pour imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))

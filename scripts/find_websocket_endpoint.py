@@ -6,7 +6,6 @@
 import asyncio
 import websockets
 import requests
-import sys
 
 async def test_websocket_url(url):
     """Tester une URL WebSocket spécifique"""

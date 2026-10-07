@@ -28,7 +28,7 @@ import numpy as np
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple
+from typing import Optional, List
 from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)

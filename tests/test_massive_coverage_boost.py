@@ -5,10 +5,7 @@ Objectif: Passer de 3.82% à 20%+ en ciblant position_manager.py et analyzer.py
 """
 
 import pytest
-import asyncio
-import importlib
-import inspect
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch
 import sys
 import os
 

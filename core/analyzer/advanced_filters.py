@@ -8,8 +8,8 @@ OPT #19: Momentum Continuity Filter
 
 import time
 import logging
-from typing import Dict, Optional, List, Any
-from dataclasses import dataclass, field
+from typing import Dict, Optional, List
+from dataclasses import dataclass
 from config import TRADING_CONFIG
 
 logger = logging.getLogger(__name__)

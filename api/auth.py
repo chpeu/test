@@ -5,7 +5,7 @@ Gère les API keys et la vérification des accès
 import os
 import secrets
 from typing import Dict, Optional
-from fastapi import Header, HTTPException, Security
+from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 from dotenv import load_dotenv
 

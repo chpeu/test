@@ -5,9 +5,8 @@ SL Services - Real-time Stop Loss management and order scheduling
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from core.state_manager import get_state_manager
-from core.exceptions import PositionError, OrderExecutionError, DatabaseError, WebSocketError, NetworkError, APIError
 
 logger = logging.getLogger(__name__)
 

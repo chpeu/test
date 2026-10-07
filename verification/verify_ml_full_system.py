@@ -13,9 +13,7 @@ Ce script teste :
 import sys
 import os
 import requests
-import json
 from datetime import datetime, timedelta, timezone
-import time
 
 # Ajout du path racine
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

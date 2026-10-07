@@ -5,7 +5,6 @@ Teste: SMOTE, Ensemble, Threshold tuning, etc.
 """
 
 import sys
-import os
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -24,7 +23,6 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus
 from imblearn.over_sampling import SMOTE
-from imblearn.combine import SMOTETomek
 
 print("=" * 70)
 print("  EXPLORATION AVANCEE ML")

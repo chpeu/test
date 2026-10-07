@@ -2,9 +2,7 @@
 Tests pour core/monitoring/refactoring_dashboard.py
 Dashboard Flask de monitoring du refactoring
 """
-import pytest
 from unittest.mock import Mock, patch, MagicMock
-import json
 from datetime import datetime, timedelta
 
 # Mock Flask et dépendances avant import

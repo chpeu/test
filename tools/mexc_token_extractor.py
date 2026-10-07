@@ -9,10 +9,7 @@ import sys
 import time
 import json
 import requests
-import subprocess
-from pathlib import Path
 from datetime import datetime, timedelta
-import sqlite3
 import browser_cookie3
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -61,7 +58,6 @@ class MEXCTokenExtractor:
         """Méthode 1: Extraction via cookies du navigateur"""
         try:
             import threading
-            import time
             
             result = [None]  # Liste pour stocker le résultat
             

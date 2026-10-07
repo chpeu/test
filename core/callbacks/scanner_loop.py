@@ -5,9 +5,8 @@ Exécuté toutes les 30 secondes pour scanner les setups (🔥 OPT #14)
 
 import asyncio
 import logging
-import time
+from core.postgresql_datalogger import PostgreSQLDataLogger  # noqa: F401 — re-export testé par tests/test_scanner_loop.py
 from typing import Optional, Dict, Any
-from core.postgresql_datalogger import PostgreSQLDataLogger
 from utils.effective_config import get_effective_value
 from config import ML_CONFIG
 

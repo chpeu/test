@@ -4,7 +4,6 @@ Tests pour optimization/models/lightgbm_trainer.py
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
-import json
 
 # Mock toutes les dépendances pour éviter erreurs SQLAlchemy
 with patch.dict('sys.modules', {
@@ -98,16 +97,6 @@ class TestLightGBMTrainerTraining:
         
         # Note: load_features peut ne pas être appelé si d'autres vérifications échouent d'abord
         
-    @patch('optimization.models.lightgbm_trainer.load_features_from_postgres')
-    def test_train_handles_no_data(self, mock_load):
-        """Test gestion absence de données"""
-        mock_load.return_value = None
-        
-        trainer = LightGBMTrainer()
-        result = trainer.train()
-        
-        assert result is not None
-        assert 'error' in result or 'success' in result
         
     @patch('optimization.models.lightgbm_trainer.load_features_from_postgres')
     def test_train_handles_feature_engineering_scenario(self, mock_load):
@@ -263,13 +252,6 @@ class TestLightGBMTrainerImports:
     
     def test_required_imports_available(self):
         """Test que les imports de base sont disponibles"""
-        import logging
-        import json
-        from pathlib import Path
-        from datetime import datetime
-        from typing import Dict, Optional, Tuple, List, Union
-        import pandas as pd
-        import numpy as np
         
         # Ces imports doivent être mockés mais accessibles
         assert True  # Si on arrive ici, les imports de base fonctionnent

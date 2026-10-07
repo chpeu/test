@@ -28,7 +28,7 @@ import logging
 import os
 import threading
 import traceback
-from typing import Dict, Callable, Optional, Any, Coroutine
+from typing import Dict, Callable, Optional
 from dataclasses import dataclass
 
 try:

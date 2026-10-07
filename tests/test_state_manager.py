@@ -12,7 +12,6 @@ import pytest
 import asyncio
 from unittest.mock import Mock
 from threading import Thread
-import time
 
 # Import modules à tester
 from core.state_manager import (

@@ -2,9 +2,7 @@
 Tests de couverture pour les modules api/
 """
 import pytest
-import asyncio
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from datetime import datetime
+from unittest.mock import patch, AsyncMock
 
 
 class TestMexcClient:

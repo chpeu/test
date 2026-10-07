@@ -8,7 +8,7 @@ Endpoints pour gérer et consulter la calibration ML.
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def get_calibration_stats():
         
     except Exception as e:
         logger.error(f"Erreur récupération stats calibration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/reset")
@@ -110,7 +110,7 @@ async def reset_calibration(reason: str = "manual_reset"):
         raise
     except Exception as e:
         logger.error(f"Erreur reset calibration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/seed")
@@ -143,7 +143,7 @@ async def seed_calibration(request: SeedRequest):
         
     except Exception as e:
         logger.error(f"Erreur seed calibration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/config")
@@ -192,7 +192,7 @@ async def update_calibration_config(config: CalibrationConfigUpdate):
         
     except Exception as e:
         logger.error(f"Erreur update config calibration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/check/{direction}/{confidence}")
@@ -224,4 +224,4 @@ async def check_trade_eligibility(direction: str, confidence: float):
         
     except Exception as e:
         logger.error(f"Erreur check eligibility: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

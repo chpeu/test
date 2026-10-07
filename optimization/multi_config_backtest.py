@@ -5,14 +5,11 @@ Permet de trouver les paramètres optimaux (TP/SL, filtres, sizing) par Grid Sea
 """
 
 import logging
-import json
 import time
 import itertools
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import List, Dict, Any
-from pathlib import Path
 import pandas as pd
-import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # Imports internes
@@ -21,7 +18,6 @@ import os
 sys.path.append(os.getcwd())
 
 from backtesting.engine import BacktestEngine
-from config import TRADING_CONFIG
 
 # Configuration du logger
 logging.basicConfig(level=logging.INFO)

@@ -3,21 +3,16 @@
 Tests complets pour mexc_futures_bypass.py - Couverture 100%
 """
 
-import asyncio
-import json
 import pytest
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import patch
 import time
-import aiohttp
 from trading.mexc_futures_bypass import (
     AdaptiveRateLimiter,
     MexcFuturesBypass,
     OrderType,
     OrderState as OrderStatus,
     Position as BrokerPosition,
-    OrderResult as BrokerOrder,
-    AccountAsset,
-    ContractSpec
+    OrderResult as BrokerOrder
 )
 
 

@@ -14,8 +14,7 @@ import sys
 import os
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
-from typing import Dict, List
+from unittest.mock import AsyncMock, patch, Mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -29,10 +28,7 @@ from core.callbacks.scanner_loop import (
     scan_pair_for_setup,
     set_scanner,
     set_analyzer,
-    set_position_manager,
-    set_price_provider,
     set_app_state,
-    set_socketio,
     set_scanner_lock
 )
 from config import TRADING_CONFIG

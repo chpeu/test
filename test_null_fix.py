@@ -7,8 +7,6 @@ sys.path.insert(0, '.')
 
 from core.postgresql_datalogger import PostgreSQLDataLogger
 import uuid
-from datetime import datetime
-import json
 
 def test_scan_insert():
     """Tester l'insertion d'un scan avec tous les nouveaux champs"""

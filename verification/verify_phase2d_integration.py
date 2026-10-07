@@ -36,7 +36,7 @@ def print_result(test_name: str, passed: bool, details: str = ""):
 def test_threshold_optimizer_import():
     """Test 1: Import du Threshold Optimizer"""
     try:
-        from core.ml import get_threshold_optimizer, ContextualThresholdOptimizer
+        from core.ml import get_threshold_optimizer
         optimizer = get_threshold_optimizer()
         return True, f"Instance: {type(optimizer).__name__}"
     except Exception as e:
@@ -46,7 +46,7 @@ def test_threshold_optimizer_import():
 def test_drift_detector_import():
     """Test 2: Import du Drift Detector"""
     try:
-        from core.ml import get_drift_detector, MarketDriftDetector
+        from core.ml import get_drift_detector
         detector = get_drift_detector()
         return True, f"Instance: {type(detector).__name__}"
     except Exception as e:
@@ -203,13 +203,11 @@ def test_api_config_returns_phase2d():
 def test_websocket_update_phase2d():
     """Test 9: WebSocket accepte les variables Phase 2D"""
     try:
-        from config import TRADING_CONFIG
         
         # Vérifier que les variables sont dans TRADING_CONFIG
         # (le WebSocket handler les acceptera si elles sont dans le code)
         
         # Vérifier le code du handler dans main.py
-        import re
         
         main_py_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'main.py')
         with open(main_py_path, 'r', encoding='utf-8') as f:

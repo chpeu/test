@@ -26,8 +26,6 @@ print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print("=" * 70)
 
 from core.position.adaptive_sizing import (
-    AdaptiveSizingManager,
-    AdaptiveSizingConfig,
     get_adaptive_sizing_manager,
     reset_adaptive_sizing_manager
 )

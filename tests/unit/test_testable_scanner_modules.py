@@ -1,7 +1,6 @@
 import os
 import sys
 from datetime import datetime, timedelta
-import math
 from unittest.mock import AsyncMock, Mock
 
 import pytest

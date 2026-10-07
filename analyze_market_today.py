@@ -5,8 +5,6 @@ Analyse des conditions de marché d'aujourd'hui via les données SQL
 """
 import psycopg2
 import pandas as pd
-import numpy as np
-from datetime import datetime, timezone, timedelta
 
 def analyze_market_today():
     """Analyser les conditions de marché d'aujourd'hui"""

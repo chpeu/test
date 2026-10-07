@@ -3,13 +3,8 @@ Tests d'exécution intensive pour augmenter massivement la couverture
 Focus sur l'exécution réelle de code dans les gros modules
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import asyncio
-import json
-import time
-import sys
+from unittest.mock import Mock, patch
 import importlib
-from typing import Dict, Any
 
 
 class TestAnalyzerExecution:

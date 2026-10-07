@@ -3,11 +3,7 @@ Tests substantiels pour augmenter significativement la couverture
 Focus sur les gros fichiers avec beaucoup de lignes de code
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import asyncio
-import json
-import time
-from typing import Dict, Any
+from unittest.mock import Mock, patch, AsyncMock
 
 
 class TestScannerSubstantial:
@@ -245,7 +241,6 @@ class TestPositionManagerSubstantial:
     def test_position_manager_module_import(self):
         """Test import du module position_manager complet"""
         # Import direct du fichier comme module
-        import sys
         import importlib.util
         
         spec = importlib.util.spec_from_file_location(
@@ -374,7 +369,7 @@ class TestWebSocketReliabilitySubstantial:
         # Test ajout de commandes multiples
         commands = ['cmd1', 'cmd2', 'cmd3']
         for cmd in commands:
-            ws_manager.register_command(cmd, lambda data, ws: {'result': cmd})
+            ws_manager.register_command(cmd, lambda data, ws, _c=cmd: {'result': _c})
         
         registered = ws_manager.get_registered_commands()
         for cmd in commands:

@@ -3,7 +3,7 @@
 FORCE TEST ORDER FLOW - Simule le flux complet du backend
 """
 
-import sys, os, time, asyncio
+import sys, os, asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')

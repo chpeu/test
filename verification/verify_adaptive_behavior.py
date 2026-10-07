@@ -2,7 +2,6 @@
 import sys
 import os
 import logging
-from typing import Dict, Any
 
 # Ajouter le dossier racine au path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

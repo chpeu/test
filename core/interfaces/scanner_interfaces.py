@@ -4,7 +4,7 @@ Interfaces pour le Scanner refactorisé et découplé
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Union, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -22,18 +22,6 @@ class ScanStatus(Enum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
-
-
-class PairFilterResult(Enum):
-    """Résultat du filtrage d'une paire"""
-    ACCEPTED = "accepted"
-    REJECTED_SPREAD = "rejected_spread"
-    REJECTED_VOLUME = "rejected_volume"
-    REJECTED_FUNDING = "rejected_funding"
-    REJECTED_BALANCE = "rejected_balance"
-    REJECTED_BLACKLIST = "rejected_blacklist"
-    REJECTED_FEE = "rejected_fee"
-    REJECTED_CUSTOM = "rejected_custom"
 
 
 class DataSource(Enum):

@@ -2,18 +2,11 @@
 Tests unitaires pour backtesting/engine.py
 """
 
-import pytest
-import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
-import tempfile
-import numpy as np
-import time
+from unittest.mock import Mock
 
 from backtesting.engine import BacktestEngine
 from core.analytics_database import AnalyticsDatabase
 from trading.abstract_trading_manager import TradingPosition
-from datetime import datetime
 
 
 class TestBacktestEngineInit:

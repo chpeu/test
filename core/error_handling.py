@@ -14,7 +14,7 @@ Key Features:
 import asyncio
 import logging
 import functools
-from typing import Callable, TypeVar, Optional, Tuple, Type, Any, Union
+from typing import Callable, TypeVar, Optional, Tuple, Type, Any
 from datetime import datetime
 
 from core.exceptions import (

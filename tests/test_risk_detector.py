@@ -1,7 +1,6 @@
 """
 Tests pour la détection de risques
 """
-import pytest
 from core.analyzer.risk_detector import detect_manipulation, check_price_action_coherence
 
 

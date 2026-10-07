@@ -18,10 +18,8 @@ Usage:
 import logging
 import sys
 import json
-import time
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict
 
 # Configuration logging
 logging.basicConfig(

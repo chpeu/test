@@ -19,7 +19,7 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, List
+from typing import Optional
 
 from config import TRADING_CONFIG
 
@@ -140,7 +140,7 @@ async def get_ml_status():
         
     except Exception as e:
         logger.error(f"Erreur get_ml_status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/config")
@@ -253,7 +253,7 @@ async def update_ml_config(config: MLConfigUpdate):
         
     except Exception as e:
         logger.error(f"Erreur update_ml_config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/thresholds")
@@ -271,7 +271,7 @@ async def get_thresholds():
         }
     except Exception as e:
         logger.error(f"Erreur get_thresholds: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/drift")
@@ -287,7 +287,7 @@ async def get_drift_history():
         }
     except Exception as e:
         logger.error(f"Erreur get_drift_history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/reset")
@@ -321,7 +321,7 @@ async def reset_optimizers(target: str = "all"):
         
     except Exception as e:
         logger.error(f"Erreur reset_optimizers: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/performance/context")
@@ -359,4 +359,4 @@ async def get_performance_by_context():
         
     except Exception as e:
         logger.error(f"Erreur get_performance_by_context: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

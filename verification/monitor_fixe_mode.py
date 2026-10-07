@@ -6,7 +6,6 @@ Surveille les nouveaux trades et vérifie qu'aucun problème n'apparaît en mode
 import sqlite3
 from pathlib import Path
 import time
-from datetime import datetime
 
 ROOT_DIR = Path(__file__).parent.parent
 db_path = ROOT_DIR / 'data' / 'analytics.db'

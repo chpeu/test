@@ -10,7 +10,6 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 import pandas as pd
-import numpy as np
 from pathlib import Path
 from sqlalchemy import create_engine
 from urllib.parse import quote_plus

@@ -2,9 +2,6 @@
 Tests pour l'endpoint de métriques ML
 """
 
-import pytest
-import json
-from fastapi.testclient import TestClient
 
 
 def test_get_model_metrics_xgboost(client):

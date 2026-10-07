@@ -10,7 +10,6 @@ import sys
 import argparse
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import json
 
 # Configuration
 DB_CONFIG = {

@@ -1,7 +1,6 @@
 """Tests pour TelegramNotifier"""
 
 import pytest
-import asyncio
 import time
 from unittest.mock import patch
 from notifications.telegram_notifier import TelegramNotifier

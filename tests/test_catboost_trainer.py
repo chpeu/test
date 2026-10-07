@@ -3,7 +3,7 @@ Tests pour optimization/models/catboost_trainer.py
 Tests simplifiés pour éviter les dépendances SQLAlchemy
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 # Mock toutes les dépendances complexes
@@ -195,14 +195,6 @@ class TestCatBoostTrainerImports:
     def test_required_imports_available(self):
         """Test que les imports requis sont disponibles"""
         # Ces imports doivent fonctionner
-        import logging
-        import json
-        from pathlib import Path
-        from datetime import datetime
-        from typing import Dict, Optional, List
-        import pandas as pd
-        import numpy as np
-        from sklearn.metrics import accuracy_score
         
         # Test que les imports ML pipeline sont mockés ou disponibles
         try:

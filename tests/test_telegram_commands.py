@@ -1,10 +1,9 @@
 """Tests pour TelegramCommandHandler"""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock
 from notifications.telegram_commands import (
     TelegramCommandHandler,
-    create_telegram_command_handler,
 )
 from datetime import datetime
 

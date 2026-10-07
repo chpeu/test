@@ -4,11 +4,9 @@ Installateur pour MEXC Token Extractor - Solution Permanente
 Installe les dépendances et configure l'extracteur automatique
 """
 
-import os
 import sys
 import json
 import subprocess
-from pathlib import Path
 
 def install_dependencies():
     """Installe les dépendances Python requises"""
@@ -36,7 +34,6 @@ def download_chromedriver():
     """Télécharge et configure ChromeDriver automatiquement"""
     try:
         from webdriver_manager.chrome import ChromeDriverManager
-        from selenium import webdriver
         
         print("Telechargement ChromeDriver...")
         driver_path = ChromeDriverManager().install()

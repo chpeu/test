@@ -7,7 +7,6 @@ import optuna
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner
 import numpy as np
-import pandas as pd
 import logging
 import json
 import time
@@ -15,10 +14,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple, Literal
 from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
-from sklearn.model_selection import cross_val_score, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, make_scorer
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.utils.class_weight import compute_class_weight
 from sklearn.feature_selection import SelectKBest, f_classif
 

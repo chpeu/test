@@ -57,14 +57,14 @@ export function sendNotification(title, options = {}) {
 		return;
 	}
 
-	// Créer notification
-	const notification = new Notification(title, {
+	// Créer notification — cast any : `vibrate` n'est pas dans NotificationOptions du DOM lib TS mais est supporté par les navigateurs
+	const notification = new Notification(title, /** @type {any} */ ({
 		icon: '/favicon.png',
 		badge: '/favicon.png',
 		vibrate: [200, 100, 200],
 		requireInteraction: false,
 		...options
-	});
+	}));
 
 	// Auto-close après 5 secondes
 	setTimeout(() => {

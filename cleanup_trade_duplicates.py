@@ -28,10 +28,9 @@ Notes:
 """
 
 import argparse
-import sys
 import os
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 def _print(msg: str) -> None:

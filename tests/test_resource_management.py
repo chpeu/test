@@ -10,16 +10,11 @@ Tests pour:
 """
 import pytest
 import asyncio
-import signal
 import sqlite3
-from unittest.mock import Mock, AsyncMock, patch, call
-from pathlib import Path
-import tempfile
-import os
 
 # Import modules à tester
 from core.database import TradeDatabase
-from core.shutdown import GracefulShutdown, Resource
+from core.shutdown import GracefulShutdown
 
 
 class TestTradeDatabaseContextManager:

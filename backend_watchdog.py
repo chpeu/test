@@ -6,7 +6,6 @@ import asyncio
 import http.client
 import json
 import os
-import signal
 import socket
 import subprocess
 import time

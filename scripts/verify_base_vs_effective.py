@@ -19,14 +19,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import TRADING_CONFIG
 from utils.effective_config import (
-    get_base_config, 
     get_effective_config, 
     set_regime_adjustments,
     set_circuit_breaker_adjustments,
     clear_all_adjustments,
     get_config_summary
 )
-from core.market_regime_selector import get_regime_selector, MarketRegime
 
 # Couleurs pour affichage
 GREEN = '\033[92m'

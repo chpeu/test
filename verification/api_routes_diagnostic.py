@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 sys.path.append(os.getcwd())
 
 from main import app
-from core.state_manager import get_state_manager
 
 def test_api_routes():
     print("\n🧪 Test des routes API FastAPI...")

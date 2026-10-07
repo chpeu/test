@@ -6,7 +6,6 @@ Validation rollout Scanner 10%, Position Manager 75%, Analyzer 50%
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any
 
 from core.feature_flags import get_feature_flags_manager
 from core.factories.position_factory import (

@@ -6,7 +6,7 @@ Couverture: mock_scanner_components.py (609 lignes)
 import pytest
 import asyncio
 from datetime import datetime
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import sys
 

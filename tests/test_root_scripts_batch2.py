@@ -8,7 +8,7 @@ import sys
 import os
 import tempfile
 import pandas as pd
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, Mock
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

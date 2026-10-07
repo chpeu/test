@@ -5,8 +5,6 @@ Vérifie les 4 derniers trades pour détecter les problèmes de mode FIXE
 
 import sqlite3
 from pathlib import Path
-import json
-from typing import List, Dict, Any
 
 ROOT_DIR = Path(__file__).parent.parent
 db_path = ROOT_DIR / 'data' / 'analytics.db'

@@ -16,8 +16,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from typing import Optional
-from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 # Ajouter le répertoire parent au path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -239,7 +238,6 @@ def simulate_stagnation_check(position: MockPosition, pnl: float) -> Optional[st
     - MFE Protect a priorite sur Stagnation Positive
     """
     from config import TRADING_CONFIG
-    from utils.effective_config import get_effective_value
     
     elapsed = time.time() - position.open_time
     

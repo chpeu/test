@@ -3,7 +3,6 @@ Script pour vérifier la position active via l'état du bot
 """
 import json
 import os
-import sys
 
 def main():
     # Lire le fichier state.json qui contient l'état actuel du bot

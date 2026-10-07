@@ -10,9 +10,7 @@ import sys
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-import os
 from datetime import datetime
-from pathlib import Path
 
 print("=" * 70)
 print("  ANALYSE TRADES PAR PAIRE (ML UTILISABLES)")

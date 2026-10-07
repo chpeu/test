@@ -386,7 +386,7 @@
 		});
 		
 		// Return as array, sorted by timestamp (most recent first)
-		return Object.values(eventsByType).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+		return Object.values(eventsByType).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 	}
 
 	function eventLabel(eventType) {
@@ -919,7 +919,7 @@
 	{#if $activePosition && $activePosition.opened_at}
 		<div class="duration" data-debug-name="positionDuration">
 			<div class="duration-label" data-debug-name="positionDuration.label">⏱️ Durée:</div>
-			<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date() - new Date($activePosition.opened_at)) / 1000))}</div>
+			<div class="duration-value" data-debug-name="positionDuration.value">{liveDuration || formatDurationFromSeconds(Math.floor((new Date().getTime() - new Date($activePosition.opened_at).getTime()) / 1000))}</div>
 		</div>
 	{/if}
 

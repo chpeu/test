@@ -1,11 +1,9 @@
 """
 Tests pour les filtres d'analyse technique
 """
-import pytest
 from core.analyzer.filters import (
     check_volume_filter,
     check_snr_filter,
-    check_breakout_filter,
     check_wick_filter,
     check_atr_filter
 )

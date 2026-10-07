@@ -11,10 +11,7 @@ import time
 import logging
 import signal
 import sys
-from datetime import datetime
 from typing import Dict, List, Optional
-import threading
-import traceback
 from dataclasses import dataclass, field
 
 # Configuration logging très détaillé

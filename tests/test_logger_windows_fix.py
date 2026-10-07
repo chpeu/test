@@ -6,7 +6,7 @@ import pytest
 import os
 import tempfile
 import shutil
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch, AsyncMock
 from utils.logger import setup_logger, get_logger
 import logging
 

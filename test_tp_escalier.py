@@ -7,7 +7,6 @@ Test complet du système TP Escalier avec 4 niveaux
 import asyncio
 import sys
 import logging
-from datetime import datetime
 
 # Setup logging
 logging.basicConfig(

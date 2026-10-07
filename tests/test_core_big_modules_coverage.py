@@ -3,15 +3,10 @@ Stratégie avancée pour couvrir les gros modules core/ complexes
 Focus sur l'exécution réelle de code au lieu de simples imports
 """
 import pytest
-import sys
 import os
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
+from unittest.mock import Mock, patch
 import importlib.util
 import inspect
-import json
-import time
-import asyncio
-from typing import Dict, Any, List
 
 
 class TestAnalyzerRealExecution:

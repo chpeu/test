@@ -4,7 +4,6 @@ Script de test: Ouvrir une position SHIB via WebSocket du backend
 """
 
 import sys
-import os
 
 # Fix Windows console encoding
 if sys.platform == 'win32':
@@ -12,7 +11,6 @@ if sys.platform == 'win32':
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 import requests
-import json
 
 def main():
     print("=" * 60)

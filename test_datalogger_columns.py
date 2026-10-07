@@ -6,7 +6,6 @@ les nouvelles colonnes anti-giveback dans la table trades.
 
 import os
 import psycopg2
-import json
 from datetime import datetime
 from dotenv import load_dotenv
 

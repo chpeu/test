@@ -7,7 +7,6 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from typing import Optional
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -448,7 +447,7 @@ async def get_model_metrics(model_name: str):
         raise
     except Exception as e:
         logger.error(f"❌ Erreur get_model_metrics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _generate_recommendations(test_acc: float, overfitting_gap: float, total_samples: int, zero_importance_count: int) -> list:

@@ -2,14 +2,8 @@
 Unit tests for core/config_manager.py
 """
 import pytest
-import json
-import tempfile
-from pathlib import Path
 from core.config_manager import (
-    ConfigManager,
-    TradingConfigSection,
-    get_config_manager,
-    reset_config_manager
+    TradingConfigSection
 )
 
 

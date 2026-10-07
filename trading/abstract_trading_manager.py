@@ -12,7 +12,7 @@ Garantit cohérence logique TP/SL/PnL entre tous les modes
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
 import logging

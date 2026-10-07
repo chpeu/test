@@ -3,7 +3,7 @@ Calcul des indicateurs techniques
 RSI, EMA, MACD, ATR, Bollinger Bands, ADX, Patterns
 """
 import numpy as np
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict
 try:
     import talib
     TALIB_AVAILABLE = True

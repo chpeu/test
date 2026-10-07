@@ -121,7 +121,7 @@ export function importSettings(file) {
 
 		reader.onload = e => {
 			try {
-				const imported = JSON.parse(e.target.result);
+				const imported = JSON.parse(String(e.target?.result ?? ''));
 				settings.set({ ...defaultSettings, ...imported });
 				resolve(true);
 			} catch (error) {

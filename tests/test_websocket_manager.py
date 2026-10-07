@@ -4,7 +4,7 @@ Tests pour core/websocket_manager.py
 import pytest
 import asyncio
 import json
-from unittest.mock import AsyncMock, Mock, MagicMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from fastapi import WebSocket, WebSocketDisconnect
 from core.websocket_manager import WebSocketManager
 

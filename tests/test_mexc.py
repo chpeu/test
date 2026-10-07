@@ -2,8 +2,7 @@
 Tests for api/mexc.py
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import asyncio
+from unittest.mock import patch, AsyncMock
 from api.mexc import MEXCClient, get_mexc_client
 
 

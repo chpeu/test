@@ -8,7 +8,7 @@
 	let chart;
 
 	// Configuration du chart
-	const chartConfig = {
+	const chartConfig = /** @type {any} */ ({
 		type: 'doughnut',
 		data: {
 			labels: ['Wins', 'Losses'],
@@ -30,7 +30,7 @@
 					display: true,
 					position: 'bottom',
 					labels: {
-						color: null,
+						color: undefined,
 						font: {
 							size: 13,
 							family: "'Courier New', monospace"
@@ -41,10 +41,10 @@
 					}
 				},
 				tooltip: {
-					backgroundColor: null,
-					titleColor: null,
-					bodyColor: null,
-					borderColor: null,
+					backgroundColor: undefined,
+					titleColor: undefined,
+					bodyColor: undefined,
+					borderColor: undefined,
 					borderWidth: 1,
 					padding: 12,
 					callbacks: {
@@ -59,7 +59,7 @@
 				}
 			}
 		}
-	};
+	});
 
 	onMount(() => {
 		// Créer chart

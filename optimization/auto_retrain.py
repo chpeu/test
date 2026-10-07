@@ -5,8 +5,8 @@ Auto Retrain - Système de ré-entraînement automatique du modèle ML
 import os
 import logging
 import json
-from datetime import datetime, timedelta
-from typing import Dict, Optional
+from datetime import datetime
+from typing import Dict
 import psycopg2
 from psycopg2.extras import RealDictCursor
 

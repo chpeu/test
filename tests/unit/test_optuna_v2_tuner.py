@@ -2,10 +2,8 @@
 Tests unitaires pour optimization/optuna_v2_tuner.py
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock, mock_open
+from unittest.mock import Mock, patch, mock_open
 import tempfile
-import os
 
 from optimization.optuna_v2_tuner import OptunaV2Tuner
 

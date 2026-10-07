@@ -11,9 +11,7 @@ Objectifs:
 """
 
 import sys
-import os
 import time
-import json
 import requests
 
 if sys.platform == 'win32':

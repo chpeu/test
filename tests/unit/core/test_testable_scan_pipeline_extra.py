@@ -5,8 +5,7 @@ Couverture: core/implementations/testable_scan_pipeline.py (lignes manquantes)
 """
 
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from datetime import datetime
+from unittest.mock import Mock
 import sys
 import os
 
@@ -15,13 +14,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.implementations.testable_scan_pipeline import TestableScanPipeline
 from core.interfaces.scanner_interfaces import (
-    ScanPipelineResult,
     ScanPipelineStep,
     ScanPipelineStepType,
-    DataSource,
 )
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import asyncio
 
 

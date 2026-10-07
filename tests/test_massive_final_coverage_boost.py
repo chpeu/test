@@ -3,11 +3,7 @@ Tests de couverture massifs pour atteindre 20%+ de couverture
 Cible tous les modules restants avec 0% de couverture
 """
 import pytest
-import asyncio
-import json
 import os
-from unittest.mock import Mock, patch, MagicMock, AsyncMock
-from datetime import datetime, timedelta
 
 
 class TestValidateScripts:

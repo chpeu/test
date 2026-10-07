@@ -21,7 +21,6 @@ def run_partial_tp_tests():
     from trading.live_order_manager_futures import FuturesOrderResult
     from core.position_manager import Position
     from config import TRADING_CONFIG
-    from core.position.partial_tp_manager import PartialTPManager
     
     tests_passed = 0
     tests_failed = 0

@@ -4,7 +4,6 @@ Script pour vérifier les statistiques des requêtes MEXC
 Affiche le nombre total de requêtes, erreurs 429/403, et rate actuel
 """
 import sys
-import os
 from pathlib import Path
 
 # Ajouter le répertoire parent au path

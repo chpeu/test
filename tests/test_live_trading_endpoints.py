@@ -6,10 +6,9 @@ Coverage target: 80%+
 import pytest
 import json
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, mock_open
+from unittest.mock import Mock, patch, mock_open
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 import sys
 import types
 from types import SimpleNamespace
@@ -18,8 +17,7 @@ from api.live_trading_endpoints import (
     router,
     load_live_config,
     save_live_config,
-    register_websocket_commands,
-    LIVE_CONFIG_FILE
+    register_websocket_commands
 )
 
 

@@ -14,11 +14,7 @@ SOLUTION:
 """
 import sys
 sys.path.append('.')
-import uuid
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Any
-import psycopg2
-from decimal import Decimal
+from typing import Dict, List
 
 def analyze_duplicate_trades():
     """Analyser les trades dupliqués en détail"""

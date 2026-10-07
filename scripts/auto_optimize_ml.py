@@ -13,7 +13,6 @@ Usage:
     python scripts/auto_optimize_ml.py --min-trades 100 --splits 20
 """
 
-import os
 import sys
 
 if sys.platform == 'win32':
@@ -34,8 +33,7 @@ import joblib
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
-    accuracy_score, f1_score, roc_auc_score, precision_score, recall_score,
-    confusion_matrix, classification_report
+    accuracy_score, f1_score, roc_auc_score, precision_score, recall_score
 )
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import RobustScaler

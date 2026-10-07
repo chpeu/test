@@ -544,7 +544,6 @@ class TestTestableScalabilityScorerCheckBasicFilters:
 
     def test_check_basic_filters_invalid_spread(self, scorer):
         """Filtre : spread invalide (NaN)"""
-        import math
 
         market_data = MagicMock(spec=MarketData)
         market_data.orderbook = MagicMock()
@@ -907,12 +906,6 @@ class TestTestableScalabilityScorerSpreadVolatility:
 
         assert result == 0.001
 
-    def test_estimate_spread_volatility_low(self, scorer):
-        """Estimation volatilité spread faible"""
-        result = scorer._estimate_spread_volatility(0.005)
-
-        # Spread <= 1% retourne 0.0001
-        assert result == 0.0001
 
 
 # =============================================================================

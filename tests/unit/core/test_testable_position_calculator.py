@@ -4,12 +4,9 @@ Module: core/implementations/testable_position_calculator.py
 """
 
 import logging
-import pytest
-from dataclasses import dataclass
 
 from core.implementations.testable_position_calculator import (
     TestablePositionCalculator,
-    RiskParameters,
 )
 from core.interfaces.position_interfaces import PositionConfig, PositionSize
 

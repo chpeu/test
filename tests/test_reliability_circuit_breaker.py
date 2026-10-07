@@ -2,7 +2,7 @@
 Tests pour AdaptiveCircuitBreaker dans api/reliability.py
 """
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import patch
 from api.reliability import AdaptiveCircuitBreaker
 import api.reliability as reliability_mod
 

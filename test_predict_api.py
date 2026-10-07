@@ -3,7 +3,6 @@ Script de test pour l'endpoint de prediction ML
 """
 
 import requests
-import json
 
 # Test endpoint
 url = "http://localhost:5000/api/ml/predict"

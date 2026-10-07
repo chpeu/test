@@ -4,7 +4,7 @@ Tests pour optimization.data.feature_loader
 
 import pytest
 import pandas as pd
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from optimization.data.feature_loader import (
     get_postgres_connection,
     get_sqlalchemy_engine,

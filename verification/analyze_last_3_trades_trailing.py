@@ -2,7 +2,6 @@
 Analyse détaillée des 3 derniers trades pour vérifier le fonctionnement du trailing stop
 """
 import psycopg2
-from datetime import datetime, timezone
 import os
 
 def main():

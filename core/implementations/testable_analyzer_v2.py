@@ -6,13 +6,11 @@ Analyzer technique utilisant les nouvelles interfaces découplées
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
-import asyncio
 import numpy as np  # FIX F821: np.std/np.mean utilisés dans l'évaluation de qualité des données
 
 from ..interfaces.analyzer_interfaces import (
     IAnalyzer, IIndicatorCalculator, ISignalGenerator, IScoreCalculator,
-    AnalysisResult, TechnicalIndicators, MarketContext, SignalResult,
-    AnalysisStatus, AnalyzerConfig
+    AnalysisResult, TechnicalIndicators, MarketContext, AnalysisStatus, AnalyzerConfig
 )
 
 logger = logging.getLogger(__name__)

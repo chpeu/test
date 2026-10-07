@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import psycopg2
-from datetime import datetime, timedelta
 
 # Colonnes critiques à vérifier
 CRITICAL_COLUMNS = [

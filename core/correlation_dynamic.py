@@ -3,7 +3,7 @@
 Calcul de corrélation Pearson entre symboles pour éviter surexposition
 """
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 from collections import deque
 
 logger = logging.getLogger(__name__)

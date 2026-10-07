@@ -3,15 +3,13 @@ Tests pour TestableSignalGenerator - Trade Cursor v7.0
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from core.implementations.testable_signal_generator import TestableSignalGenerator
 from core.interfaces.analyzer_interfaces import (
     AnalyzerConfig,
     TechnicalIndicators,
     MarketContext,
-    SignalResult,
     SignalType,
     SignalStrength,
 )

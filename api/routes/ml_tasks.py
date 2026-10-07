@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from typing import List
 
-from .ml_common import ml_tasks, _get_task_from_store
+from .ml_common import _get_task_from_store
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ async def get_alerts_history(limit: int = Query(20, ge=1, le=100)):
 
     except Exception as e:
         logger.error(f"❌ Erreur get_alerts_history: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/alerts/test")
@@ -123,7 +123,7 @@ async def test_alert(
 
     except Exception as e:
         logger.error(f"❌ Erreur test_alert: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 logger.info("✅ ML tasks router initialized (4 routes)")

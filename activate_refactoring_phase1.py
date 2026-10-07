@@ -5,7 +5,6 @@ Active les feature flags de manière sécurisée avec monitoring
 """
 
 import sys
-import os
 import time
 import logging
 from pathlib import Path
@@ -13,7 +12,7 @@ from pathlib import Path
 # Ajouter le répertoire courant au PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.feature_flags import get_feature_flags_manager, enable_flag
+from core.feature_flags import get_feature_flags_manager
 from core.factories.position_factory import FactoryConfig, create_position_orchestrator
 from core.implementations.mock_position_components import MockDataProvider
 import asyncio

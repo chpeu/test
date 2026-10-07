@@ -3,7 +3,6 @@ Analyse détaillée des 3 derniers trades pour vérifier le fonctionnement du tr
 Version SQLite (pas de problème d'encodage)
 """
 import sqlite3
-from datetime import datetime, timezone
 import os
 
 def main():

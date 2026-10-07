@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Analyse des trades du jour"""
 import json
-from datetime import datetime
 
 
 

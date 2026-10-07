@@ -9,8 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from urllib.parse import quote_plus
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 
 def get_db_connection():
     """Connexion PostgreSQL"""

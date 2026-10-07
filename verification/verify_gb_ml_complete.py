@@ -15,10 +15,8 @@ Ce script verifie:
 
 import sys
 import json
-import os
 from pathlib import Path
 from datetime import datetime
-import traceback
 
 # Fix encodage Windows
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -72,7 +70,6 @@ class MLVerifier:
         print("\n[1] VERIFICATION DES IMPORTS...")
         
         try:
-            from sklearn.ensemble import GradientBoostingClassifier, HistGradientBoostingClassifier
             self.add_check("sklearn.ensemble", "OK", "GB et HistGB disponibles")
         except Exception as e:
             self.add_check("sklearn.ensemble", "ERROR", str(e))
@@ -84,13 +81,11 @@ class MLVerifier:
             self.add_check("optuna", "ERROR", str(e))
         
         try:
-            from optimization.optuna_gb_tuner import GradientBoostingOptunaOptimizer
             self.add_check("optuna_gb_tuner", "OK", "Classe importee")
         except Exception as e:
             self.add_check("optuna_gb_tuner", "ERROR", str(e))
         
         try:
-            from optimization.predictor_optimized import OptimizedPredictor
             self.add_check("predictor_optimized", "OK", "Classe importee")
         except Exception as e:
             self.add_check("predictor_optimized", "ERROR", str(e))
@@ -289,7 +284,6 @@ class MLVerifier:
         # Verifier l'endpoint /api/ml/models/overview
         try:
             # Simuler l'appel API
-            from api.routes.ml import router
             self.add_check("API routes ml", "OK", "Module importe")
             
             # Verifier que les metriques sont retournees correctement

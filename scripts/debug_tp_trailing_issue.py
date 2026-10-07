@@ -3,7 +3,6 @@
 Debug TP Partiel et Trailing Stop - Vérification configuration et logique
 """
 import sys
-import os
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -21,7 +20,7 @@ def main():
         print("-" * 40)
         
         from config import TRADING_CONFIG
-        from utils.effective_config import get_effective_value, get_effective_config
+        from utils.effective_config import get_effective_value
         
         # Variables critiques pour TP partiel
         tp_sl_mode = get_effective_value('tp_sl_mode') or TRADING_CONFIG.get('tp_sl_mode', 'FIXE')

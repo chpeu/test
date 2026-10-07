@@ -4,8 +4,7 @@ Migrated from ml_legacy.py as part of Phase 5 modularization
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Query, Body
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,7 @@ async def get_predictions_analytics(
         
     except Exception as e:
         logger.error(f"❌ Erreur get_predictions_analytics: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/predictions/recent")
@@ -70,7 +69,7 @@ async def get_recent_predictions(limit: int = Query(20, ge=1, le=100)):
         
     except Exception as e:
         logger.error(f"❌ Erreur get_recent_predictions: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predictor/reload")
@@ -104,7 +103,7 @@ async def reload_predictor(model_name: str = Query('xgboost_v1')):
             
     except Exception as e:
         logger.error(f"❌ Erreur reload_predictor: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict")
@@ -140,7 +139,7 @@ async def predict_opportunity(
         raise
     except Exception as e:
         logger.error(f"❌ Erreur predict_opportunity: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict/batch")
@@ -176,7 +175,7 @@ async def predict_batch(
         
     except Exception as e:
         logger.error(f"❌ Erreur predict_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== V2 PREDICTIONS (REGRESSION PNL%) ==========
@@ -214,7 +213,7 @@ async def predict_pnl_v2(
         raise
     except Exception as e:
         logger.error(f"❌ Erreur predict_pnl_v2: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict_v2/batch")
@@ -261,7 +260,7 @@ async def predict_pnl_v2_batch(
         
     except Exception as e:
         logger.error(f"❌ Erreur predict_pnl_v2_batch: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/predict_v2/filter")
@@ -299,7 +298,7 @@ async def filter_setup_with_v2(
         
     except Exception as e:
         logger.error(f"❌ Erreur filter_setup_with_v2: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ========== ALERTS ==========

@@ -5,7 +5,6 @@ Analyse des 30 derniers trades : PnL, inversion de signaux, et rentabilité
 """
 import psycopg2
 import pandas as pd
-from datetime import datetime
 
 def analyze_recent_trades():
     """Analyser les 30 derniers trades pour identifier les problèmes de rentabilité"""

@@ -7,7 +7,6 @@ import threading
 from datetime import datetime
 from typing import List, Dict, Any
 from dataclasses import dataclass, asdict
-import json
 
 @dataclass
 class ErrorEntry:

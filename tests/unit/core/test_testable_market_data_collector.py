@@ -5,9 +5,8 @@ Couverture: core/implementations/testable_market_data_collector.py (690 lignes)
 """
 
 import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime, timedelta
+from unittest.mock import Mock, AsyncMock
+from datetime import datetime
 import sys
 import os
 
@@ -22,7 +21,6 @@ from core.interfaces.scanner_interfaces import (
     TickerData,
     OHLCVData,
     MarketData,
-    DataSource,
 )
 
 

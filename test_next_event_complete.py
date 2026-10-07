@@ -3,7 +3,6 @@
 Script de test pour vérifier la fonctionnalité next_event
 """
 import requests
-import json
 import time
 
 BASE_URL = "http://localhost:5000"

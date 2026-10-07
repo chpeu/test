@@ -14,7 +14,7 @@ import statistics
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List, Tuple
-from dataclasses import dataclass, field, asdict, fields
+from dataclasses import dataclass, asdict, fields
 from enum import Enum
 
 logger = logging.getLogger(__name__)

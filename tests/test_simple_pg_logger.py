@@ -1,10 +1,9 @@
 """
 Tests for core/simple_pg_logger.py
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import os
-from core.simple_pg_logger import SimplePGLogger, PSYCOPG2_AVAILABLE
+from core.simple_pg_logger import SimplePGLogger
 
 
 class TestSimplePGLogger:

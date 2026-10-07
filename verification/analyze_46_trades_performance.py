@@ -13,9 +13,8 @@ Si DB dispo, on enrichit avec trades table + trade_atr_metrics.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from collections import Counter
+from typing import Any, Dict, List, Optional
 
 import psycopg2
 import requests

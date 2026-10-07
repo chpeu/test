@@ -7,14 +7,11 @@ from .scanner import (
     router as scanner_router,
     set_scanner,
     set_analyzer,
-    set_price_provider,
     set_app_state as set_app_state_scanner,
     set_socketio as set_socketio_scanner
 )
 from .dashboard import (
     router as dashboard_router,
-    set_scheduler,
-    set_position_manager,
     set_app_state as set_app_state_dashboard,
     set_socketio as set_socketio_dashboard,
     set_websocket_manager as set_websocket_manager_dashboard
@@ -24,7 +21,6 @@ from .position import (
     set_position_manager as set_position_manager_pos,
     set_app_state as set_app_state_pos,
     set_websocket_manager as set_websocket_manager_pos,
-    set_live_order_manager,
     set_price_provider as set_price_provider_pos,
     set_scheduler as set_scheduler_pos
 )

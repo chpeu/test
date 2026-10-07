@@ -63,7 +63,6 @@ def test_pnl_calculation():
 
 def test_ts_vs_tp_detection():
     """Test la detection de raison TS vs TP"""
-    from config import TRADING_CONFIG
     
     # Cas 1: Prix touche SL avec PnL >= 0 -> TS
     direction = 'LONG'

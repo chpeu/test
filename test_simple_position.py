@@ -3,7 +3,6 @@
 Script simplifié pour créer une position test
 """
 import requests
-import json
 
 BASE_URL = "http://localhost:5000"
 

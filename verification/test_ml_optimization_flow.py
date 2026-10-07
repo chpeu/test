@@ -8,7 +8,6 @@ Vérifie chaque étape pour identifier où ça bloque
 import asyncio
 import subprocess
 import sys
-import os
 import time
 import requests
 from pathlib import Path
