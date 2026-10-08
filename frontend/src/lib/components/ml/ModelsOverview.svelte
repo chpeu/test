@@ -244,7 +244,10 @@
 
 		<!-- Modal pour afficher les métriques -->
 		{#if showMetrics && selectedModel}
+			<!-- backdrop : raccourci redondant avec le bouton ✕ -->
+			<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 			<div class="modal-overlay" on:click={closeMetrics}>
+				<!-- svelte-ignore a11y-no-static-element-interactions -->
 				<div class="modal-content" on:click|stopPropagation>
 					<button class="close-btn" on:click={closeMetrics}>✕</button>
 					<ModelMetricsCard modelName={selectedModel} />

@@ -680,27 +680,12 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 	}
-
-	.telegram-config {
-		padding: 15px;
-		background: rgba(var(--accent-blue-rgb), 0.05);
-		border-radius: 8px;
-		border: 1px solid rgba(var(--accent-blue-rgb), 0.3);
-	}
-
 	.telegram-info {
 		font-size: 13px;
 		color: var(--text-secondary);
 		margin-bottom: 15px;
 		line-height: 1.6;
 	}
-
-	.telegram-vars {
-		list-style: none;
-		padding: 0;
-		margin: 15px 0;
-	}
-
 	.telegram-instructions {
 		margin: 15px 0;
 	}
@@ -1019,20 +1004,7 @@ TELEGRAM_CHAT_ID=votre_chat_id_ici</pre>
 		.notify-type-item {
 			padding: 14px 16px;
 			gap: 14px;
-		}
-
-		.custom-checkbox {
-			width: 28px;
-			height: 28px;
-			min-width: 28px;
-			min-height: 28px;
-		}
-
-		.custom-checkbox.checked::after {
-			font-size: 18px;
-		}
-
-		.notify-type-label {
+		}		.notify-type-label {
 			font-size: 15px;
 		}
 	}

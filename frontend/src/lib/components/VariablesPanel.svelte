@@ -251,8 +251,8 @@
 	const AUTO_SAVE_DELAY = 2500; // 2.5 secondes d'inactivité avant sauvegarde automatique
 	
 	// Variables pour l'onglet "Variables en cours"
-	/** @type {any} */
-	let completeConfig = null;
+	let completeConfig: any = null;
+	$: diffEntries = Object.entries<any>(completeConfig?.adjustments_summary?.differences ?? {});
 	let loadingCompleteConfig = false;
 	let completeConfigError = null;
 	
@@ -295,6 +295,7 @@
 	let postExitMinTrades = 10;
 	let postExitLoading = false;
 	let postExitResult: any = null;
+	$: gradeDistEntries = Object.entries<any>(postExitResult?.grade_distribution || {});
 	let postExitError = '';
 	
 	// FIX: Variables pour métriques ML dynamiques
@@ -3029,10 +3030,10 @@
 				<!-- 📊 POST-EXIT ANALYSIS: Bouton et popup -->
 				<div class="variable-item action-item">
 					<div class="var-header">
-						<label>
+						<span class="header-label">
 							<span class="var-name">📊 Analyse Post-Exit</span>
 							<span class="var-desc">Calcule les paramètres ML optimaux à partir des trades fermés</span>
-						</label>
+						</span>
 					</div>
 					<div class="action-row">
 						<div class="input-with-label">
@@ -4283,9 +4284,9 @@
 
 				{#if config.market_regime_enabled}
 					<div class="variable-item">
-						<label>Intervalle de vérification (minutes)</label>
+						<label for="intervalle-de-verification">Intervalle de vérification (minutes)</label>
 						<div class="slider-container">
-							<input
+							<input id="intervalle-de-verification"
 								type="range"
 								min="15"
 								max="120"
@@ -4298,9 +4299,9 @@
 					</div>
 
 					<div class="variable-item">
-						<label>Nombre de paires analysées</label>
+						<label for="nombre-de-paires">Nombre de paires analysées</label>
 						<div class="slider-container">
-							<input
+							<input id="nombre-de-paires"
 								type="range"
 								min="5"
 								max="20"
@@ -4316,9 +4317,9 @@
 						<h5>Seuils ATR par régime (%)</h5>
 						<div class="threshold-grid">
 							<div class="variable-item">
-								<label>🟢 CALME: ATR max</label>
+								<label for="calme-atr-max">🟢 CALME: ATR max</label>
 								<div class="slider-container">
-									<input
+									<input id="calme-atr-max"
 										type="range"
 										min="0.10"
 										max="0.30"
@@ -4331,9 +4332,9 @@
 							</div>
 
 							<div class="variable-item">
-								<label>🔵 NORMAL: ATR max</label>
+								<label for="normal-atr-max">🔵 NORMAL: ATR max</label>
 								<div class="slider-container">
-									<input
+									<input id="normal-atr-max"
 										type="range"
 										min="0.25"
 										max="0.60"
@@ -4346,9 +4347,9 @@
 							</div>
 
 							<div class="variable-item">
-								<label>🔴 CHOPPY: ADX seuil</label>
+								<label for="choppy-adx-seuil">🔴 CHOPPY: ADX seuil</label>
 								<div class="slider-container">
-									<input
+									<input id="choppy-adx-seuil"
 										type="range"
 										min="15"
 										max="30"
@@ -4385,9 +4386,9 @@
 				{#if config.trading_circuit_breaker_enabled}
 					<div class="cb-settings">
 						<div class="variable-item">
-							<label>Pertes consécutives max avant PAUSE</label>
+							<label for="pertes-consecutives-max">Pertes consécutives max avant PAUSE</label>
 							<div class="slider-container">
-								<input
+								<input id="pertes-consecutives-max"
 									type="range"
 									min="3"
 									max="10"
@@ -4400,9 +4401,9 @@
 						</div>
 
 						<div class="variable-item">
-							<label>Drawdown jour pour PAUSE (%)</label>
+							<label for="drawdown-jour-pour-2">Drawdown jour pour PAUSE (%)</label>
 							<div class="slider-container">
-								<input
+								<input id="drawdown-jour-pour-2"
 									type="range"
 									min="-5"
 									max="-1"
@@ -4415,9 +4416,9 @@
 						</div>
 
 						<div class="variable-item">
-							<label>Drawdown jour pour STOP (%)</label>
+							<label for="drawdown-jour-pour">Drawdown jour pour STOP (%)</label>
 							<div class="slider-container">
-								<input
+								<input id="drawdown-jour-pour"
 									type="range"
 									min="-10"
 									max="-3"
@@ -4430,9 +4431,9 @@
 						</div>
 
 						<div class="variable-item">
-							<label>Durée de pause (minutes)</label>
+							<label for="duree-de-pause">Durée de pause (minutes)</label>
 							<div class="slider-container">
-								<input
+								<input id="duree-de-pause"
 									type="range"
 									min="5"
 									max="120"
@@ -4458,9 +4459,9 @@
 
 							{#if config.trading_cb_score_boost_enabled}
 								<div class="variable-item">
-									<label>Boost score par perte consécutive</label>
+									<label for="boost-score-par">Boost score par perte consécutive</label>
 									<div class="slider-container">
-										<input
+										<input id="boost-score-par"
 											type="range"
 											min="0.25"
 											max="1.5"
@@ -5654,7 +5655,7 @@
 							
 							{#if completeConfig.adjustments_summary.differences && Object.keys(completeConfig.adjustments_summary.differences).length > 0}
 								<div class="config-grid">
-									{#each Object.entries(completeConfig.adjustments_summary.differences) as [key, diff]}
+									{#each diffEntries as [key, diff]}
 										<div class="config-item difference-item">
 											<span class="config-key">{key}:</span>
 											<span class="config-value">
@@ -5822,7 +5823,9 @@
 
 <!-- 🔥 POPUP Export Excel avec nombre de lignes -->
 {#if showExportPopup}
+	<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 	<div class="popup-overlay" on:click={closeExportPopup}>
+	<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 		<div class="popup-content" on:click|stopPropagation>
 			<div class="popup-header">
 				<h3>📊 Export Excel</h3>
@@ -5875,7 +5878,9 @@
 
 <!-- 🔥 POPUP Post-Exit Analysis avec résultats -->
 {#if showPostExitPopup}
+	<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 	<div class="popup-overlay" on:click={() => showPostExitPopup = false}>
+	<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 		<div class="popup-content popup-large" on:click|stopPropagation>
 			<div class="popup-header">
 				<h3>📊 Analyse Post-Exit</h3>
@@ -5938,7 +5943,7 @@
 						<div class="result-section">
 							<h4>📊 Distribution des grades</h4>
 							<div class="grade-distribution">
-								{#each Object.entries(postExitResult.grade_distribution || {}) as [grade, data]}
+								{#each gradeDistEntries as [grade, data]}
 									<div class="grade-item">
 										<span class="grade-label">{grade}</span>
 										<div class="grade-bar-container">
@@ -6045,72 +6050,7 @@
 		padding: 1rem;
 		background: rgba(var(--border-rgb), 0.3);
 		border-radius: 12px;
-	}
-
-	.ml-version-selector .version-btn {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.75rem;
-		padding: 1rem 1.5rem;
-		background: rgba(255, 255, 255, 0.05);
-		border: 2px solid rgba(255, 255, 255, 0.1);
-		border-radius: 8px;
-		color: var(--text-secondary);
-		font-size: 1rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.3s;
-	}
-
-	.ml-version-selector .version-btn:hover {
-		border-color: var(--accent-indigo);
-		transform: translateY(-2px);
-		background: rgba(102, 126, 234, 0.1);
-	}
-
-	.ml-version-selector .version-btn.active {
-		background: linear-gradient(135deg, var(--accent-indigo) 0%, var(--accent-purple) 100%);
-		color: white;
-		border-color: var(--accent-indigo);
-		box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-	}
-
-	.ml-version-selector .version-icon {
-		font-size: 1.5rem;
-	}
-
-	.ml-version-selector .version-label {
-		font-size: 1rem;
-	}
-
-	.ml-version-selector .version-badge {
-		padding: 0.25rem 0.75rem;
-		border-radius: 12px;
-		font-size: 0.75rem;
-		font-weight: 600;
-		background: rgba(0, 0, 0, 0.2);
-		color: white;
-	}
-
-	.ml-version-selector .version-btn:not(.active) .version-badge {
-		background: rgba(255, 255, 255, 0.1);
-		color: var(--text-secondary);
-	}
-
-	.ml-version-selector .version-badge.new {
-		background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-green-strong) 100%);
-		color: white;
-		animation: pulse-badge 2s infinite;
-	}
-
-	.ml-version-selector .version-btn:not(.active) .version-badge.new {
-		background: var(--accent-green);
-		color: white;
-	}
-
-	@keyframes pulse-badge {
+	}@keyframes pulse-badge {
 		0%,
 		100% {
 			opacity: 1;
@@ -6453,7 +6393,8 @@
 		gap: 12px;
 	}
 
-	.var-header label {
+	.var-header label,
+		.var-header .header-label {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -7128,13 +7069,6 @@
 		color: white;
 		margin-top: 20px;
 	}
-
-	.ml-info-box h4 {
-		margin: 0 0 15px 0;
-		font-size: 16px;
-		font-weight: 600;
-	}
-
 	.ml-metrics {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
@@ -7185,27 +7119,6 @@
 		border-radius: 12px;
 		padding: 20px;
 		margin-top: 20px;
-	}
-
-	.recommendations-box h4 {
-		margin: 0 0 15px 0;
-		color: var(--text-primary);
-		font-size: 16px;
-	}
-
-	.recommendations-box ul {
-		list-style: none;
-		padding: 0;
-		margin: 0 0 15px 0;
-	}
-
-	.recommendations-box li {
-		padding: 8px 0;
-		border-bottom: 1px solid var(--border);
-	}
-
-	.recommendations-box li:last-child {
-		border-bottom: none;
 	}
 
 	.info-text {

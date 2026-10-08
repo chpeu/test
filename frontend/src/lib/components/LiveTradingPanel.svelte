@@ -299,9 +299,9 @@
 				</div>
 
 				<div class="leverage-control">
-					<label>Levier par défaut</label>
+					<label for="levier-par-defaut">Levier par défaut</label>
 					<div class="leverage-slider">
-						<input type="range" min="1" max="50" bind:value={defaultLeverage} />
+						<input id="levier-par-defaut" type="range" min="1" max="50" bind:value={defaultLeverage} />
 						<span class="leverage-value">{defaultLeverage}x</span>
 					</div>
 				</div>
@@ -376,8 +376,8 @@
 			
 			<div class="risk-grid">
 				<div class="risk-item">
-					<label>Latence Max (ms)</label>
-					<input type="number" bind:value={maxLatencyMs} step="100" min="100" max="5000" />
+					<label for="latence-max-ms">Latence Max (ms)</label>
+					<input id="latence-max-ms" type="number" bind:value={maxLatencyMs} step="100" min="100" max="5000" />
 				</div>
 			</div>
 			<p class="info-note">💡 Slippage Max configuré dans l'onglet Variables (config.max_slippage_pct)</p>
@@ -676,12 +676,7 @@
 	.pos-actions { margin-top: 12px; display: flex; gap: 8px; }
 
 	/* Trailing Config */
-	.trailing-config { margin-top: 16px; padding: 16px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; }
-	.trailing-config h4 { margin: 0 0 12px 0; font-size: 14px; color: var(--accent-purple); }
-	.trailing-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-	.trailing-row label { font-size: 12px; color: var(--text-secondary); }
-	.trailing-row input { width: 80px; padding: 8px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 4px; color: var(--text-primary); text-align: center; }
-	.trailing-actions { display: flex; gap: 8px; }
+	.trailing-config { margin-top: 16px; padding: 16px; background: rgba(99, 102, 241, 0.1); border-radius: 8px; }	.trailing-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }.trailing-actions { display: flex; gap: 8px; }
 
 	/* Risk Grid */
 	.risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }

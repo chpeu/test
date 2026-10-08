@@ -1706,6 +1706,8 @@
 		class="popup-floating auto-optimize-popup"
 		style="left: {popupPosition.x}px; top: {popupPosition.y}px;"
 	>
+		<!-- poignée de drag : déplacement souris uniquement, popup utilisable sans -->
+		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div 
 			class="popup-header draggable"
 			on:mousedown={startDrag}
@@ -2124,13 +2126,6 @@
 		width: 50px;
 		height: 26px;
 	}
-
-	.toggle input {
-		opacity: 0;
-		width: 0;
-		height: 0;
-	}
-
 	.toggle-slider {
 		position: absolute;
 		cursor: pointer;
@@ -2153,17 +2148,7 @@
 		background-color: white;
 		transition: 0.3s;
 		border-radius: 50%;
-	}
-
-	.toggle input:checked + .toggle-slider {
-		background-color: var(--accent-green);
-	}
-
-	.toggle input:checked + .toggle-slider:before {
-		transform: translateX(24px);
-	}
-
-	.ml-metrics-grid {
+	}	.ml-metrics-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 		gap: 16px;

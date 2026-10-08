@@ -139,6 +139,7 @@
 							<span class="session-name" data-debug-name="session.name">{session.name}</span>
 						</div>
 
+						<!-- svelte-ignore a11y-no-noninteractive-element-interactions a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 						<div class="session-controls" role="group" on:click|stopPropagation data-debug-name="sessionControls">
 							{#if session.status === 'stopped'}
 								<button
@@ -237,6 +238,7 @@
 			}}
 			data-debug-name="createModal.overlay"
 		>
+			<!-- svelte-ignore a11y-no-noninteractive-element-interactions a11y-click-events-have-key-events a11y-no-static-element-interactions -->
 			<div class="modal-content" role="dialog" on:click|stopPropagation data-debug-name="createModal.content">
 				<h3 data-debug-name="createModal.title">Create New Session</h3>
 

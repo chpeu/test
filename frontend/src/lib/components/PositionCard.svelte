@@ -1515,27 +1515,6 @@
 		cursor: help;
 	}
 
-	.tp-levels {
-		margin-top: 8px;
-		padding-top: 8px;
-		border-top: 1px solid rgba(var(--accent-green-rgb), 0.2);
-	}
-
-	.tp-level {
-		font-size: 10px;
-		color: var(--text-secondary);
-		margin-top: 4px;
-		padding: 2px 4px;
-		border-radius: 4px;
-		background: rgba(var(--accent-green-rgb), 0.05);
-	}
-
-	.tp-level.hit {
-		color: var(--accent-green);
-		background: rgba(var(--accent-green-rgb), 0.15);
-		font-weight: bold;
-	}
-
 	.trailing-stop {
 		margin-top: 8px;
 		padding-top: 8px;
@@ -1543,34 +1522,6 @@
 		font-size: 11px;
 		color: var(--accent-orange);
 		font-weight: bold;
-	}
-
-	.position-info {
-		background: rgba(var(--accent-blue-rgb), 0.1);
-		padding: 12px;
-		border-radius: 8px;
-		border: 1px solid var(--accent-blue);
-		margin-bottom: 15px;
-	}
-
-	.info-item {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.info-label {
-		font-size: 12px;
-		color: var(--text-secondary);
-		text-transform: uppercase;
-		font-weight: bold;
-	}
-
-	.info-value {
-		font-size: 14px;
-		color: var(--accent-blue);
-		font-weight: bold;
-		font-family: var(--font-ui);
 	}
 
 	.duration {

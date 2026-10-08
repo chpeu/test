@@ -23,5 +23,5 @@
 		"src/**/*.js",
 		"src/**/*.svelte"
 	],
-	"exclude": ["node_modules", "build", ".svelte-kit"]
+	"exclude": ["node_modules", "build"]
 }

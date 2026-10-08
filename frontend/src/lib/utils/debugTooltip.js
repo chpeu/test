@@ -147,11 +147,13 @@ export function initDebugTooltips() {
 		if (!get(debugMode)) return;
 		
 		// Trouver l'élément le plus proche avec data-debug-name (en remontant dans le DOM)
-		let target = event.target;
+		const firstTarget = event.target;
+		if (!(firstTarget instanceof Element)) return;
+		/** @type {Element | null} */
+		let target = firstTarget;
 		let debugName = null;
 		
 		// Remonter dans le DOM jusqu'à trouver un élément avec data-debug-name
-		if (!(target instanceof Element)) return;
 		while (target && target !== document.body) {
 			debugName = target.getAttribute('data-debug-name');
 			if (debugName) {

@@ -120,18 +120,7 @@
 
 	.tab-label {
 		font-size: 12.5px;
-	}
-
-	.tabs-content {
-		padding: 18px;
-		min-height: 200px;
-	}
-
-	.tab-panel {
-		animation: fadeIn 0.3s ease-in;
-	}
-
-	@keyframes fadeIn {
+	}	@keyframes fadeIn {
 		from {
 			opacity: 0;
 			transform: translateY(10px);
@@ -157,10 +146,5 @@
 
 		.tab-icon {
 			font-size: 13px;
-		}
-
-		.tabs-content {
-			padding: 12px;
-		}
-	}
+		}	}
 </style>

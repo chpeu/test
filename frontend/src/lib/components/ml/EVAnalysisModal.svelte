@@ -65,7 +65,11 @@
 </script>
 
 {#if show}
+	<!-- backdrop : raccourci redondant avec le bouton ✕ / Échap -->
+	<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 	<div class="modal-overlay" on:click={close} on:keydown={(e) => e.key === 'Escape' && close()}>
+		<!-- stopPropagation décoratif : empêche la fermeture via le contenu, pas une action -->
+		<!-- svelte-ignore a11y-no-static-element-interactions -->
 		<div class="modal-content" on:click|stopPropagation>
 			<div class="modal-header">
 				<h2>📊 Analyse EV par ml_confidence</h2>

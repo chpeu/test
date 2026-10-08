@@ -553,21 +553,7 @@
 		flex-wrap: wrap;
 	}
 
-	.level-filter,
-	.search-input {
-		background: var(--bg-primary);
-		border: 1px solid var(--border);
-		color: var(--text-primary);
-		padding: 6px 12px;
-		border-radius: 6px;
-		font-size: 13px;
-	}
-
-	.search-input {
-		min-width: 150px;
-	}
-
-	.export-btn {
+.export-btn {
 		background: rgba(var(--accent-green-rgb), 0.1);
 		border: 1px solid var(--accent-green);
 		color: var(--accent-green);
@@ -608,17 +594,6 @@
 		font-weight: bold;
 		border: 1px solid var(--accent-blue);
 	}
-
-	.config-badge {
-		background: rgba(var(--accent-green-rgb), 0.2);
-		color: var(--accent-green);
-		padding: 4px 12px;
-		border-radius: 12px;
-		font-size: 12px;
-		font-weight: bold;
-		border: 1px solid var(--accent-green);
-	}
-
 	.log-container {
 		flex: 1;
 		overflow-y: auto;
@@ -703,45 +678,6 @@
 		word-break: break-word;
 	}
 
-	.config-entry {
-		padding: 8px 12px;
-		margin-bottom: 5px;
-		background: rgba(var(--accent-green-rgb), 0.05);
-		border-radius: 4px;
-		border-left: 3px solid var(--accent-green);
-		display: flex;
-		gap: 10px;
-		align-items: center;
-		transition: all 0.2s;
-	}
-
-	.config-entry:hover {
-		background: rgba(var(--accent-green-rgb), 0.1);
-	}
-
-	.config-time {
-		color: var(--text-secondary);
-		flex-shrink: 0;
-	}
-
-	.config-key {
-		color: var(--accent-blue);
-		font-weight: bold;
-		flex-shrink: 0;
-		font-family: var(--font-ui);
-	}
-
-	.config-arrow {
-		color: var(--accent-green);
-		font-weight: bold;
-	}
-
-	.config-change {
-		color: var(--text-primary);
-		flex: 1;
-		font-family: var(--font-ui);
-	}
-
 	.no-logs {
 		text-align: center;
 		padding: 60px 20px;
@@ -789,13 +725,11 @@
 	/* Mobile */
 	@media (max-width: 768px) {
 		.errors-section,
-		.config-section,
 		.logs-section {
 			max-height: 300px;
 		}
 
-		.log-entry,
-		.config-entry {
+		.log-entry {
 			flex-direction: column;
 			gap: 5px;
 		}

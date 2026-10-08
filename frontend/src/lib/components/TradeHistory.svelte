@@ -754,7 +754,10 @@
 
 	<!-- 🔥 RECONCILIATION MODAL -->
 	{#if showReconcileModal}
+		<!-- backdrop : raccourci redondant avec le bouton ✕ -->
+		<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
 		<div class="modal-overlay" on:click={closeReconcileModal}>
+			<!-- svelte-ignore a11y-no-static-element-interactions -->
 			<div class="modal-content" on:click|stopPropagation>
 				<div class="modal-header">
 					<h4>📊 Réconciliation MEXC vs DB</h4>
@@ -1255,6 +1258,7 @@
 	}
 
 	/* Legacy classes pour compatibilité */
+	/* .win/.loss/.price/.size : appliquées dynamiquement (class:list) — sélecteurs réels, faux positifs svelte-check */
 	.trades-table tbody tr.win {
 		border-left: 4px solid var(--accent-green);
 	}
@@ -1545,7 +1549,7 @@
 		font-weight: 500;
 	}
 
-	.pnl-pct, .pnl-usdt {
+	.pnl-usdt {
 		font-weight: bold;
 	}
 
@@ -1568,25 +1572,10 @@
 		gap: 4px;
 		color: var(--accent-blue);
 	}
-
-	.pnl-gross {
-		font-weight: bold;
-	}
-
 	.duration {
 		color: var(--text-secondary);
 		font-size: 11px;
 	}
-
-	.signals {
-		color: var(--accent-blue);
-		font-size: 10px;
-		max-width: 150px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
 	/* 🔥 PAGINATION: Styles */
 	.pagination {
 		display: flex;
