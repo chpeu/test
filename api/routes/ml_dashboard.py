@@ -237,7 +237,8 @@ async def get_ml_trades_count():
             'use_breakout': bool(TRADING_CONFIG.get('use_breakout', True)),
             'breakout_threshold': float(TRADING_CONFIG.get('breakout_threshold', 0.25)),
             'use_snr': bool(TRADING_CONFIG.get('use_snr', True)),
-            'snr_threshold': float(TRADING_CONFIG.get('snr_threshold', 0.15)),
+            # 'snr_threshold' : déjà présent plus haut dans « Paramètres de base » (même
+            # valeur) — la clé dupliquée ici écrasait silencieusement la première.
             'use_wick': bool(TRADING_CONFIG.get('use_wick', False)),
             'wick_ratio_max': float(TRADING_CONFIG.get('wick_ratio_max', 4.5)),
             'use_divergence': bool(TRADING_CONFIG.get('use_divergence', True)),
@@ -284,13 +285,12 @@ async def get_ml_trades_count():
         # ═══════════════════════════════════════════════════════════════════
         # 4. CONSTRUIRE LE FILTRE COMPLET (identique à l'entraînement ML)
         # ═══════════════════════════════════════════════════════════════════
-        # 🔥 Utiliser la fonction centralisée pour garantir la cohérence
-        from optimization.data.feature_loader import build_config_filter_conditions
-        # Note: On utilise la table trades directement, donc inclure exit_reason
-        conditions = build_config_filter_conditions(for_trades_table=True)
-        
-        clean_query = f"SELECT COUNT(*) as cnt FROM trades WHERE {' AND '.join(conditions)}"
-        clean_count = int(pd.read_sql(clean_query, engine).iloc[0]['cnt'])
+        # build_config_filter_conditions() produit le filtre utilisé à l'entraînement,
+        # mais aucun comptage n'en est tiré ici : un COUNT(*) avec ce filtre était exécuté
+        # à chaque chargement du tableau de bord puis jeté (le champ affiché,
+        # config_filtered_trades, vient de base_filtered ci-dessus). Supprimé : c'était
+        # un scan complet de la table trades pour rien. Le nombre de trades réellement
+        # filtrés s'obtient via load_features_from_postgres().
         
         # ═══════════════════════════════════════════════════════════════════
         # 5. BREAKDOWN PAR CONFIG (pour debug)

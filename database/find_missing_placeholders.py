@@ -89,15 +89,15 @@ insert_cols_list = [
 ]
 
 print(f"Total colonnes dans INSERT: {len(insert_cols_list)}")
-print(f"Placeholders attendus: 111")
+print("Placeholders attendus: 111")
 print(f"Différence: {len(insert_cols_list) - 111}")
 
 # Afficher les 20 premières et dernières colonnes
-print(f"\nPremières 20 colonnes:")
+print("\nPremières 20 colonnes:")
 for i, col in enumerate(insert_cols_list[:20], 1):
     print(f"  {i}: {col}")
 
-print(f"\nDernières 20 colonnes:")
+print("\nDernières 20 colonnes:")
 for i, col in enumerate(insert_cols_list[-20:], len(insert_cols_list) - 19):
     print(f"  {i}: {col}")
 

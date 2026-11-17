@@ -14,7 +14,7 @@ def test_datalogger_columns():
     
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -136,7 +136,7 @@ def test_datalogger_columns():
         cursor.close()
         conn.close()
         
-        print(f"\n🎉 Tous les tests datalogger sont passés!")
+        print("\n🎉 Tous les tests datalogger sont passés!")
         return True
         
     except Exception as e:

@@ -173,7 +173,7 @@ for train_idx, test_idx in cv.split(X_sel, y):
     f1s.append(f1_score(y_test, y_test_pred, zero_division=0))
     precs.append(precision_score(y_test, y_test_pred, zero_division=0))
 
-print(f"\nResultats optimises pour precision:")
+print("\nResultats optimises pour precision:")
 print(f"  Accuracy: {np.mean(test_accs)*100:.1f}%")
 print(f"  F1 Score: {np.mean(f1s):.3f}")
 print(f"  Precision: {np.mean(precs):.3f}")

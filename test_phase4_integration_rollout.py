@@ -182,7 +182,7 @@ class Phase4IntegrationTester:
             self.analyzer_factory = get_configured_analyzer_factory("development")
             
             analyzer = self.analyzer_factory.create_analyzer()
-            indicator_calc = self.analyzer_factory.create_indicator_calculator()
+            self.analyzer_factory.create_indicator_calculator()
             
             # Test analysis
             test_data = {
@@ -570,7 +570,7 @@ class Phase4IntegrationTester:
             
             # Component tests
             component_tests = self.test_results.get('component_tests', {})
-            for phase, result in component_tests.items():
+            for _phase, result in component_tests.items():
                 if isinstance(result, dict) and 'overall_ok' in result:
                     total_tests += 1
                     if result['overall_ok']:
@@ -578,7 +578,7 @@ class Phase4IntegrationTester:
             
             # Integration tests
             integration_tests = self.test_results.get('integration_tests', {})
-            for test_name, result in integration_tests.items():
+            for _test_name, result in integration_tests.items():
                 if isinstance(result, dict):
                     if 'workflow_complete' in result:
                         total_tests += 1
@@ -591,7 +591,7 @@ class Phase4IntegrationTester:
             
             # Performance tests
             performance_tests = self.test_results.get('performance_tests', {})
-            for test_name, result in performance_tests.items():
+            for _test_name, result in performance_tests.items():
                 if isinstance(result, dict) and 'performance_ok' in result:
                     total_tests += 1
                     if result['performance_ok']:
@@ -603,7 +603,7 @@ class Phase4IntegrationTester:
             
             # Monitoring tests
             monitoring_tests = self.test_results.get('monitoring_tests', {})
-            for test_name, result in monitoring_tests.items():
+            for _test_name, result in monitoring_tests.items():
                 if isinstance(result, dict):
                     if 'overall_ok' in result:
                         total_tests += 1
@@ -642,26 +642,26 @@ class Phase4IntegrationTester:
                 status_icon = '❌'
             
             # Afficher résultats
-            print(f"📊 RÉSULTATS GLOBAUX:")
+            print("📊 RÉSULTATS GLOBAUX:")
             print(f"   Tests Passed: {passed_tests}/{total_tests}")
             print(f"   Success Rate: {success_rate:.1%}")
             print(f"   Status: {status_icon} {final_status}")
             
-            print(f"\n🚩 ROLLOUT STATUS:")
-            print(f"   Position Manager: 75% ✅")
-            print(f"   Analyzer: 50% ✅") 
-            print(f"   Scanner: 10% ✅")
+            print("\n🚩 ROLLOUT STATUS:")
+            print("   Position Manager: 75% ✅")
+            print("   Analyzer: 50% ✅") 
+            print("   Scanner: 10% ✅")
             
             if success_rate >= 0.8:
-                print(f"\n🎯 RECOMMANDATION: Rollout Phase 4 peut continuer")
-                print(f"   - Scanner peut être étendu à 25%")
-                print(f"   - Monitoring est opérationnel")
-                print(f"   - Intégration cross-phases validée")
+                print("\n🎯 RECOMMANDATION: Rollout Phase 4 peut continuer")
+                print("   - Scanner peut être étendu à 25%")
+                print("   - Monitoring est opérationnel")
+                print("   - Intégration cross-phases validée")
             else:
-                print(f"\n⚠️ RECOMMANDATION: Correction nécessaire avant extension rollout")
-                print(f"   - Analyser échecs de tests")
-                print(f"   - Corriger problèmes identifiés")
-                print(f"   - Re-tester avant extension")
+                print("\n⚠️ RECOMMANDATION: Correction nécessaire avant extension rollout")
+                print("   - Analyser échecs de tests")
+                print("   - Corriger problèmes identifiés")
+                print("   - Re-tester avant extension")
             
             # Mettre à jour résultats
             self.test_results['overall_status'] = final_status

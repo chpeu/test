@@ -18,7 +18,7 @@ if __name__ == "__main__":
     timeframe = int(sys.argv[1]) if len(sys.argv) > 1 else 60
     min_trades = int(sys.argv[2]) if len(sys.argv) > 2 else 30
     
-    print(f"\n🚀 Entraînement XGBoost")
+    print("\n🚀 Entraînement XGBoost")
     print(f"📊 Timeframe: {timeframe} jours")
     print(f"📊 Min trades: {min_trades}\n")
     

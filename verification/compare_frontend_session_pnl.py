@@ -81,11 +81,11 @@ print(f"- Somme % ({pnl_pct_col}):    {sum_pct:+.6f}")
 if sum_size:
     print(f"- Somme size ({size_col}):    {sum_size:.6f}")
 else:
-    print(f"- Somme size:                N/A (pas de colonne size exploitable)")
+    print("- Somme size:                N/A (pas de colonne size exploitable)")
 if weighted_pct is not None:
     print(f"- % pondéré (USDT/size):      {weighted_pct:+.6f}%")
 else:
-    print(f"- % pondéré (USDT/size):      N/A")
+    print("- % pondéré (USDT/size):      N/A")
 if fee_col:
     print(f"- Somme fees ({fee_col}):     {sum_fees:+.6f}")
 

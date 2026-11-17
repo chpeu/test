@@ -161,7 +161,7 @@ try:
     
     predictor = OptimizedPredictor()
     if predictor.model is not None:
-        log_check("Predictor charge", "OK", f"Model ready")
+        log_check("Predictor charge", "OK", "Model ready")
         
         # Test prediction
         test_features = {
@@ -317,23 +317,23 @@ print(f"    ⚠️  WARNING: {n_warn}")
 print(f"    ❌ ERROR:    {n_err}")
 
 if ERRORS:
-    print(f"\n  ❌ ERREURS A CORRIGER:")
+    print("\n  ❌ ERREURS A CORRIGER:")
     for err in ERRORS:
         print(f"     - {err}")
 
 if WARNINGS:
-    print(f"\n  ⚠️  AVERTISSEMENTS:")
+    print("\n  ⚠️  AVERTISSEMENTS:")
     for warn in WARNINGS[:5]:  # Max 5
         print(f"     - {warn}")
 
 if n_err == 0:
-    print(f"\n  🎉 SYSTEME ML OPERATIONNEL")
+    print("\n  🎉 SYSTEME ML OPERATIONNEL")
     if n_warn == 0:
-        print(f"     Aucun probleme detecte!")
+        print("     Aucun probleme detecte!")
     else:
         print(f"     {n_warn} avertissements mineurs")
 else:
-    print(f"\n  🚨 SYSTEME ML NECESSITE CORRECTIONS")
+    print("\n  🚨 SYSTEME ML NECESSITE CORRECTIONS")
     print(f"     Corriger {n_err} erreurs avant utilisation")
 
 print("\n" + "=" * 70)

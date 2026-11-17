@@ -451,7 +451,7 @@ def analyze_and_update_targets(min_trades: int = 10, force_recalculate: bool = F
         
         if total_trades < min_trades:
             print(f"⚠️ Pas assez de trades (minimum: {min_trades})")
-            print(f"   Continuez à trader pour collecter plus de données.")
+            print("   Continuez à trader pour collecter plus de données.")
             return
         
         # 2. Récupérer les trades à analyser
@@ -473,8 +473,8 @@ def analyze_and_update_targets(min_trades: int = 10, force_recalculate: bool = F
         rows = cursor.fetchall()
         
         if not rows:
-            print(f"\n✅ Tous les trades ont déjà leurs targets ML calculés.")
-            print(f"   Utilisez --force pour recalculer.")
+            print("\n✅ Tous les trades ont déjà leurs targets ML calculés.")
+            print("   Utilisez --force pour recalculer.")
             return
         
         print(f"\n📊 {len(rows)} trades à analyser")
@@ -553,13 +553,13 @@ def analyze_and_update_targets(min_trades: int = 10, force_recalculate: bool = F
         
         stats = cursor.fetchone()
         
-        print(f"\n📊 Métriques:")
+        print("\n📊 Métriques:")
         print(f"   - Total trades analysés: {stats['total_trades']}")
         print(f"   - Exit Efficiency moyenne: {stats['avg_efficiency']:.1f}%")
         print(f"   - Regret moyen: {stats['avg_regret']:.2f}%")
         print(f"   - Taux d'excellents exits (A+/A): {stats['excellent_exits']/stats['total_trades']*100:.1f}%")
         
-        print(f"\n🎯 Targets ML moyens:")
+        print("\n🎯 Targets ML moyens:")
         print(f"   - SL optimal moyen: {stats['avg_optimal_sl']:.3f}%")
         print(f"   - Trailing trigger optimal moyen: {stats['avg_optimal_trailing']:.3f}%")
         print(f"   - Trailing distance optimal moyen: {stats['avg_optimal_trailing_distance']:.3f}%")
@@ -576,7 +576,7 @@ def analyze_and_update_targets(min_trades: int = 10, force_recalculate: bool = F
             ORDER BY exit_timing_grade
         """)
         
-        print(f"\n📊 Distribution des grades:")
+        print("\n📊 Distribution des grades:")
         for row in cursor.fetchall():
             grade = row['exit_timing_grade'] or 'N/A'
             count = row['count']
@@ -601,14 +601,14 @@ def analyze_and_update_targets(min_trades: int = 10, force_recalculate: bool = F
                     improvement = stats['optimal_pnl'] - stats['pnl']
                     print(f"   {config_key}: {stats['trades']} trades | WR: {winrate:.0f}% | PnL: {stats['pnl']:.2f}% → {stats['optimal_pnl']:.2f}% ({improvement:+.2f}%)")
             
-            print(f"\n📈 Comparaison ACTUEL vs OPTIMAL (tous trades):")
+            print("\n📈 Comparaison ACTUEL vs OPTIMAL (tous trades):")
             print(f"   Winrate:        {simulation_results['current_winrate']:.1f}% → {simulation_results['optimal_winrate']:.1f}% ({simulation_results['winrate_improvement']:+.1f}%)")
             print(f"   PnL total:      {simulation_results['current_pnl_total']:.2f}% → {simulation_results['optimal_pnl_total']:.2f}% ({simulation_results['pnl_improvement']:+.2f}%)")
             print(f"   PnL moyen:      {simulation_results['current_pnl_avg']:.2f}% → {simulation_results['optimal_pnl_avg']:.2f}% ({simulation_results['pnl_avg_improvement']:+.2f}%)")
             print(f"   Exit Efficiency:{simulation_results['current_efficiency']:.1f}% → {simulation_results['optimal_efficiency']:.1f}% ({simulation_results['efficiency_improvement']:+.1f}%)")
             print(f"   Regret moyen:   {simulation_results['current_regret']:.3f}% → {simulation_results['optimal_regret']:.3f}% ({simulation_results['regret_improvement']:+.3f}%)")
             
-            print(f"\n📊 Distribution des grades avec paramètres optimaux:")
+            print("\n📊 Distribution des grades avec paramètres optimaux:")
             for grade, data in simulation_results['optimal_grade_distribution'].items():
                 current_data = simulation_results['current_grade_distribution'].get(grade, {'count': 0, 'pct': 0})
                 current_count = current_data['count']
@@ -617,12 +617,12 @@ def analyze_and_update_targets(min_trades: int = 10, force_recalculate: bool = F
                 diff_str = f"({diff:+d})" if diff != 0 else ""
                 print(f"   {grade:3s}: {optimal_count:2d} ({data['pct']:4.1f}%) [vs {current_count} actuels] {diff_str}")
             
-            print(f"\n💰 Impact financier:")
+            print("\n💰 Impact financier:")
             if simulation_results['pnl_improvement'] > 0:
                 gain_factor = (simulation_results['optimal_pnl_total'] / max(simulation_results['current_pnl_total'], 0.01))
                 print(f"   Gains multipliés par {gain_factor:.1f}x avec paramètres optimaux!")
             else:
-                print(f"   Pas d'amélioration significative avec les paramètres optimaux")
+                print("   Pas d'amélioration significative avec les paramètres optimaux")
         
         print("\n" + "=" * 80)
         print(f"✅ {updated_count} trades mis à jour avec succès!")

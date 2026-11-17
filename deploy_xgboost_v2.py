@@ -125,7 +125,7 @@ def step3_validate_prereqs():
     # Check 2: Packages ML
     checks_total += 1
     try:
-        import pandas, numpy, sklearn, xgboost
+        import pandas, numpy, sklearn, xgboost  # noqa: F401  (sonde de disponibilite)
         print_success("Packages ML (pandas, numpy, sklearn, xgboost)")
         checks_passed += 1
     except ImportError as e:

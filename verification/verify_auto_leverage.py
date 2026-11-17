@@ -209,7 +209,7 @@ def run_tests():
         success(f"balance=0 -> Refusé correctement: {msg}")
         tests_passed += 1
     else:
-        fail(f"balance=0 -> Devrait être refusé!")
+        fail("balance=0 -> Devrait être refusé!")
         tests_failed += 1
     
     # Size = 0
@@ -218,7 +218,7 @@ def run_tests():
         success(f"size=0 -> Refusé correctement: {msg}")
         tests_passed += 1
     else:
-        fail(f"size=0 -> Devrait être refusé!")
+        fail("size=0 -> Devrait être refusé!")
         tests_failed += 1
     
     # Balance négative (impossible mais on teste)
@@ -227,7 +227,7 @@ def run_tests():
         success(f"balance=-10 -> Refusé correctement: {msg}")
         tests_passed += 1
     else:
-        fail(f"balance=-10 -> Devrait être refusé!")
+        fail("balance=-10 -> Devrait être refusé!")
         tests_failed += 1
     
     # ===========================================================================

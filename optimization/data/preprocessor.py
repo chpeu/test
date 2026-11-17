@@ -215,7 +215,9 @@ def handle_class_imbalance(y: pd.Series, strategy: str = 'auto') -> Dict:
         y=y
     )
     
-    class_weights = {cls: weight for cls, weight in zip(classes, weights)}
+    # classes et weights sont renvoyés par compute_class_weight sur `classes` :
+    # même longueur garantie ; strict=True fige cette hypothèse.
+    class_weights = {cls: weight for cls, weight in zip(classes, weights, strict=True)}
     
     # Log ratio
     win_count = (y == 1).sum()

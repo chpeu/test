@@ -17,7 +17,7 @@ print("="*70)
 print("🎬 FILM DU TRADE: FARTCOIN/USDT")
 print("="*70)
 
-print(f"\n📊 DONNÉES DE BASE")
+print("\n📊 DONNÉES DE BASE")
 print("-"*40)
 print(f"   ID: {t['id']}")
 print(f"   Symbol: {t['symbol']}")
@@ -48,37 +48,37 @@ sl_from_entry_pct = (sl - entry) / entry * 100
 exit_from_entry_pct = (exit_p - entry) / entry * 100
 tp_from_entry_pct = (tp - entry) / entry * 100
 
-print(f"\n📐 CALCULS")
+print("\n📐 CALCULS")
 print("-"*40)
 print(f"   SL depuis entry: {sl_from_entry_pct:+.4f}%")
 print(f"   TP depuis entry: {tp_from_entry_pct:+.4f}%")
 print(f"   Exit depuis entry: {exit_from_entry_pct:+.4f}%")
 
 # Analyse Break-Even
-print(f"\n🛡️ BREAK-EVEN")
+print("\n🛡️ BREAK-EVEN")
 print("-"*40)
 if sl > entry:
     print(f"   ✅ SL ({sl:.6f}) > Entry ({entry:.6f})")
-    print(f"   → Break-Even ACTIF (SL déplacé au-dessus de entry)")
+    print("   → Break-Even ACTIF (SL déplacé au-dessus de entry)")
     be_offset = (sl - entry) / entry * 100
     print(f"   → Offset BE: +{be_offset:.4f}%")
 else:
     print(f"   ❌ SL ({sl:.6f}) <= Entry ({entry:.6f})")
-    print(f"   → Break-Even NON actif")
+    print("   → Break-Even NON actif")
 
 # Vérifier métriques ATR
 cur.execute("SELECT COUNT(*) as cnt FROM trade_atr_metrics WHERE trade_id = %s", (str(t['id']),))
 cnt = cur.fetchone()['cnt']
-print(f"\n📈 MÉTRIQUES ATR")
+print("\n📈 MÉTRIQUES ATR")
 print("-"*40)
 print(f"   Enregistrements: {cnt}")
 
 if cnt == 0:
-    print(f"   ⚠️ AUCUNE MÉTRIQUE ATR ENREGISTRÉE!")
-    print(f"   → Possible bug: log_trade_atr_metrics non appelé")
+    print("   ⚠️ AUCUNE MÉTRIQUE ATR ENREGISTRÉE!")
+    print("   → Possible bug: log_trade_atr_metrics non appelé")
 
 # Reconstitution du film
-print(f"\n🎬 RECONSTITUTION DU TRADE")
+print("\n🎬 RECONSTITUTION DU TRADE")
 print("="*70)
 
 print(f"""
@@ -101,7 +101,7 @@ print(f"""
 """)
 
 # Diagnostic
-print(f"\n🔍 DIAGNOSTIC")
+print("\n🔍 DIAGNOSTIC")
 print("="*70)
 
 issues = []
@@ -127,7 +127,7 @@ else:
     print("   ✅ Aucun problème majeur")
 
 # 3 derniers trades avec métriques
-print(f"\n📋 DERNIERS TRADES AVEC MÉTRIQUES (pour comparaison)")
+print("\n📋 DERNIERS TRADES AVEC MÉTRIQUES (pour comparaison)")
 print("-"*70)
 cur.execute("""
     SELECT t.symbol, t.exit_reason, t.pnl_pct, 

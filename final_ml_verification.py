@@ -328,10 +328,10 @@ class FinalMLVerifier:
                 'opportunity_direction': 'SHORT'
             }
             
-            scan_id = self.pg_logger.log_scan('INTEGRATION_TEST', scan_data)
+            self.pg_logger.log_scan('INTEGRATION_TEST', scan_data)
             
             # 2. Appliquer rejet ML
-            rejection_success = await self.pg_logger.update_ml_rejection_async(
+            await self.pg_logger.update_ml_rejection_async(
                 symbol='INTEGRATION_TEST',
                 reject_reason='Test intégration: ML confidence 28.5% < seuil 50.0%',
                 reject_category='integration_test_ml',
@@ -457,7 +457,7 @@ async def main():
         await verifier.test_1_schema_validation()
         await asyncio.sleep(0.5)
         
-        scan_id = await verifier.test_2_scan_creation_fixed() 
+        await verifier.test_2_scan_creation_fixed() 
         await asyncio.sleep(0.5)
         
         await verifier.test_3_complete_ml_workflow()

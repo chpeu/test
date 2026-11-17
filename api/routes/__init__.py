@@ -45,7 +45,6 @@ from .metrics import router as metrics_router
 from .ml import router as ml_router
 from .config import (
     router as config_router,
-    perform_config_update,
     set_app_state as set_app_state_config
 )
 from .ml_calibration import router as ml_calibration_router  # 🆕 Routes ML Calibration
@@ -57,8 +56,6 @@ from .logs import router as logs_router
 from .test_errors import router as test_errors_router
 from .notifications import (
     router as notifications_router,
-    perform_telegram_config_update,
-    perform_telegram_test
 )
 
 # Créer un router combiné pour compatibilité avec main.py
@@ -140,7 +137,6 @@ def set_position_manager(pm):
 def set_price_provider(pp):
     """Injecter price provider"""
     from .scanner import set_price_provider as set_pp_scan
-    set_pp_dash = set_pp_scan # Scanner and dashboard use same instance usually
     set_pp_scan(pp)
     set_price_provider_pos(pp)
     set_price_provider_price(pp)

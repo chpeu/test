@@ -13,7 +13,7 @@ async def create_position_via_ws():
     try:
         async with websockets.connect(uri) as websocket:
             # Attendre le message initial
-            init_msg = await websocket.recv()
+            await websocket.recv()
             print("📡 Connecté au WebSocket")
             
             # Créer la position via commande
@@ -77,7 +77,7 @@ async def check_next_event():
                     
                     next_event = pos.get('next_event')
                     if next_event:
-                        print(f"\n📍 Prochaine étape:")
+                        print("\n📍 Prochaine étape:")
                         print(f"   Type: {next_event.get('type')} - {next_event.get('description')}")
                         print(f"   Distance: {next_event.get('distance_pct', 0):.2f}%")
                         if next_event.get('price'):

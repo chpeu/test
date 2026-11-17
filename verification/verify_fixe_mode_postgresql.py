@@ -160,7 +160,7 @@ def main():
                 print(f"  Mécanisme:      {error['forbidden_mechanism']}")
                 print()
                 print(f"  ⚠️ PROBLÈME: Ce mécanisme ({error['forbidden_mechanism']}) ne devrait")
-                print(f"             s'appliquer QU'EN MODE ATR, pas en mode FIXE!")
+                print("             s'appliquer QU'EN MODE ATR, pas en mode FIXE!")
                 print()
         else:
             print("=" * 80)
@@ -202,12 +202,12 @@ def main():
                 else:
                     pnl_negative += 1
             
-            print(f"Raisons de sortie:")
+            print("Raisons de sortie:")
             for reason, count in sorted(exit_stats.items(), key=lambda x: x[1], reverse=True):
                 print(f"  • {reason:30} {count:3} trades ({count/len(fixe_trades)*100:.1f}%)")
             
             print()
-            print(f"Performance:")
+            print("Performance:")
             print(f"  • Trades gagnants:  {pnl_positive} ({pnl_positive/len(fixe_trades)*100:.1f}%)")
             print(f"  • Trades perdants:  {pnl_negative} ({pnl_negative/len(fixe_trades)*100:.1f}%)")
             print(f"  • PnL moyen:        {total_pnl/len(fixe_trades):.3f}%")

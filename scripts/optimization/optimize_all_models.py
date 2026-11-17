@@ -197,7 +197,7 @@ metrics_v1 = {
     'roc_auc': roc_auc_score(y_test_class, y_proba_v1)
 }
 
-print(f"\n   RESULTATS XGBOOST V1:")
+print("\n   RESULTATS XGBOOST V1:")
 print(f"      Accuracy:  {metrics_v1['accuracy']*100:.1f}%")
 print(f"      Precision: {metrics_v1['precision']*100:.1f}%")
 print(f"      Recall:    {metrics_v1['recall']*100:.1f}%")
@@ -313,7 +313,7 @@ metrics_v2 = {
     'f1': f1_score(y_test_class, (y_pred_v2 > 0).astype(int))
 }
 
-print(f"\n   RESULTATS XGBOOST V2:")
+print("\n   RESULTATS XGBOOST V2:")
 print(f"      MAE:       {metrics_v2['mae']:.3f}%")
 print(f"      R2:        {metrics_v2['r2']:.3f}")
 print(f"      Accuracy:  {metrics_v2['accuracy']*100:.1f}% (classification derivee)")
@@ -439,7 +439,7 @@ metrics_gb = {
     'roc_auc': roc_auc_score(y_test_class, y_proba_gb)
 }
 
-print(f"\n   RESULTATS GRADIENTBOOSTING:")
+print("\n   RESULTATS GRADIENTBOOSTING:")
 print(f"      Accuracy:  {metrics_gb['accuracy']*100:.1f}%")
 print(f"      Precision: {metrics_gb['precision']*100:.1f}%")
 print(f"      Recall:    {metrics_gb['recall']*100:.1f}%")

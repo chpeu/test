@@ -45,7 +45,7 @@ try:
     print(f"   ml_loss_threshold: {loss_threshold}")
     
     if mode == 'NEGATIVE':
-        print(f"\n   [OK] Mode NEGATIVE actif")
+        print("\n   [OK] Mode NEGATIVE actif")
     else:
         print(f"\n   [!] Mode {mode} (pas NEGATIVE)")
         
@@ -71,9 +71,9 @@ try:
     print(f"   threshold: {info['threshold']}")
     
     if info['is_loaded']:
-        print(f"\n   [OK] Modele charge")
+        print("\n   [OK] Modele charge")
     else:
-        print(f"\n   [X] Modele non charge")
+        print("\n   [X] Modele non charge")
         all_ok = False
         
 except Exception as e:
@@ -102,16 +102,16 @@ try:
         print(f"   ml_loss_threshold: {ml_threshold}")
         
         if ml_mode is not None and ml_threshold is not None:
-            print(f"\n   [OK] API retourne les nouveaux parametres")
+            print("\n   [OK] API retourne les nouveaux parametres")
         else:
-            print(f"\n   [!] Parametres manquants dans API")
+            print("\n   [!] Parametres manquants dans API")
             all_ok = False
     else:
         print(f"   [X] Erreur HTTP {resp.status_code}")
         all_ok = False
         
 except requests.exceptions.ConnectionError:
-    print(f"   [!] Backend non accessible (normal si pas demarré)")
+    print("   [!] Backend non accessible (normal si pas demarré)")
 except Exception as e:
     print(f"   [X] Erreur: {e}")
     all_ok = False
@@ -201,9 +201,9 @@ try:
     print(f"   should_reject: {result.get('should_reject')}")
     
     if 'p_loss' in result:
-        print(f"\n   [OK] Prediction fonctionne")
+        print("\n   [OK] Prediction fonctionne")
     else:
-        print(f"\n   [X] Prediction echouée")
+        print("\n   [X] Prediction echouée")
         all_ok = False
         
 except Exception as e:
@@ -246,7 +246,7 @@ print("  RESUME")
 print("=" * 70)
 
 if all_ok:
-    print(f"""
+    print("""
    [OK] TOUS LES TESTS PASSES
    
    Configuration actuelle:
@@ -259,7 +259,7 @@ if all_ok:
    (visible quel que soit le modele selectionne)
 """)
 else:
-    print(f"""
+    print("""
    [X] CERTAINS TESTS ONT ECHOUE
    
    Actions recommandees:

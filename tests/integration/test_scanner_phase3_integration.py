@@ -465,7 +465,7 @@ class TestScannerPhase3Integration:
         assert cleared_stats['cached_components'] == 0
         
         # Log résultats finaux
-        logger.info(f"📊 Workflow complet Scanner Phase 3:")
+        logger.info("📊 Workflow complet Scanner Phase 3:")
         logger.info(f"   - Single scan: {single_result.status.value}")
         logger.info(f"   - Batch scan: {batch_result.successful_scans}/{batch_result.total_scanned}")
         logger.info(f"   - Top pairs: {len(top_result.symbols)} pairs")

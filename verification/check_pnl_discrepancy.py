@@ -26,7 +26,7 @@ cur.execute("""
     ) as subq
 """)
 result_21 = cur.fetchone()
-print(f"\n📊 21 derniers trades (avec métriques):")
+print("\n📊 21 derniers trades (avec métriques):")
 print(f"   PnL: {result_21['pnl_21_pct']:+.3f}% ({result_21['pnl_21_usdt']:+.4f} USDT)")
 print(f"   Count: {result_21['count']} trades")
 
@@ -42,7 +42,7 @@ cur.execute("""
     ) as subq
 """)
 result_21_all = cur.fetchone()
-print(f"\n📊 21 derniers trades (tous):")
+print("\n📊 21 derniers trades (tous):")
 print(f"   PnL: {result_21_all['pnl_21_all_pct']:+.3f}% ({result_21_all['pnl_21_all_usdt']:+.4f} USDT)")
 print(f"   Count: {result_21_all['count']} trades")
 
@@ -53,7 +53,7 @@ cur.execute("""
     WHERE exit_price IS NOT NULL
 """)
 result_total = cur.fetchone()
-print(f"\n📊 TOUS les trades:")
+print("\n📊 TOUS les trades:")
 print(f"   PnL: {result_total['pnl_total_pct']:+.3f}% ({result_total['pnl_total_usdt']:+.4f} USDT)")
 print(f"   Count: {result_total['count']} trades")
 
@@ -68,7 +68,7 @@ cur.execute("""
 """)
 missing_metrics = cur.fetchall()
 
-print(f"\n⚠️ Trades SANS métriques (10 premiers):")
+print("\n⚠️ Trades SANS métriques (10 premiers):")
 if missing_metrics:
     for trade in missing_metrics:
         trade = dict(trade)
@@ -85,7 +85,7 @@ cur.execute("""
 """)
 gap_info = cur.fetchone()
 
-print(f"\n📊 Gap de métriques:")
+print("\n📊 Gap de métriques:")
 print(f"   Trades sans métriques: {gap_info['missing_count']}")
 print(f"   PnL de ces trades: {gap_info['missing_pnl']:+.3f}%")
 
@@ -105,7 +105,7 @@ cur.execute("""
 """)
 daily = cur.fetchall()
 
-print(f"\n📅 PnL par jour (avec/ sans métriques):")
+print("\n📅 PnL par jour (avec/ sans métriques):")
 for row in daily:
     row = dict(row)
     has_metrics = "✅" if row['missing_count'] == 0 else "❌"

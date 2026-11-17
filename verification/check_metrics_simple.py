@@ -47,7 +47,7 @@ for t in trades:
     print(f"{symbol:<20} | {exit_r:<12} | {pnl:+.3f}% | {has_m:^8} | {mfe:>10} | {trail:^6} | {be:^4}")
 
 # Stats
-print(f"\n📈 RÉSUMÉ")
+print("\n📈 RÉSUMÉ")
 print("-"*40)
 print(f"   Trades analysés: {len(trades)}")
 print(f"   Sans métriques ATR: {missing_count}")

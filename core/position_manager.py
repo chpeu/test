@@ -281,12 +281,12 @@ class Position:
             "max_pnl_reached": self.max_pnl_reached,
             "min_pnl_reached": self.min_pnl_reached,
             "max_pnl_timestamp": datetime.fromtimestamp(
-                getattr(self, "max_pnl_timestamp")
+                self.max_pnl_timestamp
             ).isoformat()
             if getattr(self, "max_pnl_timestamp", None)
             else None,
             "min_pnl_timestamp": datetime.fromtimestamp(
-                getattr(self, "min_pnl_timestamp")
+                self.min_pnl_timestamp
             ).isoformat()
             if getattr(self, "min_pnl_timestamp", None)
             else None,
@@ -651,7 +651,7 @@ class PositionManager:
                                 and self.live_order_manager.bypass_client
                             ):
                                 logger.debug(
-                                    f"🔍 Tentative récupération prix réel SL depuis MEXC (timeout 3s)..."
+                                    "🔍 Tentative récupération prix réel SL depuis MEXC (timeout 3s)..."
                                 )
                                 bypass_symbol = symbol.replace("/", "_").replace(
                                     ":USDT", ""
@@ -1487,7 +1487,7 @@ class PositionManager:
                                 features[f"{key}_{timeframe}"] = value
 
                     # Features dérivées calculées
-                    if f"indicators_1m" in analysis and f"indicators_5m" in analysis:
+                    if "indicators_1m" in analysis and "indicators_5m" in analysis:
                         ind_1m = analysis["indicators_1m"]
                         ind_5m = analysis["indicators_5m"]
 
@@ -1663,11 +1663,11 @@ class PositionManager:
                 if missing_features:
                     logger.warning(f"⚠️ Features GB manquantes: {missing_features}")
                     logger.warning(
-                        f"⚠️ Features insuffisantes pour filtre GradientBoosting - Trade autorisé par défaut"
+                        "⚠️ Features insuffisantes pour filtre GradientBoosting - Trade autorisé par défaut"
                     )
                 else:
                     logger.warning(
-                        f"✅ SUCCÈS: Toutes les 20 features GB sont disponibles!"
+                        "✅ SUCCÈS: Toutes les 20 features GB sont disponibles!"
                     )
 
                     predictor = get_predictor()
@@ -1698,7 +1698,7 @@ class PositionManager:
                             )
                     else:
                         logger.warning(
-                            f"⚠️ Prédicteur GB non disponible - Trade autorisé par défaut"
+                            "⚠️ Prédicteur GB non disponible - Trade autorisé par défaut"
                         )
 
             except Exception as e:
@@ -1823,7 +1823,8 @@ class PositionManager:
         # Modes distincts sans mélange
         use_atr = (tp_sl_mode == "ATR") or self.config.use_atr
         use_escalier = tp_sl_mode in ["TP_MULTI", "ESCALIER"]
-        is_fixe_mode = tp_sl_mode == "FIXE" and not use_atr and not use_escalier
+        # Le mode FIXE n'a pas besoin de drapeau : tp/sl fixes sont posés plus haut et
+        # les branches ATR/escalier sont conditionnées par use_atr/use_escalier.
         # FIX: Mettre à jour paramètres ATR depuis valeurs EFFECTIVES (régime dynamique)
         from utils.effective_config import get_effective_value
 
@@ -2248,8 +2249,8 @@ class PositionManager:
                 )
                 self.active_position = position
             try:
-                # Calculer la taille en tokens (amount) depuis la taille en USDT
-                size_amount = size / entry if entry else 0.0
+                # La taille en tokens (size/entry) est calculée par le LiveOrderManager
+                # à partir de size_usdt : un calcul local, ici, n'était transmis à rien.
 
                 # FIX: Récupérer le levier depuis effective_config (déjà utilisé plus haut)
                 configured_leverage = (
@@ -4527,7 +4528,7 @@ class PositionManager:
             total_costs_pct = (total_costs / size_for_pct) * 100
         else:
             total_costs_pct = 0
-            logger.warning(f"⚠️ Position size est zéro lors du calcul des coûts")
+            logger.warning("⚠️ Position size est zéro lors du calcul des coûts")
 
         # 🔥 FIX: net_pnl_usdt doit être calculé après déduction du slippage USDT
         net_pnl_usdt = pnl_data["net_pnl"] - slippage_usdt
@@ -4879,8 +4880,8 @@ class PositionManager:
                             hasattr(self.active_position, "pnl_history")
                             and self.active_position.pnl_history
                         ):
-                            last_entry = self.active_position.pnl_history[-1]
-                            # Les indicateurs peuvent être stockés dans _last_indicators
+                            # Les indicateurs viennent de _last_indicators, pas du dernier
+                            # point de pnl_history (qui n'était lu par personne).
                             last_indicators = getattr(
                                 self.active_position, "_last_indicators", {}
                             )
@@ -5794,7 +5795,7 @@ class PositionManager:
                 "partial_tp_pct": get_effective_value("partial_tp_percent"),
             }
 
-            logger.debug(f"📊 PostExit: Appel start_tracking_sync...")
+            logger.debug("📊 PostExit: Appel start_tracking_sync...")
             post_exit_manager.start_tracking_sync(
                 trade_id=db_trade_id,
                 symbol=position.symbol,

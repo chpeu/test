@@ -30,7 +30,7 @@ for m in overview.get('models', []):
     if m.get('name') == 'best_classifier':
         metrics = m.get('metrics', {}).get('test', {})
         gap = m.get('overfitting_gap', 0)
-        print(f'\nResultats:')
+        print('\nResultats:')
         print(f'  Accuracy: {metrics.get("accuracy", 0)*100:.1f}%')
         print(f'  F1: {metrics.get("f1_score", 0):.3f}')
         print(f'  Precision: {metrics.get("precision", 0):.3f}')

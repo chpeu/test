@@ -31,18 +31,18 @@ def verify_position_sizing_formula():
     base_risk = risk_per_trade_pct / 100.0
     expected_base_size = account_size * base_risk
     
-    print(f"\n  Config actuelle:")
+    print("\n  Config actuelle:")
     print(f"    account_size     = {account_size} USDT")
     print(f"    risk_per_trade   = {risk_per_trade_pct}%")
     print(f"    min_risk_per_trade = {TRADING_CONFIG.get('min_risk_per_trade', 'N/A')}%")
     print(f"    max_risk_per_trade = {TRADING_CONFIG.get('max_risk_per_trade', 'N/A')}%")
     
-    print(f"\n  Calcul:")
+    print("\n  Calcul:")
     print(f"    base_risk = {risk_per_trade_pct} / 100 = {base_risk}")
     print(f"    base_size = {account_size} * {base_risk} = {expected_base_size} USDT")
     
     print(f"\n  RESULTAT: Taille de base attendue = {expected_base_size} USDT")
-    print(f"  (+ multiplicateurs: score, streak, adaptive)")
+    print("  (+ multiplicateurs: score, streak, adaptive)")
     
     return True
 
@@ -59,7 +59,7 @@ def verify_dynamic_config_reading():
     original_account_size = TRADING_CONFIG.get('account_size')
     original_risk = TRADING_CONFIG.get('risk_per_trade')
     
-    print(f"\n  Valeurs AVANT modification:")
+    print("\n  Valeurs AVANT modification:")
     print(f"    account_size   = {original_account_size}")
     print(f"    risk_per_trade = {original_risk}%")
     
@@ -74,7 +74,7 @@ def verify_dynamic_config_reading():
     read_account_size = TRADING_CONFIG.get('account_size')
     read_risk = TRADING_CONFIG.get('risk_per_trade')
     
-    print(f"\n  Valeurs APRES modification:")
+    print("\n  Valeurs APRES modification:")
     print(f"    account_size   = {read_account_size}")
     print(f"    risk_per_trade = {read_risk}%")
     
@@ -82,15 +82,15 @@ def verify_dynamic_config_reading():
     TRADING_CONFIG['account_size'] = original_account_size
     TRADING_CONFIG['risk_per_trade'] = original_risk
     
-    print(f"\n  Valeurs RESTAUREES:")
+    print("\n  Valeurs RESTAUREES:")
     print(f"    account_size   = {TRADING_CONFIG.get('account_size')}")
     print(f"    risk_per_trade = {TRADING_CONFIG.get('risk_per_trade')}%")
     
     if read_account_size == test_account_size and read_risk == test_risk:
-        print(f"\n  [OK] Les modifications de config sont prises en compte dynamiquement")
+        print("\n  [OK] Les modifications de config sont prises en compte dynamiquement")
         return True
     else:
-        print(f"\n  [FAILED] Les modifications ne sont pas prises en compte")
+        print("\n  [FAILED] Les modifications ne sont pas prises en compte")
         return False
 
 
@@ -118,10 +118,10 @@ def verify_leverage_dynamic():
     TRADING_CONFIG['default_leverage'] = original_leverage
     
     if read_leverage == test_leverage:
-        print(f"\n  [OK] Le levier est lu dynamiquement depuis TRADING_CONFIG")
+        print("\n  [OK] Le levier est lu dynamiquement depuis TRADING_CONFIG")
         return True
     else:
-        print(f"\n  [FAILED] Le levier n'est pas lu dynamiquement")
+        print("\n  [FAILED] Le levier n'est pas lu dynamiquement")
         return False
 
 
@@ -212,10 +212,10 @@ def verify_frontend_leverage_display():
     print(f"  Valeur: {leverage_value}x")
     
     if has_leverage:
-        print(f"\n  [OK] leverage_used est envoye au frontend via position_update")
-        print(f"  [INFO] Verifier PositionCard.svelte pour l'affichage")
+        print("\n  [OK] leverage_used est envoye au frontend via position_update")
+        print("  [INFO] Verifier PositionCard.svelte pour l'affichage")
     else:
-        print(f"\n  [FAILED] leverage_used n'est pas inclus dans to_dict()")
+        print("\n  [FAILED] leverage_used n'est pas inclus dans to_dict()")
     
     return has_leverage
 

@@ -35,7 +35,7 @@ cur.execute("""
 """, (start_time,))
 result = cur.fetchone()
 
-print(f"\n📊 PERFORMANCE TOTALE:")
+print("\n📊 PERFORMANCE TOTALE:")
 print(f"   Trades: {result['total_trades']}")
 print(f"   PnL: {result['total_pct']:+.3f}% ({result['total_usdt']:+.4f} USDT)")
 print(f"   Gagnants: {result['winners']} ({result['winners']/result['total_trades']*100:.0f}%)")
@@ -54,7 +54,7 @@ cur.execute("""
 """, (start_time,))
 with_metrics = cur.fetchone()
 
-print(f"\n📊 AVEC MÉTRIQUES:")
+print("\n📊 AVEC MÉTRIQUES:")
 print(f"   Trades: {with_metrics['trades_with_metrics']}")
 print(f"   PnL: {with_metrics['pnl_with_metrics']:+.3f}% ({with_metrics['usdt_with_metrics']:+.4f} USDT)")
 
@@ -70,12 +70,12 @@ cur.execute("""
 """, (start_time,))
 without_metrics = cur.fetchone()
 
-print(f"\n⚠️ SANS MÉTRIQUES:")
+print("\n⚠️ SANS MÉTRIQUES:")
 print(f"   Trades: {without_metrics['trades_without_metrics']}")
 if without_metrics['pnl_without_metrics'] is not None:
     print(f"   PnL: {without_metrics['pnl_without_metrics']:+.3f}% ({without_metrics['usdt_without_metrics']:+.4f} USDT)")
 else:
-    print(f"   PnL: N/A")
+    print("   PnL: N/A")
 
 # 4. Détail par heure
 cur.execute("""
@@ -93,7 +93,7 @@ cur.execute("""
 """, (start_time,))
 hourly = cur.fetchall()
 
-print(f"\n⏰ DÉTAIL PAR HEURE:")
+print("\n⏰ DÉTAIL PAR HEURE:")
 for row in hourly:
     row = dict(row)
     hour = row['hour']
@@ -123,7 +123,7 @@ cur.execute("""
 """, (start_time,))
 recent = cur.fetchall()
 
-print(f"\n DERNIERS TRADES:")
+print("\n DERNIERS TRADES:")
 for trade in recent:
     trade = dict(trade)
     pnl_color = "🟢" if trade['pnl_pct'] > 0 else "🔴" if trade['pnl_pct'] < 0 else "⚪"

@@ -87,7 +87,7 @@ pos = create_test_position()
 result = checker.check_invalidation(pos, 99.95, -0.05)
 tests_total += 1
 if result is None:
-    print(f"   ✅ PASS: Retourne None (pas d'invalidation)")
+    print("   ✅ PASS: Retourne None (pas d'invalidation)")
     tests_passed += 1
 else:
     print(f"   ❌ FAIL: Retourne '{result}' au lieu de None")
@@ -107,7 +107,7 @@ if should_exit:
     print(f"   ✅ PASS: should_exit=True, reason='{reason}'")
     tests_passed += 1
 else:
-    print(f"   ❌ FAIL: should_exit=False (devrait être True)")
+    print("   ❌ FAIL: should_exit=False (devrait être True)")
 
 # Test 4: RSI oversold pour SHORT → doit sortir
 print("\n   Test 4: SHORT avec RSI=25 (oversold)")
@@ -119,7 +119,7 @@ if should_exit:
     print(f"   ✅ PASS: should_exit=True, reason='{reason}'")
     tests_passed += 1
 else:
-    print(f"   ❌ FAIL: should_exit=False (devrait être True)")
+    print("   ❌ FAIL: should_exit=False (devrait être True)")
 
 # Test 5: Volume spike contraire pour LONG
 print("\n   Test 5: LONG avec volume spike (3x) + price_change=-0.10%")
@@ -131,7 +131,7 @@ if should_exit:
     print(f"   ✅ PASS: should_exit=True, reason='{reason}'")
     tests_passed += 1
 else:
-    print(f"   ❌ FAIL: should_exit=False (devrait être True)")
+    print("   ❌ FAIL: should_exit=False (devrait être True)")
 
 # Test 6: Spread explosion
 print("\n   Test 6: Spread=0.15% (danger)")
@@ -152,10 +152,10 @@ market_data = {'rsi_1m': 50, 'volume_1m': 100, 'volume_avg_1m': 100, 'spread_pct
 should_exit, reason = checker.check_contextual_exit(pos, market_data)
 tests_total += 1
 if not should_exit:
-    print(f"   ✅ PASS: should_exit=False (pas de danger)")
+    print("   ✅ PASS: should_exit=False (pas de danger)")
     tests_passed += 1
 else:
-    print(f"   ❌ FAIL: should_exit=True (ne devrait pas sortir)")
+    print("   ❌ FAIL: should_exit=True (ne devrait pas sortir)")
 
 # =============================================================================
 # 4. SIMULATION IMPACT SUR PNL
@@ -199,7 +199,7 @@ improvement = pnl_with - pnl_without
 if improvement > 0:
     print(f"\n   ✅ Early exit contextuel AMÉLIORE le PnL de {improvement:.2f}%")
 else:
-    print(f"\n   ⚠️ Early exit contextuel n'améliore pas le PnL")
+    print("\n   ⚠️ Early exit contextuel n'améliore pas le PnL")
 
 # =============================================================================
 # RÉSUMÉ
@@ -215,8 +215,8 @@ if tests_passed == tests_total:
 else:
     print(f"\n   ⚠️ {tests_total - tests_passed} TEST(S) ÉCHOUÉ(S)")
 
-print(f"\n   Impact estimé du early exit contextuel:")
-print(f"   → Réduction pertes sur trades défavorables")
+print("\n   Impact estimé du early exit contextuel:")
+print("   → Réduction pertes sur trades défavorables")
 print(f"   → Amélioration PnL estimée: +{improvement:.2f}% sur {n_trades} trades")
 
 print("\n" + "=" * 70)

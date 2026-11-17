@@ -276,7 +276,8 @@ async def get_ml_trades_count():
             'use_breakout': bool(TRADING_CONFIG.get('use_breakout', True)),
             'breakout_threshold': float(TRADING_CONFIG.get('breakout_threshold', 0.25)),
             'use_snr': bool(TRADING_CONFIG.get('use_snr', True)),
-            'snr_threshold': float(TRADING_CONFIG.get('snr_threshold', 0.15)),
+            # 'snr_threshold' : déjà présent plus haut dans « Paramètres de base » (même
+            # valeur) — la clé dupliquée ici écrasait silencieusement la première.
             'use_wick': bool(TRADING_CONFIG.get('use_wick', False)),
             'wick_ratio_max': float(TRADING_CONFIG.get('wick_ratio_max', 4.5)),
             'use_divergence': bool(TRADING_CONFIG.get('use_divergence', True)),
@@ -2099,7 +2100,9 @@ async def _optimize_gradientboosting_background(
         ml_tasks[task_id]['progress'] = 15
         ml_tasks[task_id]['stage'] = 'optimizing'
         
-        best_params = optimizer.optimize(n_trials=n_trials, timeout_minutes=timeout_minutes)
+        # L'optimiseur conserve lui-même les meilleurs paramètres (optimizer.best_params,
+        # lu juste en dessous) : la valeur de retour n'était que stockée deux fois.
+        optimizer.optimize(n_trials=n_trials, timeout_minutes=timeout_minutes)
         
         # Mettre à jour pendant l'optimisation
         if optimizer.study:
@@ -2489,12 +2492,12 @@ async def _run_auto_optimization_background(
             if stderr:
                 opt_logger.warning(f"[SCRIPT STDERR] {stderr}")
                 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as timeout_exc:
             process.kill()
             await process.wait()
             progress_task.cancel()
             opt_logger.error("Timeout: optimisation trop longue (>60 min)")
-            raise Exception("Timeout: optimisation trop longue (>60 min)")
+            raise Exception("Timeout: optimisation trop longue (>60 min)") from timeout_exc
         
         # Annuler la tâche de progression si encore active
         progress_task.cancel()
@@ -3046,9 +3049,12 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
             }
             
             # Feature importance (top 20)
+            # strict=False assumé : les deux listes sont tronquées à 20 séparément, un
+            # modèle formé sur moins de 20 features légitimerait un écart.
             feature_importance = dict(zip(
                 selected_features[:20],
-                model.feature_importances_[:20].tolist()
+                model.feature_importances_[:20].tolist(),
+                strict=False
             ))
             
             # Scores de sélection (top 20)
@@ -3243,7 +3249,7 @@ async def _optimize_hyperparameters_v2_background(n_trials: int):
         from sklearn.feature_selection import mutual_info_regression
         import pandas as pd
         
-        logger.info(f"[START] Optimisation V2 en cours")
+        logger.info("[START] Optimisation V2 en cours")
         
         # Charger données
         optuna_v2_state['progress'] = 5
@@ -3615,8 +3621,10 @@ async def verify_gradientboosting_model():
                 'accuracy': 0
             }
         
-        # Charger modèle
-        pipeline = joblib.load(model_path)
+        # Charger modèle — le résultat n'est pas utilisé pour scorer (les métriques
+        # viennent des metadata), mais ce chargement est le seul contrôle d'intégrité
+        # du .pkl : un fichier corrompu doit lever ici, pas silencieusement.
+        joblib.load(model_path)
         
         # Charger metadata si disponible
         metadata_paths = [
@@ -3711,10 +3719,11 @@ async def _train_gradientboosting_background(task_id: str):
             base_df = base_df[base_df['is_manual'] != True]
             logger.info(f"   Après exclusion manuels: {len(base_df)} trades")
         
-        # 🔥 DÉSACTIVÉ: Filtrage strict par config (causait écart Optuna vs UI)
-        # Pour réactiver, passer use_config_filter=True
-        use_config_filter = False  # Aligné avec Optuna
-        
+        # 🔥 DÉSACTIVÉ volontairement : le filtrage strict par config creusait l'écart
+        # Optuna vs UI. Il n'existe plus de commutateur ici — il est vécu dans le SQL de
+        # load_features_from_postgres() (build_config_filter_conditions). Ce qui reste
+        # actif ci-dessous : l'exclusion des trades manuels.
+
         # 🔥 ALIGNÉ AVEC OPTUNA: Pas de filtrage par config
         logger.info(f"[DATA] Données utilisées: {len(base_df)}/{initial_count} trades (aligné Optuna)")
         df = calculate_derived_features(base_df)
@@ -3782,7 +3791,7 @@ async def _train_gradientboosting_background(task_id: str):
         if 'ema_diff_pct_1m' in df.columns and 'ema_diff_pct_5m' in df.columns:
             df['ema_trend_aligned'] = np.sign(df['ema_diff_pct_1m']) * np.sign(df['ema_diff_pct_5m'])
         
-        logger.info(f"[DATA] Nouvelles features créées: bb_position, momentum_combined, macd_acceleration, etc.")
+        logger.info("[DATA] Nouvelles features créées: bb_position, momentum_combined, macd_acceleration, etc.")
         
         # Préparer features
         exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity', 'date']
@@ -3809,7 +3818,7 @@ async def _train_gradientboosting_background(task_id: str):
             sort_idx = df['timestamp'].argsort().values
             X = X[sort_idx]
             y = y[sort_idx]
-            logger.info(f"[DATA] Split temporel: données triées par timestamp")
+            logger.info("[DATA] Split temporel: données triées par timestamp")
         
         X_train, X_test = X[:train_end], X[train_end:]
         y_train, y_test = y[:train_end], y[train_end:]
@@ -3883,7 +3892,7 @@ async def _train_gradientboosting_background(task_id: str):
         # 🔥 FIX: Calculer sample_weights pour gérer le déséquilibre des classes
         from sklearn.utils.class_weight import compute_class_weight
         class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
-        class_weight_dict = dict(zip(np.unique(y_train), class_weights))
+        class_weight_dict = dict(zip(np.unique(y_train), class_weights, strict=True))
         sample_weights = np.array([class_weight_dict[label] for label in y_train])
         
         # Log la distribution des classes
@@ -3899,7 +3908,7 @@ async def _train_gradientboosting_background(task_id: str):
         if model_type == 'histgb':
             # HistGradientBoosting - 10x plus rapide
             from sklearn.ensemble import HistGradientBoostingClassifier
-            logger.info(f"[FAST] Utilisation de HistGradientBoostingClassifier (10x plus rapide)")
+            logger.info("[FAST] Utilisation de HistGradientBoostingClassifier (10x plus rapide)")
             
             # 🔥 FIX: Utiliser les paramètres optimisés sans les écraser
             model = HistGradientBoostingClassifier(
@@ -3918,7 +3927,7 @@ async def _train_gradientboosting_background(task_id: str):
             model.fit(X_train_scaled, y_train, sample_weight=sample_weights)
         else:
             # GradientBoosting standard - IDENTIQUE à optimize_gradientboosting_advanced.py
-            logger.info(f"🌳 Utilisation de GradientBoostingClassifier (standard - mode optimisé)")
+            logger.info("🌳 Utilisation de GradientBoostingClassifier (standard - mode optimisé)")
             
             # 🔥 EXACT COMME L'OPTIMISATION: pas de validation_fraction, pas de n_iter_no_change
             model = GradientBoostingClassifier(
@@ -3933,7 +3942,7 @@ async def _train_gradientboosting_background(task_id: str):
             )
             # 🔥 EXACT COMME L'OPTIMISATION: pas de sample_weight
             model.fit(X_train_scaled, y_train)
-            logger.info(f"[OK] GB standard entraîné (mode optimisé - sans sample_weights)")
+            logger.info("[OK] GB standard entraîné (mode optimisé - sans sample_weights)")
         
         ml_tasks[task_id]['progress'] = 75
         ml_tasks[task_id]['stage'] = 'cross_validation'
@@ -4529,7 +4538,9 @@ async def verify_gb_complete():
                 
                 try:
                     prediction = model.predict(test_input)
-                    proba = model.predict_proba(test_input)
+                    # predict_proba() est appelé pour sa seule exécution : un modèle
+                    # incapable de produire des probabilités doit lever ici.
+                    model.predict_proba(test_input)
                     add_check('Capacité prédiction', 'OK', f'Prédiction OK ({n_features} features): pred={prediction[0]}')
                 except Exception as pred_err:
                     add_check('Capacité prédiction', 'ERROR', f'Erreur prédiction: {pred_err}')

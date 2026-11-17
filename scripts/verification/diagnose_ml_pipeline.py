@@ -144,7 +144,7 @@ class MLPipelineDiagnostic:
             self.df['date'] = pd.to_datetime(self.df['timestamp']).dt.date
             daily_winrate = self.df.groupby('date')['target_win'].mean()
             
-            logger.info(f"📊 Win rate par jour:")
+            logger.info("📊 Win rate par jour:")
             logger.info(f"   - Min: {daily_winrate.min()*100:.1f}%")
             logger.info(f"   - Max: {daily_winrate.max()*100:.1f}%")
             logger.info(f"   - Std: {daily_winrate.std()*100:.1f}%")
@@ -164,11 +164,11 @@ class MLPipelineDiagnostic:
                 best_symbols = symbol_winrate.nlargest(5, 'mean')
                 worst_symbols = symbol_winrate.nsmallest(5, 'mean')
                 
-                logger.info(f"📊 Top 5 symboles (win rate):")
+                logger.info("📊 Top 5 symboles (win rate):")
                 for sym, row in best_symbols.iterrows():
                     logger.info(f"   - {sym}: {row['mean']*100:.1f}% ({int(row['count'])} trades)")
                 
-                logger.info(f"📊 Pire 5 symboles:")
+                logger.info("📊 Pire 5 symboles:")
                 for sym, row in worst_symbols.iterrows():
                     logger.info(f"   - {sym}: {row['mean']*100:.1f}% ({int(row['count'])} trades)")
     

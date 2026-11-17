@@ -128,7 +128,7 @@ def check_flow_logic(content):
                 if name not in line_numbers:
                     line_numbers[name] = i
     
-    print(f"\n  Lignes clés trouvées:")
+    print("\n  Lignes clés trouvées:")
     for name, line_num in line_numbers.items():
         print(f"    - {name}: ligne {line_num}")
     

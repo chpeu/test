@@ -67,7 +67,7 @@ def debug_position_size():
             contract_size_ccxt = float(pos.get('contractSize') or 0)
             contract_size_info = float((pos.get('info') or {}).get('contractSize') or 0)
             
-            print(f"\n[Donnees brutes CCXT]")
+            print("\n[Donnees brutes CCXT]")
             print(f"   contracts (MEXC): {contracts}")
             print(f"   entryPrice: {entry_price}")
             print(f"   notional: {notional}")
@@ -91,11 +91,11 @@ def debug_position_size():
             real_tokens = contracts * cs
             size_usdt_calculated = real_tokens * entry_price
             
-            print(f"\n[Calcul CORRECT]")
+            print("\n[Calcul CORRECT]")
             print(f"   real_tokens = {contracts} x {cs} = {real_tokens}")
             print(f"   size_usdt = {real_tokens} x {entry_price} = {size_usdt_calculated:.4f} USDT")
             
-            print(f"\n[Comparaison]")
+            print("\n[Comparaison]")
             print(f"   notional (CCXT):     {notional:.4f} USDT")
             print(f"   calcule (correct):   {size_usdt_calculated:.4f} USDT")
             
@@ -103,10 +103,10 @@ def debug_position_size():
                 print(f"   [!] DIFFERENCE: {abs(notional - size_usdt_calculated):.4f} USDT")
                 print(f"   [!] Ratio notional/calcule: {notional/size_usdt_calculated:.4f}")
             else:
-                print(f"   [OK] Valeurs coherentes")
+                print("   [OK] Valeurs coherentes")
             
             # Test via get_position
-            print(f"\n[Test get_position()]")
+            print("\n[Test get_position()]")
             spot_symbol = symbol.replace(':USDT', '').replace('/USDT', '') + '/USDT'
             result = manager.get_position(spot_symbol, prefer_ccxt=True)
             
@@ -129,12 +129,12 @@ def debug_position_size():
                     if abs(expected - ret_size) > 0.01:
                         print(f"   [ERREUR] size devrait etre {expected:.4f}, pas {ret_size:.4f}")
                     else:
-                        print(f"   [OK] Calcul correct!")
+                        print("   [OK] Calcul correct!")
             else:
-                print(f"   [X] get_position retourne None")
+                print("   [X] get_position retourne None")
             
             # Test via _verify_position_size
-            print(f"\n[Test _verify_position_size()]")
+            print("\n[Test _verify_position_size()]")
             verify_result = manager._verify_position_size(spot_symbol, entry_price, retries=1, delay_sec=0)
             
             if verify_result:
@@ -144,7 +144,7 @@ def debug_position_size():
                 print(f"   contract_size: {verify_result.get('contract_size', 'N/A')}")
                 print(f"   entry_price: {verify_result.get('entry_price', 'N/A')}")
             else:
-                print(f"   [X] _verify_position_size retourne None")
+                print("   [X] _verify_position_size retourne None")
                 
     except Exception as e:
         print(f"[ERREUR] {e}")

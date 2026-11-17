@@ -80,7 +80,7 @@ def test_modify_variable(key, new_value, original_value):
         )
         
         if resp.status_code == 200:
-            print(f"   ✅ POST /api/config réussi")
+            print("   ✅ POST /api/config réussi")
         else:
             print(f"   ❌ POST échoué: {resp.status_code}")
             return False
@@ -125,7 +125,7 @@ def test_predictor_uses_config():
         predictor = get_predictor()
         
         if predictor.is_loaded:
-            print(f"   ✅ Predictor chargé")
+            print("   ✅ Predictor chargé")
             
             # Vérifier que TRADING_CONFIG contient les bonnes valeurs
             gb_conf = TRADING_CONFIG.get('gb_min_confidence', 0.55)
@@ -133,7 +133,7 @@ def test_predictor_uses_config():
             
             return True
         else:
-            print(f"   ⚠️ Predictor non chargé (modèle absent?)")
+            print("   ⚠️ Predictor non chargé (modèle absent?)")
             return True  # Pas une erreur critique
             
     except ImportError as e:
@@ -157,7 +157,7 @@ def test_complete_config_endpoint():
                 config = data[config_key]
                 
                 gb_conf = config.get('gb_min_confidence', 'N/A')
-                print(f"   ✅ Endpoint accessible")
+                print("   ✅ Endpoint accessible")
                 print(f"   ✅ gb_min_confidence dans {config_key}: {gb_conf}")
                 return True
             else:
@@ -180,7 +180,7 @@ def restore_original_value(key, original_value):
             timeout=5
         )
         if resp.status_code == 200:
-            print(f"   ✅ Valeur restaurée")
+            print("   ✅ Valeur restaurée")
             return True
         else:
             print(f"   ⚠️ Restauration échouée: {resp.status_code}")

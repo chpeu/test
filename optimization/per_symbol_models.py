@@ -110,9 +110,9 @@ class PerSymbolModelManager:
             except Exception as e:
                 logger.warning(f"⚠️ Erreur chargement modèle global: {e}")
         
-        # Charger metadata global pour features
-        global_meta_path = global_path.with_suffix('.json').name.replace('.pkl', '_metadata.json')
-        meta_path = PROJECT_ROOT / "optimization" / "saved_models" / "gradient_boosting_anti_overfit_metadata.json"
+        # Charger metadata global pour features — dérivé du chemin du modèle, pas d'un
+        # second littéral qui pouvait dériver séparément du modèle chargé.
+        meta_path = global_path.with_name(global_path.stem + "_metadata.json")
         if meta_path.exists():
             try:
                 with open(meta_path, 'r') as f:
@@ -338,7 +338,7 @@ class PerSymbolModelManager:
             
             # Sauvegarder seulement si meilleur que global
             if not use_individual:
-                logger.info(f"   → Modèle individuel NON sauvegardé, utilisation du global")
+                logger.info("   → Modèle individuel NON sauvegardé, utilisation du global")
                 return None
             
             # Sauvegarder
@@ -484,7 +484,7 @@ class PerSymbolModelManager:
         top_symbols = self.get_top_symbols()
         results = {}
         
-        for symbol, count in top_symbols:
+        for symbol, _count in top_symbols:
             metrics = self.train_symbol_model(symbol, optimize_hyperparams=optimize)
             if metrics:
                 results[symbol] = metrics

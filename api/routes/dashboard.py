@@ -60,7 +60,7 @@ def get_dashboard_stats() -> Dict[str, Any]:
         if hasattr(_app_state, "get"):
             return _app_state.get("stats", {}) or {}
         if hasattr(_app_state, "stats"):
-            return getattr(_app_state, "stats") or {}
+            return _app_state.stats or {}
     except Exception:
         return {}
 
@@ -262,10 +262,10 @@ async def start_scanner(user: dict = Security(verify_api_key)):
     # 🔥 FIX: Initialiser les instances si nécessaire
     try:
         if not _scheduler or not _app_state:
-            # Essayer d'initialiser les instances
+            # Essayer d'initialiser les instances (une seule fois — voir ensure_instances)
             try:
-                from core.bootstrap import init_instances
-                init_instances()
+                from core.bootstrap import ensure_instances
+                await ensure_instances()
             except Exception as e:
                 logger.warning(f"Impossible d'initialiser les instances: {e}")
         
@@ -407,8 +407,8 @@ async def get_dashboard_summary():
     
     # S'assurer que les instances sont prêtes
     try:
-        from core.bootstrap import init_instances
-        init_instances()
+        from core.bootstrap import ensure_instances
+        await ensure_instances()
     except ImportError:
         pass
 

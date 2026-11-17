@@ -452,7 +452,7 @@ class BacktestEngine(AbstractTradingManager):
         avg_profit_factor = np.mean([r['profit_factor'] for r in results_list])
         avg_sharpe = np.mean([r['sharpe_ratio'] for r in results_list])
         
-        logger.info(f"\n✅ Walk-Forward terminé")
+        logger.info("\n✅ Walk-Forward terminé")
         logger.info(f"  Winrate moyen: {avg_winrate:.1f}%")
         logger.info(f"  Profit Factor moyen: {avg_profit_factor:.2f}")
         logger.info(f"  Sharpe moyen: {avg_sharpe:.2f}")

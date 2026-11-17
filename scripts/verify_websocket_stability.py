@@ -148,7 +148,7 @@ class WebSocketStabilityTester:
     
     async def run_stability_test(self, concurrent_connections: int = 3):
         """Exécuter le test de stabilité avec plusieurs connexions"""
-        logger.info(f"🚀 Démarrage test de stabilité WebSocket")
+        logger.info("🚀 Démarrage test de stabilité WebSocket")
         logger.info(f"📊 Paramètres: {concurrent_connections} connexions simultanées, durée: {self.test_duration}s")
         
         self.start_time = time.time()

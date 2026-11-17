@@ -236,7 +236,7 @@ def main():
     print("=" * 60)
     print("  AUTO-OPTIMIZER ML - Boucle d'optimisation automatique")
     print("=" * 60)
-    print(f"  Objectifs:")
+    print("  Objectifs:")
     print(f"    - Accuracy >= {TARGET_ACCURACY*100:.0f}%")
     print(f"    - F1 Score >= {TARGET_F1:.2f}")
     print(f"    - Precision >= {TARGET_PRECISION:.2f}")
@@ -316,7 +316,7 @@ def main():
             display_metrics(metrics, iteration)
             return
         else:
-            log(f"Objectifs non atteints:")
+            log("Objectifs non atteints:")
             for issue in issues:
                 log(f"  - {issue}")
         

@@ -71,7 +71,7 @@ def analyze_last_trades(limit=5):
         print(f"\n📌 TRADE {symbol} {direction_str} | {format_timestamp(created_at)}")
         print(f"   ID: {trade_uuid}")
         print(f"   Entry: {entry} | Exit: {exit_price} | PnL: {pnl_str} {pnl_pct_str}")
-        print(f"   Events:")
+        print("   Events:")
 
         # Récupérer les événements pour ce trade
         if trade_uuid:

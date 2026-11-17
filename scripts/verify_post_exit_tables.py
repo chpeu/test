@@ -110,7 +110,7 @@ def main():
             if missing_columns:
                 print(f"   ❌ Colonnes manquantes: {missing_columns}")
             else:
-                print(f"   ✅ Toutes les colonnes requises présentes")
+                print("   ✅ Toutes les colonnes requises présentes")
                 
             if extra_columns:
                 print(f"   ℹ️  Colonnes supplémentaires: {extra_columns}")
@@ -206,9 +206,9 @@ def main():
             missing_tables = [name for name, exists in tables_status.items() if not exists]
             for table in missing_tables:
                 if table == 'trade_post_exit_analysis':
-                    print(f"  psql -U postgres -d trade_cursor_ml -f database/migrations/add_post_exit_analysis_tables.sql")
+                    print("  psql -U postgres -d trade_cursor_ml -f database/migrations/add_post_exit_analysis_tables.sql")
                 elif table == 'post_exit_active_trackers':
-                    print(f"  psql -U postgres -d trade_cursor_ml -f database/migrations/add_post_exit_tracker_persistence.sql")
+                    print("  psql -U postgres -d trade_cursor_ml -f database/migrations/add_post_exit_tracker_persistence.sql")
         
         cursor.close()
         conn.close()

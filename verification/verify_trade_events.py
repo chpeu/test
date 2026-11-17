@@ -127,8 +127,8 @@ def verify_trade_events():
         print("\n" + "="*60)
         print("SUMMARY")
         print("="*60)
-        print(f"Table exists: OK")
-        print(f"Columns: OK")
+        print("Table exists: OK")
+        print("Columns: OK")
         print(f"Events recorded: {count}")
         
         if count == 0:

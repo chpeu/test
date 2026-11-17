@@ -78,7 +78,7 @@ for i, (pnl, is_win, desc) in enumerate(trades):
     if stats_after:
         print(f"   APRES trade: trades={stats_after.total_trades}, WR={stats_after.winrate:.0%} ({stats_after.wins}W/{stats_after.losses}L)")
     else:
-        print(f"   APRES trade: RESET (grosse perte detectee)")
+        print("   APRES trade: RESET (grosse perte detectee)")
 
 print("\n" + "=" * 70)
 print("  VERIFICATION ASSERTIONS")
@@ -101,7 +101,7 @@ manager.record_trade(SYMBOL, 0.20, True)
 
 stats = manager.pair_stats.get(SYMBOL)
 total_before = stats.total_trades if stats else 0
-print(f"\n[TEST 1] Grosse perte = UN SEUL TRADE")
+print("\n[TEST 1] Grosse perte = UN SEUL TRADE")
 print(f"   Avant: {total_before} trades (100% WR)")
 
 # UN SEUL trade avec grosse perte
@@ -113,7 +113,7 @@ print(f"   Apres UN trade a {big_loss_threshold - 0.5}%: {total_after} trades")
 
 tests_total += 1
 if total_after == 0:
-    print(f"   [OK] UN SEUL trade perdant reset les stats")
+    print("   [OK] UN SEUL trade perdant reset les stats")
     tests_passed += 1
 else:
     print(f"   [FAIL] Devrait avoir reset (trades={total_after})")
@@ -122,7 +122,7 @@ else:
 reset_adaptive_sizing_manager()
 manager = get_adaptive_sizing_manager()
 
-print(f"\n[TEST 2] WinRate EVOLUTIF par paire")
+print("\n[TEST 2] WinRate EVOLUTIF par paire")
 
 # Enregistrer trades et verifier WR apres chaque
 expected_wrs = []
@@ -150,16 +150,16 @@ for i, (expected, actual) in enumerate(expected_wrs):
 
 tests_total += 1
 if all_correct:
-    print(f"   [OK] WinRate mis a jour apres CHAQUE trade")
+    print("   [OK] WinRate mis a jour apres CHAQUE trade")
     tests_passed += 1
 else:
-    print(f"   [FAIL] WinRate incorrect")
+    print("   [FAIL] WinRate incorrect")
 
 # Test 3: Multiplicateur au moment de l'ouverture
 reset_adaptive_sizing_manager()
 manager = get_adaptive_sizing_manager()
 
-print(f"\n[TEST 3] Multiplicateur au moment de l'OUVERTURE")
+print("\n[TEST 3] Multiplicateur au moment de l'OUVERTURE")
 
 # Avant min_trades: mult = 1.0
 mult_before_min = manager.get_size_multiplier(SYMBOL)
@@ -188,16 +188,16 @@ print(f"   3W/2L (60% WR): mult={mult_after_losses:.2f} (attendu: ~{good_mult:.2
 tests_total += 1
 # Le mult doit changer en fonction du WR
 if mult_before_min == 1.0 and mult_after_3wins > mult_after_losses:
-    print(f"   [OK] Multiplicateur change en fonction du WR au moment de l'ouverture")
+    print("   [OK] Multiplicateur change en fonction du WR au moment de l'ouverture")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Multiplicateur ne change pas correctement")
+    print("   [FAIL] Multiplicateur ne change pas correctement")
 
 # Test 4: Isolation par paire
 reset_adaptive_sizing_manager()
 manager = get_adaptive_sizing_manager()
 
-print(f"\n[TEST 4] Isolation par PAIRE")
+print("\n[TEST 4] Isolation par PAIRE")
 
 PAIR_A = "BTC/USDT:USDT"
 PAIR_B = "ETH/USDT:USDT"
@@ -220,10 +220,10 @@ print(f"   {PAIR_B}: WR={wr_b:.0%}, mult={mult_b:.2f}")
 
 tests_total += 1
 if mult_a > mult_b and wr_a > wr_b:
-    print(f"   [OK] Paires completement isolees")
+    print("   [OK] Paires completement isolees")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Paires non isolees")
+    print("   [FAIL] Paires non isolees")
 
 # =============================================================================
 # RESUME

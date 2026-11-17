@@ -128,7 +128,7 @@ def backfill_whatif():
         # Simuler
         result = simulator.simulate(trade)
         
-        print(f"  What-If Results:")
+        print("  What-If Results:")
         print(f"    - pnl_if_no_be: {result.pnl_if_no_be:.3f}%" if result.pnl_if_no_be else "    - pnl_if_no_be: N/A")
         print(f"    - pnl_if_no_trailing: {result.pnl_if_no_trailing:.3f}%" if result.pnl_if_no_trailing else "    - pnl_if_no_trailing: N/A")
         print(f"    - sl_efficiency: {result.sl_efficiency:.1f}%" if result.sl_efficiency else "    - sl_efficiency: N/A")

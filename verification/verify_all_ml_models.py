@@ -47,7 +47,7 @@ try:
     print(f"   ml_filter_mode: {results['config']['mode']}")
     print(f"   ml_loss_threshold: {results['config']['loss_threshold']}")
     print(f"   ml_min_confidence: {results['config']['min_confidence']}")
-    print(f"\n   [OK] Configuration chargee")
+    print("\n   [OK] Configuration chargee")
     
 except Exception as e:
     print(f"   [X] Erreur: {e}")
@@ -76,13 +76,13 @@ try:
         
         if result:
             print(f"   Test prediction: {result.get('prediction')} ({result.get('confidence', 0)*100:.1f}%)")
-            print(f"\n   [OK] XGBoost V1 fonctionne")
+            print("\n   [OK] XGBoost V1 fonctionne")
             results['v1'] = {'loaded': True, 'working': True}
         else:
-            print(f"   [!] Prediction retourne None")
+            print("   [!] Prediction retourne None")
             results['v1'] = {'loaded': True, 'working': False}
     else:
-        print(f"   [!] Modele non charge")
+        print("   [!] Modele non charge")
         results['v1'] = {'loaded': False, 'working': False}
         
 except Exception as e:
@@ -111,13 +111,13 @@ try:
         
         if result:
             print(f"   Test prediction: {result.get('prediction')} (PNL: {result.get('predicted_pnl', 0):.2f}%)")
-            print(f"\n   [OK] XGBoost V2 fonctionne")
+            print("\n   [OK] XGBoost V2 fonctionne")
             results['v2'] = {'loaded': True, 'working': True}
         else:
-            print(f"   [!] Prediction retourne None")
+            print("   [!] Prediction retourne None")
             results['v2'] = {'loaded': True, 'working': False}
     else:
-        print(f"   [!] Modele non charge")
+        print("   [!] Modele non charge")
         results['v2'] = {'loaded': False, 'working': False}
         
 except Exception as e:
@@ -137,17 +137,17 @@ try:
     predictor_gb = get_gb_predictor()
     
     if hasattr(predictor_gb, 'is_loaded') and predictor_gb.is_loaded:
-        print(f"   Modele charge")
+        print("   Modele charge")
         
         # Test prediction
         test_features = {'rsi_1m': 45, 'rsi_5m': 50, 'macd_hist_1m': 0.001}
         should_trade, confidence = predictor_gb.predict(test_features)
         
         print(f"   Test prediction: {'TRADE' if should_trade else 'NO TRADE'} ({confidence*100:.1f}%)")
-        print(f"\n   [OK] GradientBoosting fonctionne")
+        print("\n   [OK] GradientBoosting fonctionne")
         results['gb'] = {'loaded': True, 'working': True}
     else:
-        print(f"   [!] Modele non charge")
+        print("   [!] Modele non charge")
         results['gb'] = {'loaded': False, 'working': False}
         
 except Exception as e:
@@ -182,10 +182,10 @@ try:
         
         print(f"   Test P(loss): {result.get('p_loss', 0)*100:.1f}%")
         print(f"   Reject: {result.get('should_reject', False)}")
-        print(f"\n   [OK] Filtre Negatif fonctionne")
+        print("\n   [OK] Filtre Negatif fonctionne")
         results['negative'] = {'loaded': True, 'working': True}
     else:
-        print(f"   [!] Modele non charge")
+        print("   [!] Modele non charge")
         results['negative'] = {'loaded': False, 'working': False}
         
 except Exception as e:
@@ -253,7 +253,7 @@ try:
                 print(f"   Trades conserves: {kept_total}/{len(X_test)} ({kept_total/len(X_test)*100:.0f}%)")
         
         results['performance'] = model_results
-        print(f"\n   [OK] Evaluation terminee")
+        print("\n   [OK] Evaluation terminee")
     else:
         print(f"   [!] Pas assez de donnees ({len(df)} trades)")
         
@@ -289,9 +289,9 @@ try:
             all_passed = False
     
     if all(checks.values()):
-        print(f"\n   [OK] Scanner integre correctement")
+        print("\n   [OK] Scanner integre correctement")
     else:
-        print(f"\n   [!] Integration incomplete")
+        print("\n   [!] Integration incomplete")
         
 except Exception as e:
     print(f"   [X] Erreur: {e}")
@@ -324,14 +324,14 @@ for model, score in results.get('performance', {}).items():
     print(f"   {model}: {score*100:.1f}%")
 
 if all_passed:
-    print(f"""
+    print("""
    [OK] TOUS LES TESTS PASSES
    
    Le systeme ML est operationnel.
    Configuration recommandee appliquee.
 """)
 else:
-    print(f"""
+    print("""
    [!] CERTAINS TESTS ONT ECHOUE
    
    Actions:
@@ -365,4 +365,4 @@ report = {
 with open('ml_verification_report.json', 'w') as f:
     json.dump(report, f, indent=2, default=str)
 
-print(f"\nRapport sauvegarde: ml_verification_report.json")
+print("\nRapport sauvegarde: ml_verification_report.json")

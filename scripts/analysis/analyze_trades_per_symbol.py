@@ -44,7 +44,7 @@ if 'symbol' not in df.columns:
     wins = df['target_win'].sum() if 'target_win' in df.columns else 0
     losses = total_trades - wins
     wr = (wins / total_trades * 100) if total_trades > 0 else 0
-    print(f"\n   DONNÉES GLOBALES:")
+    print("\n   DONNÉES GLOBALES:")
     print(f"   Total trades ML: {total_trades}")
     print(f"   Wins: {wins} | Losses: {losses}")
     print(f"   Win Rate: {wr:.1f}%")
@@ -100,15 +100,15 @@ print(f"\n   Seuil minimum: {MIN_TRADES_INDIVIDUAL} trades")
 print(f"   Symboles éligibles: {len(symbols_ml_ready)}")
 
 if symbols_ml_ready:
-    print(f"\n   📊 SYMBOLES POUR MODÈLES INDIVIDUELS:")
+    print("\n   📊 SYMBOLES POUR MODÈLES INDIVIDUELS:")
     for i, s in enumerate(symbols_ml_ready[:10], 1):
         print(f"      {i}. {s['symbol']}: {s['trades']} trades ({s['win_rate']:.1f}% WR)")
 else:
     print(f"\n   ⚠️ Aucun symbole n'a assez de trades ({MIN_TRADES_INDIVIDUAL}+)")
-    print(f"   → Continuer à collecter des données avant d'individualiser")
+    print("   → Continuer à collecter des données avant d'individualiser")
 
 # Stats supplémentaires
-print(f"\n   📊 RÉPARTITION:")
+print("\n   📊 RÉPARTITION:")
 ml_total = len(df)
 symbols_count = df['symbol'].nunique() if 'symbol' in df.columns else 1
 

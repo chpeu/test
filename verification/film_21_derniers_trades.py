@@ -122,7 +122,7 @@ def print_film_detailed(trade, index):
     print(f"   Résultat: {pnl:+.3f}% | Exit: {exit_reason}")
     
     # Timeline
-    print(f"\n📽️ Timeline:")
+    print("\n📽️ Timeline:")
     events = []
     
     # Ouverture
@@ -138,7 +138,7 @@ def print_film_detailed(trade, index):
     
     # BE
     if be_triggered:
-        events.append(('T+?s', '🛡️ BREAK-EVEN', f"SL → Entry"))
+        events.append(('T+?s', '🛡️ BREAK-EVEN', "SL → Entry"))
     
     # Trailing
     if trailing_activated:
@@ -151,7 +151,7 @@ def print_film_detailed(trade, index):
         print(f"   {icon} [{time:<8}] {detail}")
     
     # Métriques
-    print(f"\n📊 Métriques:")
+    print("\n📊 Métriques:")
     print(f"   MFE: +{mfe:.3f}%" if mfe else "   MFE: N/A")
     print(f"   MAE: {mae:.3f}%" if mae else "   MAE: N/A")
     print(f"   Break-Even: {'✅' if be_triggered else '❌'}")
@@ -191,14 +191,14 @@ else:
     total_pnl = sum(float(t.get('pnl_pct', 0)) for t in trades)
     total_usdt = sum(float(t.get('pnl_usdt', 0) or 0) for t in trades)
     
-    print(f"\n📊 Performance:")
+    print("\n📊 Performance:")
     print(f"   Total trades: {total_trades}")
     print(f"   Gagnants: {winning_trades} ({winning_trades/total_trades*100:.0f}%)")
     print(f"   Perdants: {losing_trades} ({losing_trades/total_trades*100:.0f}%)")
     print(f"   PnL total: {total_pnl:+.3f}% ({total_usdt:+.4f} USDT)")
     
     # Exit reasons
-    print(f"\n🏁 Raisons de sortie:")
+    print("\n🏁 Raisons de sortie:")
     exit_counts = {}
     for t in trades:
         reason = t.get('exit_reason', 'N/A')
@@ -209,7 +209,7 @@ else:
         print(f"   {reason}: {count} ({pct:.0f}%)")
     
     # Métriques moyennes
-    print(f"\n📊 Métriques moyennes:")
+    print("\n📊 Métriques moyennes:")
     mfes = [t.get('max_pnl_reached') for t in trades if t.get('max_pnl_reached') is not None]
     maes = [t.get('min_pnl_reached') for t in trades if t.get('min_pnl_reached') is not None]
     

@@ -61,7 +61,7 @@ def analyze_today_trades():
         print("❌ Aucun trade aujourd'hui")
         return
     
-    print(f"\n📈 STATISTIQUES GLOBALES:")
+    print("\n📈 STATISTIQUES GLOBALES:")
     print(f"   Total trades: {len(df)}")
     print(f"   Période: {df['timestamp_entry'].min()} → {df['timestamp_exit'].max()}")
     
@@ -80,7 +80,7 @@ def analyze_today_trades():
     print(f"   Perte moyenne: {avg_loss:.3f}%")
     
     # Détail des trades
-    print(f"\n📋 DÉTAIL DES TRADES:")
+    print("\n📋 DÉTAIL DES TRADES:")
     print("   Heure  | Symbole    | Direction | PnL %   | PnL USDT | Raison  | Durée | Scan_ID")
     print("   -------|------------|-----------|---------|----------|---------|-------|---------")
     
@@ -93,7 +93,7 @@ def analyze_today_trades():
         print(f"   {time_str} | {row['symbol']:10s} | {row['direction']:9s} | {pnl_sign}{row['net_pnl_pct']:6.2f}% | {row['net_pnl_usdt']:+8.2f} | {row['exit_reason']:7s} | {duration_min:5.0f}m | {scan_id}")
     
     # Vérification des IDs
-    print(f"\n🔍 VÉRIFICATION DES IDS:")
+    print("\n🔍 VÉRIFICATION DES IDS:")
     scan_ids_filled = len(df[df['scan_log_id'].notna()])
     opp_ids_filled = len(df[df['opportunity_id'].notna()])
     
@@ -104,7 +104,7 @@ def analyze_today_trades():
         print(f"   ⚠️  {len(df) - scan_ids_filled} trades ont scan_log_id = NULL")
     
     # Configuration utilisée
-    print(f"\n⚙️  CONFIGURATION UTILISÉE:")
+    print("\n⚙️  CONFIGURATION UTILISÉE:")
     if not df.empty:
         first_row = df.iloc[0]
         print(f"   Mode: {first_row['mode'] or 'N/A'}")
@@ -114,9 +114,9 @@ def analyze_today_trades():
         print(f"   Trailing Trigger: {first_row['trailing_trigger']:.2f}%")
     
     # Analyse par heure
-    print(f"\n🕐 RÉPARTITION PAR HEURE:")
+    print("\n🕐 RÉPARTITION PAR HEURE:")
     df['hour'] = df['timestamp_entry'].dt.hour
-    hourly = df.groupby('hour').agg({
+    df.groupby('hour').agg({
         'net_pnl_pct': ['count', 'mean', 'sum'],
         'net_pnl_usdt': 'sum'
     }).round(3)
@@ -132,7 +132,7 @@ def analyze_today_trades():
         print(f"   {hour:02d}h-{hour+1:02d}h: {count:2d} trades | PnL moy: {avg_pnl:+.3f}% | Total: {total_usdt:+.2f} USDT | WR: {wr:.0f}%")
     
     # Analyse des raisons de sortie
-    print(f"\n📊 RAISONS DE SORTIE:")
+    print("\n📊 RAISONS DE SORTIE:")
     for reason in df['exit_reason'].unique():
         subset = df[df['exit_reason'] == reason]
         count = len(subset)
@@ -144,7 +144,7 @@ def analyze_today_trades():
         print(f"   {reason:15s}: {count:2d} trades | PnL moy: {avg_pnl:+.3f}% | Total: {total_usdt:+.2f} USDT | WR: {wr:.0f}%")
     
     # Impact du bug
-    print(f"\n🐛 ANALYSE DE L'IMPACT DU BUG:")
+    print("\n🐛 ANALYSE DE L'IMPACT DU BUG:")
     print("-" * 50)
     
     # Heure de la correction (approximative)
@@ -153,59 +153,59 @@ def analyze_today_trades():
     trades_before_bug = df[df['timestamp_entry'] < correction_time]
     trades_after_fix = df[df['timestamp_entry'] >= correction_time]
     
-    print(f"\n   Avant correction (avant 18:30):")
+    print("\n   Avant correction (avant 18:30):")
     print(f"      Trades: {len(trades_before_bug)}")
     if len(trades_before_bug) > 0:
         scan_before = len(trades_before_bug[trades_before_bug['scan_log_id'].notna()])
         print(f"      Avec scan_log_id: {scan_before}/{len(trades_before_bug)} ({scan_before/len(trades_before_bug)*100:.0f}%)")
     
-    print(f"\n   Après correction (après 18:30):")
+    print("\n   Après correction (après 18:30):")
     print(f"      Trades: {len(trades_after_fix)}")
     if len(trades_after_fix) > 0:
         scan_after = len(trades_after_fix[trades_after_fix['scan_log_id'].notna()])
         print(f"      Avec scan_log_id: {scan_after}/{len(trades_after_fix)} ({scan_after/len(trades_after_fix)*100:.0f}%)")
     
     # Causes possibles du faible nombre de trades
-    print(f"\n🔍 CAUSES POSSIBLES DU FAIBLE NOMBRE DE TRADES:")
+    print("\n🔍 CAUSES POSSIBLES DU FAIBLE NOMBRE DE TRADES:")
     print("-" * 50)
     
-    print(f"\n   1. CONFIGURATION TP/SL:")
+    print("\n   1. CONFIGURATION TP/SL:")
     print(f"      - TP à {df.iloc[0]['tp_pct']:.1f}%: Plus restrictif qu'avant")
     print(f"      - SL à {df.iloc[0]['sl_pct']:.1f}%: Plus serré")
     print(f"      - Ratio: {df.iloc[0]['tp_pct']/df.iloc[0]['sl_pct']:.1f}")
     
-    print(f"\n   2. CONDITIONS DE MARCHÉ:")
-    print(f"      - Volatilité faible?")
-    print(f"      - Pas de setups valides?")
+    print("\n   2. CONDITIONS DE MARCHÉ:")
+    print("      - Volatilité faible?")
+    print("      - Pas de setups valides?")
     
-    print(f"\n   3. SCANNER:")
-    print(f"      - Filtres trop stricts?")
-    print(f"      - ML filter bloquant?")
+    print("\n   3. SCANNER:")
+    print("      - Filtres trop stricts?")
+    print("      - ML filter bloquant?")
     
-    print(f"\n   4. BUG:")
-    print(f"      - Avant correction: Bot crashait peut-être")
-    print(f"      - Après correction: Fonctionne mais peu de trades")
+    print("\n   4. BUG:")
+    print("      - Avant correction: Bot crashait peut-être")
+    print("      - Après correction: Fonctionne mais peu de trades")
     
     # Recommandations
-    print(f"\n💡 RECOMMANDATIONS:")
+    print("\n💡 RECOMMANDATIONS:")
     print("-" * 50)
     
     if len(df) < 5:
-        print(f"   1. Vérifier les logs du scanner pour voir les rejets")
-        print(f"   2. Surveiller si des setups sont détectés mais non tradés")
-        print(f"   3. Considérer assouplir les filtres si trop stricts")
-        print(f"   4. Vérifier si le ML filter rejette trop de trades")
+        print("   1. Vérifier les logs du scanner pour voir les rejets")
+        print("   2. Surveiller si des setups sont détectés mais non tradés")
+        print("   3. Considérer assouplir les filtres si trop stricts")
+        print("   4. Vérifier si le ML filter rejette trop de trades")
     
-    print(f"\n🎯 CONCLUSION:")
+    print("\n🎯 CONCLUSION:")
     if total_pnl > 0:
         print(f"   ✅ PnL positif malgré peu de trades: {total_pnl:.2f} USDT")
     else:
         print(f"   ❌ PnL négatif: {total_pnl:.2f} USDT")
     
     if scan_ids_filled == len(df):
-        print(f"   ✅ Bug corrigé: Tous les trades ont scan_log_id")
+        print("   ✅ Bug corrigé: Tous les trades ont scan_log_id")
     else:
-        print(f"   ⚠️  Bug peut-être encore présent: Certains trades sans scan_log_id")
+        print("   ⚠️  Bug peut-être encore présent: Certains trades sans scan_log_id")
 
 if __name__ == '__main__':
     try:

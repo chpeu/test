@@ -40,7 +40,7 @@ def main():
                         updated_at = NOW()
                 """)
                 conn.commit()
-                print(f'   [OK] Buckets reinitialises')
+                print('   [OK] Buckets reinitialises')
         finally:
             pg_logger.pool.putconn(conn)
         

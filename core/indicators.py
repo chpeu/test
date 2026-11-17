@@ -5,7 +5,7 @@ RSI, EMA, MACD, ATR, Bollinger Bands, ADX, Patterns
 import numpy as np
 from typing import List, Dict
 try:
-    import talib
+    import talib  # noqa: F401  — import testé pour sa seule disponibilité (TALIB_AVAILABLE)
     TALIB_AVAILABLE = True
 except ImportError:
     TALIB_AVAILABLE = False

@@ -14,7 +14,7 @@ def apply_migration_robust():
     
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -50,15 +50,15 @@ def apply_migration_robust():
             try:
                 print(f"  [{i:2d}/{len(statements)}] ", end="", flush=True)
                 cursor.execute(statement)
-                print(f"✅ OK")
+                print("✅ OK")
                 success_count += 1
                 
             except psycopg2.Error as e:
                 error_msg = str(e).strip()
                 if 'already exists' in error_msg or 'existe déjà' in error_msg:
-                    print(f"⚠️ Déjà existant (ignoré)")
+                    print("⚠️ Déjà existant (ignoré)")
                 elif 'IF NOT EXISTS' in statement and ('relation' in error_msg or 'column' in error_msg):
-                    print(f"⚠️ IF NOT EXISTS ignoré")
+                    print("⚠️ IF NOT EXISTS ignoré")
                 else:
                     print(f"❌ ERREUR: {error_msg}")
                     error_count += 1

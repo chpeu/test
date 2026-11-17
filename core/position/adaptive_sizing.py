@@ -307,7 +307,7 @@ class AdaptiveSizingManager:
     def reload_config(self):
         """Recharge la configuration depuis TRADING_CONFIG (après modification UI)"""
         self.config = load_adaptive_sizing_config()
-        logger.info(f"🔄 Configuration adaptive sizing rechargée")
+        logger.info("🔄 Configuration adaptive sizing rechargée")
     
     def get_config_dict(self) -> Dict:
         """Retourne la configuration actuelle pour l'UI"""

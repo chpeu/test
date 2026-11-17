@@ -171,9 +171,9 @@ def check_trades_data_filled(conn):
     """)
     with_cb = cursor.fetchone()[0]
     
-    print_result(f"Total trades (24h)", total > 0, f"{total} trades")
-    print_result(f"Avec entry_market_regime", with_regime > 0, f"{with_regime}/{total} ({100*with_regime/total:.0f}% si total>0)" if total > 0 else "0/0")
-    print_result(f"Avec entry_cb_state", with_cb > 0, f"{with_cb}/{total} ({100*with_cb/total:.0f}% si total>0)" if total > 0 else "0/0")
+    print_result("Total trades (24h)", total > 0, f"{total} trades")
+    print_result("Avec entry_market_regime", with_regime > 0, f"{with_regime}/{total} ({100*with_regime/total:.0f}% si total>0)" if total > 0 else "0/0")
+    print_result("Avec entry_cb_state", with_cb > 0, f"{with_cb}/{total} ({100*with_cb/total:.0f}% si total>0)" if total > 0 else "0/0")
     
     # Afficher le dernier trade avec ses valeurs
     cursor.execute("""
@@ -215,8 +215,8 @@ def check_scan_logs_data_filled(conn):
     """)
     with_regime = cursor.fetchone()[0]
     
-    print_result(f"Total scans (10min)", total > 0, f"{total} scans")
-    print_result(f"Avec market_regime", with_regime > 0, f"{with_regime}/{total} ({100*with_regime/total:.0f}%)" if total > 0 else "0/0")
+    print_result("Total scans (10min)", total > 0, f"{total} scans")
+    print_result("Avec market_regime", with_regime > 0, f"{with_regime}/{total} ({100*with_regime/total:.0f}%)" if total > 0 else "0/0")
     
     # Afficher le dernier scan avec ses valeurs
     cursor.execute("""
@@ -244,7 +244,7 @@ def check_event_tables(conn):
     # circuit_breaker_events
     cursor.execute("SELECT COUNT(*) FROM circuit_breaker_events")
     cb_count = cursor.fetchone()[0]
-    print_result(f"circuit_breaker_events", True, f"{cb_count} événements")
+    print_result("circuit_breaker_events", True, f"{cb_count} événements")
     
     if cb_count > 0:
         cursor.execute("""
@@ -258,7 +258,7 @@ def check_event_tables(conn):
     # market_regime_history
     cursor.execute("SELECT COUNT(*) FROM market_regime_history")
     regime_count = cursor.fetchone()[0]
-    print_result(f"market_regime_history", True, f"{regime_count} changements")
+    print_result("market_regime_history", True, f"{regime_count} changements")
     
     if regime_count > 0:
         cursor.execute("""

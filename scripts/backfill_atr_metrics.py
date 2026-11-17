@@ -354,13 +354,13 @@ def backfill_trade_atr_metrics(limit: int = None, dry_run: bool = False):
     conn.close()
     
     print(f"\n{'='*60}")
-    print(f"RESULTAT BACKFILL")
+    print("RESULTAT BACKFILL")
     print(f"{'='*60}")
     print(f"  Trades traités: {len(trades)}")
     print(f"  Métriques insérées: {inserted}")
     print(f"  Erreurs: {errors}")
     if dry_run:
-        print(f"  [!] MODE DRY-RUN - Aucune insertion reelle")
+        print("  [!] MODE DRY-RUN - Aucune insertion reelle")
 
 
 if __name__ == '__main__':

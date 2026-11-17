@@ -227,7 +227,7 @@ class RegressionV2Validator:
         top_features = mi_df.head(10)
         
         logger.info(f"  📊 Features utiles (MI > {REGRESSION_THRESHOLDS['min_features_mi']}): {n_useful}/{len(feature_cols)}")
-        logger.info(f"  📊 Top 5 features:")
+        logger.info("  📊 Top 5 features:")
         for _, row in top_features.head(5).iterrows():
             logger.info(f"      - {row['feature']}: {row['mi_score']:.4f}")
         
@@ -475,7 +475,7 @@ class RegressionV2Validator:
         logger.info(f"⚠️ WARN: {warned}")
         logger.info(f"❌ FAIL: {failed}")
         
-        logger.info(f"\n📋 RECOMMANDATIONS:")
+        logger.info("\n📋 RECOMMANDATIONS:")
         for i, rec in enumerate(self.results['recommendations'], 1):
             logger.info(f"  {i}. {rec}")
         

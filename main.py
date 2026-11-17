@@ -35,8 +35,11 @@ from fastapi.exceptions import RequestValidationError
 
 # 🔥 v7.0: Imports complets
 try:
-    from core.bootstrap import init_instances, run_initial_top_pairs_scan
-    from utils.logging_utils import add_log
+    # Ces trois lignes sont avant tout une sonde critique : si l'un de ces modules
+    # manque, l'app doit mourir ici (sys.exit ci-dessous) et non au premier appel.
+    # Les noms sont réimportés localement là où ils servent.
+    from core.bootstrap import init_instances, run_initial_top_pairs_scan  # noqa: F401
+    from utils.logging_utils import add_log  # noqa: F401
     from core.websocket_manager import get_websocket_manager
     from core.shutdown import GracefulShutdown
 except ImportError as e:
@@ -50,7 +53,6 @@ try:
     from utils.logger import setup_logger
     from api.routes import (
         router as api_router, 
-        set_analytics_db, 
         set_position_manager, 
         set_notification_manager, 
         set_instance_port, 
@@ -92,9 +94,6 @@ except ImportError as e:
 try:
     from core.error_handling import (
         handle_errors,
-        log_errors,
-        suppress_errors,
-        ErrorContext,
     )
 except ImportError as e:
     logging.warning(f"⚠️ Exception handling system (Sprint 1.1) non trouvé: {e}")
@@ -248,12 +247,9 @@ def _asyncio_exception_handler(loop, context):
 # 🔥 FIX: Configurer le logger avec WebSocket handler après l'initialisation de ws_manager
 # (sera fait dans init_instances ou après l'initialisation de ws_manager)
 
-# 🔥 IMPORTANT: FastAPI imports (app sera créé après définition du lifespan)
-from fastapi import FastAPI
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-
 # 🔥 FIX: Exception handler global (défini comme fonction, sera attaché après création de app)
+# FastAPI, RequestValidationError et StarletteHTTPException sont déjà importés en tête
+# de module — la redéclaration locale masquait les noms du haut de fichier (F811).
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handler global pour toutes les exceptions - retourne 200 avec success=False au lieu de 503 pour /api/state"""
     import time
@@ -292,8 +288,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 # 🔥 CLEANUP: Jinja2Templates supprimé - Frontend Svelte gère l'interface
 
 # 🔥 FIX: Middleware pour logger toutes les requêtes et réponses
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
+# (BaseHTTPMiddleware et StarletteRequest importés en tête de module)
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):

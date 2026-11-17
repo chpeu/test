@@ -90,7 +90,7 @@ def analyze_params(limit=100):
         sm_pnl = sum(t['pnl_usdt'] or 0 for t in stag_mfe)
         print(f"  WR: {sm_wins/len(stag_mfe)*100:.1f}% | PnL: {sm_pnl:.2f} USDT")
         if sm_wins/len(stag_mfe) < 0.3:
-            print(f"  -> PROBLEME: WR trop bas! Pullback 0.05% trop serre?")
+            print("  -> PROBLEME: WR trop bas! Pullback 0.05% trop serre?")
     
     print(f"\nSTAGNATION (normal): {len(stag_normal)} trades")
     if stag_normal:

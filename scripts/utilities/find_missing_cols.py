@@ -53,13 +53,13 @@ print(f"\n\nTotal values provided: {len(values_provided)}")
 
 # Find missing
 missing = [c for c in cols if c not in values_provided]
-print(f"\nMissing values (columns in INSERT but not in VALUES):")
+print("\nMissing values (columns in INSERT but not in VALUES):")
 for m in missing:
     idx = cols.index(m) + 1
     print(f"  {idx}. {m}")
 
 # Find extra
 extra = [v for v in values_provided if v not in cols]
-print(f"\nExtra values (in VALUES but not in INSERT columns):")
+print("\nExtra values (in VALUES but not in INSERT columns):")
 for e in extra:
     print(f"  - {e}")

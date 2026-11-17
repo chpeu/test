@@ -196,7 +196,7 @@ async def export_datalogger_excel(
                 ws.append([str(v) if v is not None else "" for v in row.values()])
 
             # Auto-column width
-            for i, col in enumerate(headers):
+            for i in range(len(headers)):
                 ws.column_dimensions[get_column_letter(i+1)].width = 20
 
         output = io.BytesIO()
@@ -231,9 +231,12 @@ async def api_export_trading_config_xlsm():
 async def _export_trading_config_excel(extension: str = "xlsx"):
     media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
+        # Prose d'import : vérifier que openpyxl est installé. Le classeur est
+        # construit plus bas par _generate_trading_config_workbook(), qui réimporte
+        # ces symboles là où ils servent.
+        from openpyxl import Workbook  # noqa: F401
+        from openpyxl.styles import Font, PatternFill, Alignment  # noqa: F401
+        from openpyxl.utils import get_column_letter  # noqa: F401
     except ImportError:
         return JSONResponse({"error": "openpyxl non installé"}, status_code=500)
 

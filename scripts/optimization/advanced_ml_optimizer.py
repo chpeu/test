@@ -123,7 +123,7 @@ def load_data():
         if df[target_col].dtype in ['float64', 'float32', 'int64', 'int32']:
             df['target'] = (df[target_col] > 0).astype(int)
             target_col = 'target'
-            log(f"Target converti en binaire (pnl > 0)")
+            log("Target converti en binaire (pnl > 0)")
         
         # Colonnes a exclure
         exclude_cols = ['id', 'created_at', 'timestamp', 'symbol', 'timeframe', 

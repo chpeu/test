@@ -32,7 +32,7 @@ def test_model_loading():
         predictor = get_predictor()
         
         if predictor.is_loaded:
-            print(f"   ✅ Modèle chargé avec succès")
+            print("   ✅ Modèle chargé avec succès")
             print(f"   📊 Type: {type(predictor.model).__name__}")
             
             # Vérifier les métadonnées
@@ -107,7 +107,7 @@ def test_prediction():
         
         print(f"   📊 Prédiction: should_trade={should_trade}")
         print(f"   🎯 Confidence: {confidence:.4f} ({confidence*100:.2f}%)")
-        print(f"   📏 Seuil utilisé: 45%")
+        print("   📏 Seuil utilisé: 45%")
         
         # Test avec seuil optimal recommandé
         should_trade_opt, _ = predictor.predict(test_features, threshold=0.47)
@@ -166,7 +166,7 @@ def main():
     passed = 0
     total = len(tests)
     
-    for test_name, test_func in tests:
+    for _test_name, test_func in tests:
         result = test_func()
         if result:
             passed += 1

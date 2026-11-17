@@ -59,7 +59,7 @@ def load_config():
     
     print(f"📁 Fichier: {CONFIG_FILE}")
     print(f"🔧 Type de modèle: {model_type}")
-    print(f"\n📊 Paramètres GB dans config_overrides.json:")
+    print("\n📊 Paramètres GB dans config_overrides.json:")
     for key, value in gb_params.items():
         print(f"   - {key}: {value}")
     
@@ -134,13 +134,13 @@ def verify_cross_validation(X, y, params, model_type='gb', n_splits=5):
             'random_state': RANDOM_STATE
         }
         model = HistGradientBoostingClassifier(**hist_params)
-        print(f"🚀 Modèle: HistGradientBoostingClassifier")
+        print("🚀 Modèle: HistGradientBoostingClassifier")
     else:
         gb_params = {**params, 'random_state': RANDOM_STATE}
         model = GradientBoostingClassifier(**gb_params)
-        print(f"🌳 Modèle: GradientBoostingClassifier")
+        print("🌳 Modèle: GradientBoostingClassifier")
     
-    print(f"📊 Paramètres utilisés:")
+    print("📊 Paramètres utilisés:")
     for key, value in params.items():
         print(f"   - {key}: {value}")
     
@@ -154,12 +154,12 @@ def verify_cross_validation(X, y, params, model_type='gb', n_splits=5):
     f1_scores = cross_val_score(model, X, y, cv=cv, scoring='f1')
     precision_scores = cross_val_score(model, X, y, cv=cv, scoring='precision')
     
-    print(f"\n📈 Résultats Cross-Validation:")
+    print("\n📈 Résultats Cross-Validation:")
     print(f"   - Accuracy: {accuracy_scores.mean()*100:.1f}% ± {accuracy_scores.std()*100:.1f}%")
     print(f"   - F1 Score: {f1_scores.mean():.3f} ± {f1_scores.std():.3f}")
     print(f"   - Precision: {precision_scores.mean():.3f} ± {precision_scores.std():.3f}")
     
-    print(f"\n📊 Scores par fold:")
+    print("\n📊 Scores par fold:")
     for i, (acc, f1, prec) in enumerate(zip(accuracy_scores, f1_scores, precision_scores)):
         print(f"   Fold {i+1}: Acc={acc*100:.1f}%, F1={f1:.3f}, Prec={prec:.3f}")
     
@@ -184,7 +184,7 @@ def verify_holdout_validation(X, y, params, model_type='gb', test_size=0.2):
         X, y, test_size=test_size, random_state=RANDOM_STATE, stratify=y
     )
     
-    print(f"📊 Split des données:")
+    print("📊 Split des données:")
     print(f"   - Train: {X_train.shape[0]} samples")
     print(f"   - Test:  {X_test.shape[0]} samples")
     
@@ -202,7 +202,7 @@ def verify_holdout_validation(X, y, params, model_type='gb', test_size=0.2):
         gb_params = {**params, 'random_state': RANDOM_STATE}
         model = GradientBoostingClassifier(**gb_params)
     
-    print(f"\n⏳ Entraînement du modèle...")
+    print("\n⏳ Entraînement du modèle...")
     model.fit(X_train, y_train)
     
     # Prédictions
@@ -222,11 +222,11 @@ def verify_holdout_validation(X, y, params, model_type='gb', test_size=0.2):
     # Gap d'overfitting
     overfitting_gap = train_acc - test_acc
     
-    print(f"\n📈 Résultats Holdout:")
-    print(f"   🏋️ TRAIN:")
+    print("\n📈 Résultats Holdout:")
+    print("   🏋️ TRAIN:")
     print(f"      - Accuracy: {train_acc*100:.1f}%")
     print(f"      - F1 Score: {train_f1:.3f}")
-    print(f"   🎯 TEST (VRAIES MÉTRIQUES):")
+    print("   🎯 TEST (VRAIES MÉTRIQUES):")
     print(f"      - Accuracy: {test_acc*100:.1f}%")
     print(f"      - F1 Score: {test_f1:.3f}")
     print(f"      - Precision: {test_precision:.3f}")
@@ -234,11 +234,11 @@ def verify_holdout_validation(X, y, params, model_type='gb', test_size=0.2):
     print(f"   ⚠️ Overfitting Gap: {overfitting_gap*100:.1f}%")
     
     if overfitting_gap > 0.15:
-        print(f"   🔴 ALERTE: Gap d'overfitting élevé (>15%)")
+        print("   🔴 ALERTE: Gap d'overfitting élevé (>15%)")
     elif overfitting_gap > 0.10:
-        print(f"   🟡 ATTENTION: Gap d'overfitting modéré (>10%)")
+        print("   🟡 ATTENTION: Gap d'overfitting modéré (>10%)")
     else:
-        print(f"   🟢 OK: Gap d'overfitting acceptable (<10%)")
+        print("   🟢 OK: Gap d'overfitting acceptable (<10%)")
     
     return {
         'train_accuracy': train_acc,
@@ -274,13 +274,13 @@ def compare_with_saved_model():
         with open(metadata_path, 'r', encoding='utf-8') as f:
             metadata = json.load(f)
         
-        print(f"\n📊 Métadonnées du modèle sauvegardé:")
+        print("\n📊 Métadonnées du modèle sauvegardé:")
         if 'metrics' in metadata:
             metrics = metadata['metrics']
             print(f"   - Test Accuracy: {metrics.get('test_accuracy', 'N/A')}")
             print(f"   - Test F1: {metrics.get('test_f1', 'N/A')}")
         if 'params' in metadata:
-            print(f"\n📊 Paramètres du modèle sauvegardé:")
+            print("\n📊 Paramètres du modèle sauvegardé:")
             for key, value in metadata['params'].items():
                 print(f"   - {key}: {value}")
     
@@ -319,20 +319,20 @@ def run_full_verification():
     print("📋 RÉSUMÉ DE LA VÉRIFICATION")
     print("="*80)
     
-    print(f"\n🎯 MÉTRIQUES ATTENDUES (ce que l'UI devrait afficher):")
+    print("\n🎯 MÉTRIQUES ATTENDUES (ce que l'UI devrait afficher):")
     print(f"   - Test Accuracy: {holdout_results['test_accuracy']*100:.1f}%")
     print(f"   - F1 Score: {holdout_results['test_f1']:.3f}")
     print(f"   - Precision: {holdout_results['test_precision']:.3f}")
     print(f"   - Overfitting Gap: {holdout_results['overfitting_gap']*100:.1f}%")
     
-    print(f"\n📊 Cross-Validation moyenne:")
+    print("\n📊 Cross-Validation moyenne:")
     print(f"   - Accuracy: {cv_results['cv_accuracy_mean']*100:.1f}% ± {cv_results['cv_accuracy_std']*100:.1f}%")
     
     # Vérifier la cohérence
     diff = abs(cv_results['cv_accuracy_mean'] - holdout_results['test_accuracy'])
     if diff > 0.05:
         print(f"\n⚠️ ALERTE: Différence importante entre CV et Holdout ({diff*100:.1f}%)")
-        print(f"   Cela peut indiquer une variance élevée dans les données.")
+        print("   Cela peut indiquer une variance élevée dans les données.")
     else:
         print(f"\n✅ Cohérence OK: CV et Holdout sont proches (diff={diff*100:.1f}%)")
     

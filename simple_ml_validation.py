@@ -114,14 +114,11 @@ async def main():
         print("✅ Le logging des rejets ML fonctionne")
         print("✅ L'export Excel est mis à jour")
         print("✅ Les données sont récupérables")
-        status = "SUCCESS"
     elif success_rate >= 75:
         print("✅ MIGRATION GLOBALEMENT RÉUSSIE")
         print("⚠️ Quelques problèmes mineurs détectés")
-        status = "MOSTLY_SUCCESS"
     else:
         print("❌ MIGRATION NÉCESSITE DES CORRECTIONS")
-        status = "NEEDS_FIXES"
     
     print("="*50)
     
@@ -151,7 +148,7 @@ async def main():
             
             if verification:
                 row = verification[0]
-                print(f"🎉 BONUS PASS - Cycle complet réussi!")
+                print("🎉 BONUS PASS - Cycle complet réussi!")
                 print(f"   Données stockées: {row[0][:50]}...")
                 print(f"   ML confidence: {row[1]}%")
                 print(f"   Seuil utilisé: {row[2]}%") 

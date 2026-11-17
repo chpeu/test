@@ -31,7 +31,7 @@ async def test_insert():
         print("   ❌ Scan échoué")
         return
     
-    print(f"   ✅ Scan réussi")
+    print("   ✅ Scan réussi")
     print(f"   delta_volume = {pair_data.get('delta_volume')}")
     print(f"   imbalance_normalized = {pair_data.get('imbalance_normalized')}")
     

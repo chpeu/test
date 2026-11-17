@@ -172,7 +172,7 @@ def test_gb_predictor_loading():
         print_status(
             "Modèle chargé",
             predictor.is_loaded,
-            f"OK - Modèle prêt" if predictor.is_loaded else "ERREUR - Modèle non chargé"
+            "OK - Modèle prêt" if predictor.is_loaded else "ERREUR - Modèle non chargé"
         )
         
         if predictor.is_loaded:

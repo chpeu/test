@@ -19,7 +19,7 @@ def test_fixed_sl_calculation():
         fixed_sl_pct=TRADING_CONFIG['sl_percent']
     )
 
-    print(f"\n📋 Configuration:")
+    print("\n📋 Configuration:")
     print(f"  - fixed_sl_pct: {config.fixed_sl_pct}%")
     print(f"  - fixed_tp_pct: {config.fixed_tp_pct}%")
 
@@ -56,12 +56,12 @@ def test_fixed_sl_calculation():
             print(f"  ❌ SL INCORRECT! Attendu: {-config.fixed_sl_pct:.2f}%, Reçu: {sl_pct:+.4f}%")
             print(f"     Différence: {abs(abs(sl_pct) - config.fixed_sl_pct):.4f}%")
         else:
-            print(f"  ✅ SL correct")
+            print("  ✅ SL correct")
 
         if not tp_ok:
             print(f"  ❌ TP INCORRECT! Attendu: {+config.fixed_tp_pct:.2f}%, Reçu: {tp_pct:+.4f}%")
         else:
-            print(f"  ✅ TP correct")
+            print("  ✅ TP correct")
 
 if __name__ == "__main__":
     test_fixed_sl_calculation()

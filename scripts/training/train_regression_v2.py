@@ -65,12 +65,12 @@ if 'target_pnl' in df.columns:
     loss_count = (df['target_pnl'] <= 0).sum()
     win_ratio = win_count / len(df) * 100
     
-    print(f"PNL Distribution:")
+    print("PNL Distribution:")
     print(f"  Mean:  {pnl_mean:+.3f}%")
     print(f"  Std:   {pnl_std:.3f}%")
     print(f"  Min:   {pnl_min:+.3f}%")
     print(f"  Max:   {pnl_max:+.3f}%")
-    print(f"\nWIN/LOSS:")
+    print("\nWIN/LOSS:")
     print(f"  WIN:   {win_count:4} trades ({win_ratio:.1f}%)")
     print(f"  LOSS:  {loss_count:4} trades ({100-win_ratio:.1f}%)")
 
@@ -117,7 +117,7 @@ y_val = val_df['target_pnl'].copy()
 X_test = test_df[feature_cols].copy()
 y_test = test_df['target_pnl'].copy()
 
-print(f"[INFO] Split temporel:")
+print("[INFO] Split temporel:")
 print(f"  Train: {len(X_train)} samples")
 print(f"  Val:   {len(X_val)} samples")
 print(f"  Test:  {len(X_test)} samples")
@@ -142,7 +142,7 @@ mi_df = pd.DataFrame({
 
 selected_features = mi_df.head(max_features)['feature'].tolist()
 
-print(f"[OK] Top 10 features:")
+print("[OK] Top 10 features:")
 for i, row in mi_df.head(10).iterrows():
     print(f"  {i+1}. {row['feature']}: {row['mi_score']:.4f}")
 
@@ -193,7 +193,7 @@ model.fit(
     verbose=False
 )
 
-print(f"[OK] Entraînement terminé")
+print("[OK] Entraînement terminé")
 
 # Étape 5: Évaluer RÉGRESSION
 print("\n[5/6] Évaluation régression...")
@@ -220,17 +220,17 @@ print("\n" + "=" * 80)
 print("  RÉSULTATS RÉGRESSION")
 print("=" * 80)
 
-print(f"\n[TRAIN]")
+print("\n[TRAIN]")
 print(f"  MAE:   {train_mae:.3f}%")
 print(f"  RMSE:  {train_rmse:.3f}%")
 print(f"  R²:    {train_r2:.3f}")
 
-print(f"\n[VAL]")
+print("\n[VAL]")
 print(f"  MAE:   {val_mae:.3f}%")
 print(f"  RMSE:  {val_rmse:.3f}%")
 print(f"  R²:    {val_r2:.3f}")
 
-print(f"\n[TEST]")
+print("\n[TEST]")
 print(f"  MAE:   {test_mae:.3f}%")
 print(f"  RMSE:  {test_rmse:.3f}%")
 print(f"  R²:    {test_r2:.3f}")

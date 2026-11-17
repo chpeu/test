@@ -304,7 +304,7 @@ class TechnicalAnalyzer:
 
             excluded_symbols = set(get_effective_value("excluded_symbols") or [])
             if symbol in excluded_symbols:
-                reason = f"Symbole exclu de la liste de trading (excluded_symbols)"
+                reason = "Symbole exclu de la liste de trading (excluded_symbols)"
                 if return_reason:
                     return {
                         "reason": reason,
@@ -3132,7 +3132,7 @@ class TechnicalAnalyzer:
 
             # 🔥 FIX: Toujours retourner un dict avec analysis_1m et analysis_5m pour que scanner_loop.py puisse construire les indicateurs
             reason = (
-                f"Aucun timeframe valide. " + " | ".join(reasons)
+                "Aucun timeframe valide. " + " | ".join(reasons)
                 if reasons
                 else "Aucune raison spécifique"
             )

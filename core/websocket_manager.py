@@ -402,7 +402,7 @@ class WebSocketManager:
                     if conn_data['send_timeout_count'] >= 3:
                         return connection  # Timeout répété - nettoyer connexion
                 return None  # Timeout ponctuel - garder la connexion
-            except (WebSocketDisconnect, ConnectionError, RuntimeError) as e:
+            except (WebSocketDisconnect, ConnectionError, RuntimeError):
                 # 🔥 FIX: Ignorer les erreurs de déconnexion normales
                 return connection  # Échec - retourner connexion à nettoyer
             except Exception as e:

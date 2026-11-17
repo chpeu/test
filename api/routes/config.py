@@ -600,8 +600,9 @@ async def update_mexc_token(request: MexcTokenRequest):
         
         # Notifier le bypass client si disponible
         try:
-            from trading.mexc_futures_bypass import MexcFuturesBypass
-            # Le bypass rechargera le token au prochain appel
+            # Simple test de disponibilité : le bypass se recharge lui-même au
+            # prochain appel, aucune référence n'est conservée ici.
+            from trading.mexc_futures_bypass import MexcFuturesBypass  # noqa: F401
         except ImportError:
             pass
         

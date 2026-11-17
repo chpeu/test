@@ -33,7 +33,7 @@ def verify_config_values():
     max_risk = TRADING_CONFIG.get('max_risk_per_trade')
     default_leverage = TRADING_CONFIG.get('default_leverage', 10)
     
-    print(f"\n  Current Configuration:")
+    print("\n  Current Configuration:")
     print(f"    - account_size: {account_size} USDT")
     print(f"    - risk_per_trade: {risk_per_trade}%")
     print(f"    - min_risk_per_trade: {min_risk}%")
@@ -86,7 +86,7 @@ def verify_position_sizing():
     # Expected base size
     expected_base = account_size * (risk_per_trade / 100)
     
-    print(f"\n  Expected Calculation:")
+    print("\n  Expected Calculation:")
     print(f"    base_size = {account_size} * {risk_per_trade}% = {expected_base:.2f} USDT")
     
     # Create position manager with config
@@ -103,7 +103,7 @@ def verify_position_sizing():
     
     actual_size = pm.calculate_position_size(mock_setup, capital=account_size)
     
-    print(f"\n  Actual Calculation:")
+    print("\n  Actual Calculation:")
     print(f"    calculated_size = {actual_size:.2f} USDT")
     
     # Check if within reasonable bounds
@@ -123,7 +123,7 @@ def verify_position_sizing():
     # Minimum 7 USDT floor
     min_size = max(min_size, 7.0)
     
-    print(f"\n  Bounds Check:")
+    print("\n  Bounds Check:")
     print(f"    min_size = {min_size:.2f} USDT")
     print(f"    max_size = {max_size:.2f} USDT")
     
@@ -173,7 +173,7 @@ def verify_leverage_in_position():
     has_leverage = 'leverage_used' in pos_dict
     leverage_value = pos_dict.get('leverage_used')
     
-    print(f"\n  Position.to_dict() contents:")
+    print("\n  Position.to_dict() contents:")
     print(f"    leverage_used present: {has_leverage}")
     print(f"    leverage_used value: {leverage_value}x")
     
@@ -197,10 +197,10 @@ def verify_order_manager_leverage():
     print(f"\n  Config default_leverage: {default_leverage}x")
     
     # Check live_order_manager_futures.py logic
-    print(f"\n  LiveOrderManagerFutures.open_position():")
-    print(f"    - leverage = leverage or self.default_leverage")
-    print(f"    - Calls bypass_client.set_leverage(leverage=leverage)")
-    print(f"    - Calls bypass_client.submit_order(leverage=leverage)")
+    print("\n  LiveOrderManagerFutures.open_position():")
+    print("    - leverage = leverage or self.default_leverage")
+    print("    - Calls bypass_client.set_leverage(leverage=leverage)")
+    print("    - Calls bypass_client.submit_order(leverage=leverage)")
     
     ok = default_leverage >= 1 and default_leverage <= 125
     print_result(
@@ -219,13 +219,13 @@ def verify_frontend_fallback():
     
     default_leverage = TRADING_CONFIG.get('default_leverage', 10)
     
-    print(f"\n  PositionCard.svelte logic:")
-    print(f"    $activePosition.leverage_used || tradingConfig?.default_leverage || 1")
-    print(f"")
-    print(f"  Fallback chain:")
-    print(f"    1. $activePosition.leverage_used (from backend)")
+    print("\n  PositionCard.svelte logic:")
+    print("    $activePosition.leverage_used || tradingConfig?.default_leverage || 1")
+    print("")
+    print("  Fallback chain:")
+    print("    1. $activePosition.leverage_used (from backend)")
     print(f"    2. tradingConfig.default_leverage = {default_leverage}")
-    print(f"    3. Hardcoded fallback = 1")
+    print("    3. Hardcoded fallback = 1")
     
     print_result(
         "Frontend fallback uses config value",
@@ -257,9 +257,9 @@ def main():
         all_passed = all_passed and passed
     
     if all_passed:
-        print(f"\n  All checks passed!")
+        print("\n  All checks passed!")
     else:
-        print(f"\n  Some checks failed - review above for details")
+        print("\n  Some checks failed - review above for details")
     
     return 0 if all_passed else 1
 

@@ -35,7 +35,7 @@ def get_aster_data():
             size = float(trade['size_usdt'])
             contracts = float(trade['position_size_contracts'])
             contract_size = float(trade['contract_size_used'] or 1.0)
-            leverage = float(trade['leverage_used'] or 1.0)
+            float(trade['leverage_used'] or 1.0)
             
             print("\n--- Manual Verification ---")
             price_change_pct = ((exit - entry) / entry) * 100 if trade['direction'] == 'LONG' else ((entry - exit) / entry) * 100

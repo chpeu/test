@@ -144,7 +144,7 @@ study = optuna.create_study(direction='maximize', sampler=optuna.samplers.TPESam
 study.optimize(objective, n_trials=50, show_progress_bar=True)
 
 best_params = study.best_params
-print(f"\n   Meilleurs paramètres:")
+print("\n   Meilleurs paramètres:")
 for k, v in best_params.items():
     print(f"      {k}: {v}")
 print(f"   Meilleur F1 CV: {study.best_value:.4f}")
@@ -169,7 +169,7 @@ test_precision = precision_score(y_test, test_pred)
 test_recall = recall_score(y_test, test_pred)
 test_auc = roc_auc_score(y_test, test_proba)
 
-print(f"\n   📊 RÉSULTATS:")
+print("\n   📊 RÉSULTATS:")
 print(f"   {'='*50}")
 print(f"   Train Accuracy: {train_acc:.1%}")
 print(f"   Test Accuracy:  {test_acc:.1%}")
@@ -195,7 +195,7 @@ print(f"   CV ROC AUC:  {cv_auc.mean():.4f} ± {cv_auc.std():.4f}")
 # Matrice de confusion
 print("\n   📊 MATRICE DE CONFUSION (Test):")
 cm = confusion_matrix(y_test, test_pred)
-print(f"                 Prédit LOSS  Prédit WIN")
+print("                 Prédit LOSS  Prédit WIN")
 print(f"   Réel LOSS     {cm[0,0]:>10}  {cm[0,1]:>10}")
 print(f"   Réel WIN      {cm[1,0]:>10}  {cm[1,1]:>10}")
 
@@ -283,7 +283,7 @@ print(f"  📈 Amélioration vs hasard: +{improvement:.1f}%")
 print("\n  💡 RECOMMANDATIONS:")
 if cv_acc.mean() > 0.58 and gap < 0.15:
     print("     - Activer gb_filter_enabled = true")
-    print(f"     - Utiliser gb_min_confidence = 0.55-0.60")
+    print("     - Utiliser gb_min_confidence = 0.55-0.60")
     print("     - Le modèle apporte une vraie valeur ajoutée")
 else:
     print("     - Considérer de désactiver le filtre ML")

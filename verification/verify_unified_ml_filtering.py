@@ -63,7 +63,7 @@ try:
         print(f"   ❌ Erreur HTTP {resp.status_code}")
         print(f"   {resp.text[:200]}")
 except requests.exceptions.ConnectionError:
-    print(f"   ⚠️  Backend non accessible - redémarrage nécessaire?")
+    print("   ⚠️  Backend non accessible - redémarrage nécessaire?")
 except Exception as e:
     print(f"   ❌ Erreur: {e}")
 
@@ -133,12 +133,12 @@ if None not in [gb_count, xgb_v1_count, xgb_v2_count]:
         print(f"   {name:<20} {count:<10} {is_equal:<10}")
     
     if all_equal:
-        print(f"\n   ✅ TOUS LES MODÈLES UTILISENT EXACTEMENT LE MÊME FILTRAGE")
+        print("\n   ✅ TOUS LES MODÈLES UTILISENT EXACTEMENT LE MÊME FILTRAGE")
     else:
-        print(f"\n   ❌ INCOHÉRENCE DÉTECTÉE - Les modèles utilisent des données différentes")
+        print("\n   ❌ INCOHÉRENCE DÉTECTÉE - Les modèles utilisent des données différentes")
         
 else:
-    print(f"   ⚠️  Impossible de comparer - certains tests ont échoué")
+    print("   ⚠️  Impossible de comparer - certains tests ont échoué")
 
 # =============================================================================
 # 5. TEST DYNAMIQUE - CHANGER UN PARAMÈTRE

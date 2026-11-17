@@ -274,13 +274,19 @@ async def perform_close_position(reason: str = 'MANUAL', exit_price: Optional[fl
     """Version interne utilisable par WebSocket sans dépendances FastAPI"""
     from core.state_manager import get_state_manager
     state = get_state_manager()
-    from core.bootstrap import init_instances
     from utils.history_utils import save_trade_history
     from core.position.sl_services import cancel_pending_sl_task
     from utils.logging_utils import add_log
     from utils.pricing import get_preferred_price
-    
-    init_instances()
+
+    # Bootstrap à la demande : l'appel précédent n'était pas awaité (coroutine créée
+    # puis abandonnée). On garde le chemin résilient — un échec du bootstrap ne doit
+    # pas empêcher la fermeture d'une position.
+    try:
+        from core.bootstrap import ensure_instances
+        await ensure_instances()
+    except Exception as e:
+        logger.warning(f"⚠️ Bootstrap à la demande ignoré avant close: {e}")
     pos_lock = state.lock("position")
     async with pos_lock:
         pos_mgr = _position_manager or state.get_position_manager()

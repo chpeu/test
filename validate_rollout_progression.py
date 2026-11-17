@@ -47,10 +47,10 @@ async def validate_rollout_progression():
             print(f"Scanner:          {'✅' if scanner_flag.enabled else '❌'} "
                   f"Rollout: {scanner_flag.rollout_percentage}%")
         except Exception:
-            print(f"Scanner:          ⏸️  Rollout: 0% (Not yet configured)")
+            print("Scanner:          ⏸️  Rollout: 0% (Not yet configured)")
         
         # 2. Tester Position Manager Phase 1 (50% rollout)
-        print(f"\n🏭 2. POSITION MANAGER PHASE 1 - 50% ROLLOUT")
+        print("\n🏭 2. POSITION MANAGER PHASE 1 - 50% ROLLOUT")
         print("-" * 50)
         
         pos_factory = get_configured_position_factory("development")
@@ -58,8 +58,8 @@ async def validate_rollout_progression():
         # Test création composants
         pos_calculator = pos_factory.create_position_calculator()
         pos_validator = pos_factory.create_position_validator() 
-        pos_executor = pos_factory.create_position_executor()
-        pos_orchestrator = pos_factory.create_position_orchestrator()
+        pos_factory.create_position_executor()
+        pos_factory.create_position_orchestrator()
         
         print("✅ Position Calculator créé")
         print("✅ Position Validator créé")
@@ -88,16 +88,16 @@ async def validate_rollout_progression():
         print(f"📊 Factory stats: {factory_stats['cached_components']} composants en cache")
         
         # 3. Tester Analyzer Phase 2 (25% rollout)
-        print(f"\n🧮 3. ANALYZER PHASE 2 - 25% ROLLOUT")
+        print("\n🧮 3. ANALYZER PHASE 2 - 25% ROLLOUT")
         print("-" * 40)
         
         analyzer_factory = get_configured_analyzer_factory("development")
         
         # Test création composants
-        indicator_calc = analyzer_factory.create_indicator_calculator()
-        signal_generator = analyzer_factory.create_signal_generator()
-        signal_validator = analyzer_factory.create_signal_validator()
-        score_calculator = analyzer_factory.create_score_calculator()
+        analyzer_factory.create_indicator_calculator()
+        analyzer_factory.create_signal_generator()
+        analyzer_factory.create_signal_validator()
+        analyzer_factory.create_score_calculator()
         analyzer = analyzer_factory.create_analyzer()
         
         print("✅ Indicator Calculator créé")
@@ -120,7 +120,7 @@ async def validate_rollout_progression():
                 print(f"   Valid: {analysis_result.is_valid}")
         
         # 4. Tester Scanner Phase 3 (Composants créés, rollout 0%)
-        print(f"\n🔍 4. SCANNER PHASE 3 - COMPOSANTS DISPONIBLES")
+        print("\n🔍 4. SCANNER PHASE 3 - COMPOSANTS DISPONIBLES")
         print("-" * 50)
         
         scanner_factory = get_configured_scanner_factory("development", use_mocks=True)
@@ -143,7 +143,7 @@ async def validate_rollout_progression():
                 print(f"✅ Mock scan test: {scan_result.status.value}")
         
         # 5. Validation globale
-        print(f"\n📊 5. VALIDATION GLOBALE")
+        print("\n📊 5. VALIDATION GLOBALE")
         print("-" * 25)
         
         validation_results = {
@@ -212,7 +212,7 @@ def generate_rollout_report(validation_results: Dict[str, Any]):
                                  (isinstance(result, (int, float)) and result > 0)) else "❌ FAIL"
             report += f"- **{check.replace('_', ' ').title()}:** {status}\n"
     
-    report += f"""
+    report += """
 ## 🚀 PROCHAINES ÉTAPES
 
 ### Phase 3 Scanner - Rollout Planning
@@ -275,7 +275,7 @@ async def main():
         
         print(f"\n📄 Rapport sauvegardé: {report_file}")
     
-    print(f"\n✅ VALIDATION ROLLOUT PROGRESSION TERMINÉE")
+    print("\n✅ VALIDATION ROLLOUT PROGRESSION TERMINÉE")
 
 
 if __name__ == "__main__":

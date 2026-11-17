@@ -90,7 +90,7 @@ def print_status():
         print(f"  MONITORING ORDER FLOW - {datetime.now().strftime('%H:%M:%S')}")
         print("=" * 70)
         
-        print(f"\n  STATS GLOBALES:")
+        print("\n  STATS GLOBALES:")
         print(f"  ├─ Total scans: {total}")
         print(f"  ├─ Avec delta_volume: {delta} ({delta/total*100:.1f}%)" if total > 0 else "")
         print(f"  ├─ Avec imbalance_normalized: {imb}")
@@ -100,13 +100,13 @@ def print_status():
         print(f"  └─ Avec price_momentum_5: {mom}")
         
         if with_of[0] > 0:
-            print(f"\n  ✅ ORDER FLOW ACTIF!")
+            print("\n  ✅ ORDER FLOW ACTIF!")
             print(f"  ├─ Premier scan avec OF: {with_of[1]}")
             print(f"  └─ Dernier scan avec OF: {with_of[2]}")
         else:
-            print(f"\n  ⚠️ AUCUN SCAN AVEC ORDER FLOW")
+            print("\n  ⚠️ AUCUN SCAN AVEC ORDER FLOW")
         
-        print(f"\n  5 DERNIERS SCANS:")
+        print("\n  5 DERNIERS SCANS:")
         print(f"  {'ID':<8} {'Symbol':<25} {'delta_vol':<12} {'imbalance':<12} {'bid/ask'}")
         print(f"  {'-'*75}")
         

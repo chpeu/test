@@ -522,7 +522,7 @@ class TestPhase2Integration:
         assert len(top_3) <= 3
         
         # Log résultats
-        logger.info(f"📊 Workflow complet:")
+        logger.info("📊 Workflow complet:")
         logger.info(f"   - Analysés: {len(all_results)}/{len(symbols)} symboles")
         logger.info(f"   - Opportunités: {len(opportunities)} après filtrage")
         logger.info(f"   - Classées: {len(ranked_opportunities)} par pertinence")

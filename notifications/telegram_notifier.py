@@ -19,6 +19,22 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
+# Alertes parties en « fire-and-forget » depuis du code synchrone (send_alert).
+# asyncio ne conserve qu'une référence faible sur les tâches : une alerte jamais
+# référencée peut être collectée avant d'avoir été envoyée, et l'appelant a cru
+# bon droit recevoir un True. On la retient ici jusqu'à son terme.
+_pending_alert_tasks: set = set()
+
+
+def _forget_alert_task(finished) -> None:
+    """Libérer la référence et tracer l'échec, qu'un envoi non attendu avalerait."""
+    _pending_alert_tasks.discard(finished)
+    if finished.cancelled():
+        return
+    exc = finished.exception()
+    if exc is not None:
+        logger.error(f"❌ Alerte Telegram perdue en arrière-plan: {exc}")
+
 
 class TelegramNotifier:
     """
@@ -188,7 +204,7 @@ class TelegramNotifier:
                             'timestamp': time.time(),
                             'success': True
                         })
-                        logger.debug(f"✅ Message Telegram envoyé")
+                        logger.debug("✅ Message Telegram envoyé")
                         return True
                     elif response.status == 429:
                         # 🔥 FIX: Rate limit - extraire retry_after et attendre
@@ -557,17 +573,18 @@ class TelegramNotifier:
             return True
         
         try:
-            import asyncio
-            
             # Créer une coroutine pour send_message
             async def _send():
                 return await self.send_message(message, bypass_throttle=True)
             
             # Essayer d'obtenir la loop courante
             try:
-                loop = asyncio.get_running_loop()
-                # Si une loop est active, planifier la tâche
-                asyncio.ensure_future(_send())
+                asyncio.get_running_loop()  # sonde : lève RuntimeError hors boucle active
+                # Si une loop est active, planifier la tâche en la référencant
+                task = asyncio.ensure_future(_send())
+                if task is not None:  # les bouchons de test renvoient None
+                    _pending_alert_tasks.add(task)
+                    task.add_done_callback(_forget_alert_task)
                 return True
             except RuntimeError:
                 # Pas de loop active, en créer une temporaire

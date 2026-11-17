@@ -57,7 +57,7 @@ def test_api_routes():
     # Sauvegarder les résultats dans un fichier
     with open("verification/api_test_results.json", "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\n✅ Résultats sauvegardés dans verification/api_test_results.json")
+    print("\n✅ Résultats sauvegardés dans verification/api_test_results.json")
 
 async def run_diagnostic_with_api():
     print("🚀 Initialisation des instances pour le test API...")

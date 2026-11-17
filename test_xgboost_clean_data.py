@@ -41,8 +41,8 @@ print("\n📊 Chargement des donnees nettoyees...")
 try:
     df = pd.read_sql("SELECT * FROM ml_features_clean WHERE target_pnl IS NOT NULL", engine)
     print(f"✅ Donnees nettoyees: {len(df)} samples")
-except Exception as e:
-    print(f"⚠️ Table ml_features_clean non trouvee, utilisation ml_features")
+except Exception:
+    print("⚠️ Table ml_features_clean non trouvee, utilisation ml_features")
     df = pd.read_sql("SELECT * FROM ml_features WHERE target_pnl IS NOT NULL", engine)
     print(f"✅ Donnees: {len(df)} samples")
 
@@ -81,7 +81,7 @@ print(f"Features selectionnees: {k}")
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 train_accs, test_accs, f1s, precs = [], [], [], []
 
-for fold, (train_idx, test_idx) in enumerate(cv.split(X_sel, y_class)):
+for _fold, (train_idx, test_idx) in enumerate(cv.split(X_sel, y_class)):
     X_train, X_test = X_sel[train_idx], X_sel[test_idx]
     y_train, y_test = y_class[train_idx], y_class[test_idx]
     
@@ -118,7 +118,7 @@ v1_f1 = np.mean(f1s)
 v1_prec = np.mean(precs)
 v1_gap = np.mean(train_accs) - v1_acc
 
-print(f"\n📊 Resultats XGBoost V1:")
+print("\n📊 Resultats XGBoost V1:")
 print(f"  Accuracy:  {v1_acc*100:.1f}% {'✅' if v1_acc >= 0.55 else '❌'}")
 print(f"  F1 Score:  {v1_f1:.3f} {'✅' if v1_f1 >= 0.50 else '❌'}")
 print(f"  Precision: {v1_prec:.3f} {'✅' if v1_prec >= 0.55 else '❌'}")
@@ -170,7 +170,7 @@ test_mae = mean_absolute_error(y_test, y_test_pred)
 train_r2 = r2_score(y_train, y_train_pred)
 test_r2 = r2_score(y_test, y_test_pred)
 
-print(f"\n📊 Resultats XGBoost V2:")
+print("\n📊 Resultats XGBoost V2:")
 print(f"  Train MAE: {train_mae:.3f}%")
 print(f"  Test MAE:  {test_mae:.3f}%")
 print(f"  Train R2:  {train_r2:.3f}")
@@ -183,7 +183,7 @@ v2_acc = accuracy_score(y_test_class_true, y_test_class_pred)
 v2_f1 = f1_score(y_test_class_true, y_test_class_pred, zero_division=0)
 v2_prec = precision_score(y_test_class_true, y_test_class_pred, zero_division=0)
 
-print(f"\n  Classification (PNL > 0):")
+print("\n  Classification (PNL > 0):")
 print(f"  Accuracy:  {v2_acc*100:.1f}%")
 print(f"  F1 Score:  {v2_f1:.3f}")
 print(f"  Precision: {v2_prec:.3f}")

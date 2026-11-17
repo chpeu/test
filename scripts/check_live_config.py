@@ -92,7 +92,7 @@ def check_via_regime_api():
             return False
             
     except requests.exceptions.ConnectionError:
-        print(f"  ⚠️ Endpoint régime non accessible")
+        print("  ⚠️ Endpoint régime non accessible")
         return False
     except Exception as e:
         print(f"  ❌ Erreur: {e}")

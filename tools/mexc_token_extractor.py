@@ -431,7 +431,7 @@ def main():
         # Mode interactif
         token = extractor.run_once()
         if token:
-            print(f"\n✅ Token extrait avec succès!")
+            print("\n✅ Token extrait avec succès!")
             print(f"Sauvegardé dans: {extractor.token_file}")
         else:
             print("\n❌ Échec de l'extraction du token")

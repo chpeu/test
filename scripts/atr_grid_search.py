@@ -145,8 +145,12 @@ def run_grid_search(df, regime=None):
     
     for sl_mult, tp_mult in product(sl_mults, tp_mults):
         # Simuler tous les trades
+        # sl_mult/tp_mult liés par défaut d'argument : apply() consomme le lambda
+        # immédiatement, donc la valeur courante serait déjà la bonne — mais cette
+        # écriture est le motif exact du piège B023 (fermeture sur variable de boucle)
+        # et un futur filter/map paresseux la rendrait fausse sans bruit.
         sim_pnls = subset.apply(
-            lambda row: simulate_trade_outcome(row, sl_mult, tp_mult), 
+            lambda row, sl_mult=sl_mult, tp_mult=tp_mult: simulate_trade_outcome(row, sl_mult, tp_mult), 
             axis=1
         )
         
@@ -200,7 +204,7 @@ def compare_current_vs_optimal(df):
     actual_total = df['pnl_pct'].sum()
     actual_wr = (df['pnl_pct'] > 0).sum() / len(df) * 100
     
-    print(f"\nConfiguration ACTUELLE:")
+    print("\nConfiguration ACTUELLE:")
     print(f"  Avg PnL: {actual_avg:.4f}%")
     print(f"  Total PnL: {actual_total:.2f}%")
     print(f"  Win Rate: {actual_wr:.1f}%")
@@ -219,7 +223,7 @@ def generate_optimal_config(all_results, regime_results):
     # Global
     if all_results is not None and len(all_results) > 0:
         best_global = all_results.nlargest(1, 'avg_pnl_pct').iloc[0]
-        print(f"\nGLOBAL (fallback):")
+        print("\nGLOBAL (fallback):")
         print(f"  SL: {best_global['sl_mult']:.1f}x ATR")
         print(f"  TP: {best_global['tp_mult']:.1f}x ATR")
         print(f"  Expected: {best_global['avg_pnl_pct']:.4f}% avg, {best_global['win_rate']:.1f}% WR")

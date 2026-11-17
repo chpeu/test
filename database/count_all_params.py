@@ -84,7 +84,7 @@ params_count += 2  # config_snapshot, win
 
 total = params_count
 print(f"Total paramètres comptés manuellement: {total}")
-print(f"Placeholders attendus: 111")
+print("Placeholders attendus: 111")
 print(f"Différence: {total - 111}")
 
 # D'après les logs, il y a 128 paramètres

@@ -71,8 +71,12 @@ def _reset_route_globals():
 
 @pytest.fixture()
 def _patched_deps(monkeypatch: pytest.MonkeyPatch):
-    # core.bootstrap.init_instances()
-    monkeypatch.setitem(sys.modules, "core.bootstrap", SimpleNamespace(init_instances=lambda: None))
+    # core.bootstrap.ensure_instances() — le close position l'attend désormais
+    monkeypatch.setitem(
+        sys.modules,
+        "core.bootstrap",
+        SimpleNamespace(init_instances=lambda: None, ensure_instances=AsyncMock()),
+    )
 
     # utils.history_utils.save_trade_history()
     monkeypatch.setitem(sys.modules, "utils.history_utils", SimpleNamespace(save_trade_history=lambda: None))

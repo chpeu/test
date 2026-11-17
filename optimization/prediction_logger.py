@@ -17,7 +17,9 @@ def get_postgres_connection():
     try:
         conn = psycopg2.connect(
             host=os.getenv('POSTGRES_HOST', 'localhost'),
-            port=int(os.getenv('POSTGRES_PORT', 5432)),
+            # « or 5432 » : une variable présente mais vide (POSTGRES_PORT= dans un
+            # shell ou un .env) donnait int('') → ValueError, au lieu du défaut.
+            port=int(os.getenv('POSTGRES_PORT') or 5432),
             database=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', ''),

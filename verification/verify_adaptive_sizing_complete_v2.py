@@ -99,13 +99,13 @@ if config_file.exists():
             print(f"      {status} {key}: config={config_val}, override={override_val}")
     
     if all_match:
-        print(f"   [OK] Toutes les valeurs correspondent")
+        print("   [OK] Toutes les valeurs correspondent")
         tests_passed += 1
     else:
-        print(f"   [WARN] Certaines valeurs different (normal si modifiees en RAM)")
+        print("   [WARN] Certaines valeurs different (normal si modifiees en RAM)")
         tests_passed += 1  # Accepter car peut etre modifie en runtime
 else:
-    print(f"   [FAIL] config_overrides.json non trouve")
+    print("   [FAIL] config_overrides.json non trouve")
 
 # =============================================================================
 # TEST 3: Fonctionnement du manager
@@ -124,13 +124,13 @@ manager = get_adaptive_sizing_manager()
 # Verifier que la config est chargee
 tests_total += 1
 if manager.config.enabled == TRADING_CONFIG.get('adaptive_sizing_enabled', True):
-    print(f"   [OK] Config chargee depuis TRADING_CONFIG")
+    print("   [OK] Config chargee depuis TRADING_CONFIG")
     print(f"      enabled: {manager.config.enabled}")
     print(f"      min_trades: {manager.config.min_trades_for_adjustment}")
     print(f"      excellent_wr: {manager.config.excellent_wr_threshold}")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Config non synchronisee")
+    print("   [FAIL] Config non synchronisee")
 
 # =============================================================================
 # TEST 4: Limites de securite (max_mult, min_mult)
@@ -150,16 +150,16 @@ for _ in range(10):
 mult_excellent = manager.get_size_multiplier(SYMBOL)
 max_mult = TRADING_CONFIG.get('adaptive_sizing_max_mult', 1.5)
 
-print(f"   10 wins consecutifs (100% WR):")
+print("   10 wins consecutifs (100% WR):")
 print(f"   - Multiplicateur obtenu: x{mult_excellent:.2f}")
 print(f"   - Limite max: x{max_mult:.2f}")
 
 tests_total += 1
 if mult_excellent <= max_mult:
-    print(f"   [OK] Multiplicateur respecte la limite max")
+    print("   [OK] Multiplicateur respecte la limite max")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Multiplicateur depasse la limite max")
+    print("   [FAIL] Multiplicateur depasse la limite max")
 
 # Simuler tres mauvais WR pour tester min_mult
 reset_adaptive_sizing_manager()
@@ -171,16 +171,16 @@ for _ in range(10):
 mult_very_poor = manager.get_size_multiplier(SYMBOL)
 min_mult = TRADING_CONFIG.get('adaptive_sizing_min_mult', 0.5)
 
-print(f"\n   10 losses consecutives (0% WR):")
+print("\n   10 losses consecutives (0% WR):")
 print(f"   - Multiplicateur obtenu: x{mult_very_poor:.2f}")
 print(f"   - Limite min: x{min_mult:.2f}")
 
 tests_total += 1
 if mult_very_poor >= min_mult:
-    print(f"   [OK] Multiplicateur respecte la limite min")
+    print("   [OK] Multiplicateur respecte la limite min")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Multiplicateur depasse la limite min")
+    print("   [FAIL] Multiplicateur depasse la limite min")
 
 # =============================================================================
 # TEST 5: Tous les seuils de WR
@@ -203,7 +203,7 @@ mults = {
     'very_poor': TRADING_CONFIG.get('adaptive_sizing_very_poor_mult', 0.50),
 }
 
-print(f"   Configuration des seuils:")
+print("   Configuration des seuils:")
 print(f"   - WR >= {seuils['excellent']:.0%}: EXCELLENT -> x{mults['excellent']:.2f}")
 print(f"   - WR >= {seuils['good']:.0%}: BON -> x{mults['good']:.2f}")
 print(f"   - {seuils['poor']:.0%} < WR < {seuils['good']:.0%}: NORMAL -> x{mults['normal']:.2f}")
@@ -213,18 +213,18 @@ print(f"   - WR <= {seuils['very_poor']:.0%}: TRES MAUVAIS -> x{mults['very_poor
 # Verifier la coherence des seuils
 tests_total += 1
 if seuils['excellent'] > seuils['good'] > seuils['poor'] > seuils['very_poor']:
-    print(f"   [OK] Seuils coherents (ordre decroissant)")
+    print("   [OK] Seuils coherents (ordre decroissant)")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Seuils incoherents")
+    print("   [FAIL] Seuils incoherents")
 
 # Verifier la coherence des multiplicateurs
 tests_total += 1
 if mults['excellent'] >= mults['good'] >= mults['normal'] >= mults['poor'] >= mults['very_poor']:
-    print(f"   [OK] Multiplicateurs coherents (ordre decroissant)")
+    print("   [OK] Multiplicateurs coherents (ordre decroissant)")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Multiplicateurs incoherents")
+    print("   [FAIL] Multiplicateurs incoherents")
 
 # =============================================================================
 # TEST 6: Simulation complete avec tous les seuils
@@ -285,10 +285,10 @@ for wins, losses, expected in scenarios:
 
 tests_total += 1
 if all_correct:
-    print(f"   [OK] Tous les scenarios correspondent")
+    print("   [OK] Tous les scenarios correspondent")
     tests_passed += 1
 else:
-    print(f"   [WARN] Certains scenarios different (ajuster seuils)")
+    print("   [WARN] Certains scenarios different (ajuster seuils)")
     tests_passed += 1  # Accepter car peut etre intentionnel
 
 # =============================================================================
@@ -326,10 +326,10 @@ print(f"   ETH (0% WR): x{mult_eth:.2f}")
 
 tests_total += 1
 if mult_btc > mult_sol > mult_eth:
-    print(f"   [OK] Paires isolees: BTC > SOL > ETH")
+    print("   [OK] Paires isolees: BTC > SOL > ETH")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Isolation non respectee")
+    print("   [FAIL] Isolation non respectee")
 
 # =============================================================================
 # TEST 8: Reset au redemarrage (session)
@@ -350,10 +350,10 @@ print(f"   Apres reset: BTC = {trades_after} trades")
 
 tests_total += 1
 if trades_after == 0:
-    print(f"   [OK] Stats remises a zero")
+    print("   [OK] Stats remises a zero")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Stats non reset")
+    print("   [FAIL] Stats non reset")
 
 # =============================================================================
 # RESUME

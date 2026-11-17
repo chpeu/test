@@ -13,7 +13,7 @@ def check_migration_status():
     
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -72,7 +72,7 @@ def check_migration_status():
         indexes = cursor.fetchall()
         if indexes:
             print(f"\n🔍 Index anti-giveback trouvés ({len(indexes)}):")
-            for idx_name, idx_def in indexes:
+            for idx_name, _idx_def in indexes:
                 print(f"  - {idx_name}")
         
         cursor.close()
@@ -88,6 +88,6 @@ if __name__ == "__main__":
     existing, missing = check_migration_status()
     
     if not missing:
-        print(f"\n🎉 Migration complète! Toutes les colonnes anti-giveback sont présentes.")
+        print("\n🎉 Migration complète! Toutes les colonnes anti-giveback sont présentes.")
     else:
         print(f"\n⚠️ Migration partielle. {len(missing)} colonnes manquantes sur {len(existing) + len(missing)}.")

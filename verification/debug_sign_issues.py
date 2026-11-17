@@ -42,7 +42,7 @@ cur.execute("""
 """)
 row = cur.fetchone()
 if row:
-    print(f"\n🔍 SHIBUSDT Trade Details:")
+    print("\n🔍 SHIBUSDT Trade Details:")
     print(f"  ID: {row[0]}")
     print(f"  Symbol: {row[1]}")
     print(f"  Direction: {row[2]}")

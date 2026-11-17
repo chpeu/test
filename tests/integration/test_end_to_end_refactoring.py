@@ -92,7 +92,7 @@ class TestEndToEndRefactoring:
             if 'position_id' in result:
                 print(f"✅ Trade workflow complet réussi: {result['position_id']}")
             else:
-                print(f"✅ Trade workflow complet (sans position_id)")
+                print("✅ Trade workflow complet (sans position_id)")
             
         finally:
             # Nettoyer feature flags

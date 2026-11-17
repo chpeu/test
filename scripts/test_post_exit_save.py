@@ -74,7 +74,7 @@ def main():
     
     # 3. Calculer les métriques
     metrics = tracker.compute_final_metrics()
-    print(f"📊 Métriques calculées:")
+    print("📊 Métriques calculées:")
     print(f"   - trade_id: {metrics.get('trade_id')} (type: {type(metrics.get('trade_id')).__name__})")
     print(f"   - exit_efficiency: {metrics.get('exit_efficiency_pct')}%")
     print(f"   - post_exit_mfe: {metrics.get('post_exit_mfe_pct')}%")

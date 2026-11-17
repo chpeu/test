@@ -95,7 +95,7 @@ def main():
                 LIMIT 3
             """)
             trades = cur.fetchall()
-            print(f"\n📊 Derniers trades (id, symbol, created_at):")
+            print("\n📊 Derniers trades (id, symbol, created_at):")
             for t in trades:
                 print(f"   - {t[0]} ({type(t[0]).__name__}) | {t[1]} | {t[2]}")
             

@@ -139,14 +139,14 @@ def test_check_levels():
     async def check_tp():
         reason = await manager.check_position(10025.0)
         assert reason == 'TP', f"Attendu 'TP', obtenu {reason}"
-        print(f"✅ TP touché correctement")
+        print("✅ TP touché correctement")
     
     async def check_sl():
         # Reset position
         manager.active_position = pos
         reason = await manager.check_position(9975.0)
         assert reason == 'SL', f"Attendu 'SL', obtenu {reason}"
-        print(f"✅ SL touché correctement")
+        print("✅ SL touché correctement")
     
     # Test SHORT
     async def check_short():
@@ -158,12 +158,12 @@ def test_check_levels():
         )
         reason = await manager.check_position(9975.0)  # -0.25%
         assert reason == 'TP', f"SHORT TP: Attendu 'TP', obtenu {reason}"
-        print(f"✅ SHORT TP touché correctement")
+        print("✅ SHORT TP touché correctement")
         
         manager.active_position = pos_short
         reason = await manager.check_position(10025.0)  # +0.25%
         assert reason == 'SL', f"SHORT SL: Attendu 'SL', obtenu {reason}"
-        print(f"✅ SHORT SL touché correctement")
+        print("✅ SHORT SL touché correctement")
     
     asyncio.run(check_tp())
     asyncio.run(check_sl())

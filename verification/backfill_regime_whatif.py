@@ -121,7 +121,7 @@ def backfill_regime_whatif():
     cur.close()
     conn.close()
     
-    print(f"\nResultat:")
+    print("\nResultat:")
     print(f"  - Succes: {success}")
     print(f"  - Erreurs: {errors}")
     

@@ -68,7 +68,7 @@ else:
 # Verifier que reset_big_loss n'est PAS dans la config (supprime)
 tests_total += 1
 # Note: reset_big_loss a ete supprime car inutile avec SL < 2%
-print(f"   [OK] reset_big_loss supprime (inutile avec SL < 2%)")
+print("   [OK] reset_big_loss supprime (inutile avec SL < 2%)")
 tests_passed += 1
 
 # =============================================================================
@@ -106,10 +106,10 @@ print(f"   SOL (60% WR): mult={mult_sol:.2f}")
 
 tests_total += 1
 if mult_btc > mult_sol > mult_eth:
-    print(f"   [OK] Paires isolees: BTC > SOL > ETH")
+    print("   [OK] Paires isolees: BTC > SOL > ETH")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Ordre incorrect")
+    print("   [FAIL] Ordre incorrect")
 
 # =============================================================================
 # TEST 3: WinRate evolutif
@@ -138,10 +138,10 @@ for i, (pnl, is_win) in enumerate(sequence):
 
 tests_total += 1
 if all_correct:
-    print(f"   [OK] WinRate mis a jour apres chaque trade")
+    print("   [OK] WinRate mis a jour apres chaque trade")
     tests_passed += 1
 else:
-    print(f"   [FAIL] WinRate incorrect")
+    print("   [FAIL] WinRate incorrect")
 
 # =============================================================================
 # TEST 4: Multiplicateur au moment de l'ouverture
@@ -174,10 +174,10 @@ print(f"   3W/2L (60% WR): mult={mult_3w2l:.2f} (attendu: ~{good_mult:.2f})")
 
 tests_total += 1
 if mult_0 == 1.0 and mult_3w > mult_3w2l:
-    print(f"   [OK] Multiplicateur change avec WR")
+    print("   [OK] Multiplicateur change avec WR")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Multiplicateur incorrect")
+    print("   [FAIL] Multiplicateur incorrect")
 
 # =============================================================================
 # TEST 5: Protection progressive (10 pertes)
@@ -218,7 +218,7 @@ if reduction_usdt > 0:
     print(f"   [OK] Reduction des pertes: {reduction_pct:.1f}%")
     tests_passed += 1
 else:
-    print(f"   [FAIL] Pas de protection")
+    print("   [FAIL] Pas de protection")
 
 # =============================================================================
 # TEST 6: Simulation realiste (100 trades)
@@ -260,12 +260,12 @@ for _ in range(100):
     
     manager.record_trade(pair, pnl, is_win)
 
-print(f"   100 trades sur 4 paires (WR 35-65%)")
+print("   100 trades sur 4 paires (WR 35-65%)")
 print(f"   Sans protection: PnL = {results_without_protection['total_pnl']:.2f}%")
 print(f"   Avec protection: PnL = {results_with_protection['total_pnl']:.2f}%")
 
 # Stats par paire
-print(f"\n   Stats finales par paire:")
+print("\n   Stats finales par paire:")
 for pair in PAIRS:
     stats = manager.pair_stats.get(pair)
     if stats:
@@ -291,10 +291,10 @@ for pair in PAIRS:
             all_mults_correct = False
 
 if all_mults_correct:
-    print(f"   [OK] Multiplicateurs coherents avec WR")
+    print("   [OK] Multiplicateurs coherents avec WR")
     tests_passed += 1
 else:
-    print(f"   [WARN] Certains multiplicateurs incoherents (simulation aleatoire)")
+    print("   [WARN] Certains multiplicateurs incoherents (simulation aleatoire)")
     tests_passed += 1  # Accepter car simulation aleatoire
 
 # =============================================================================

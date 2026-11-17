@@ -137,7 +137,7 @@ class ThresholdOptimizer:
             avg_pnl = sum(t.get('net_pnl_pct', 0) for t in early_inv_trades) / len(early_inv_trades)
             avg_duration = sum(t.get('duration', 0) for t in early_inv_trades) / len(early_inv_trades)
             
-            logger.info(f"\n📈 STATISTIQUES")
+            logger.info("\n📈 STATISTIQUES")
             logger.info(f"  Trades invalidés: {len(early_inv_trades)}")
             logger.info(f"  PnL moyen: {avg_pnl:.2f}%")
             logger.info(f"  Durée moyenne: {avg_duration:.0f}s")
@@ -178,7 +178,7 @@ class ThresholdOptimizer:
         wins = sum(1 for t in self.trades if t.get('net_pnl_pct', 0) > 0)
         winrate = wins / total_trades * 100 if total_trades > 0 else 0
         
-        logger.info(f"\n📈 STATISTIQUES GLOBALES")
+        logger.info("\n📈 STATISTIQUES GLOBALES")
         logger.info(f"  Total trades: {total_trades}")
         logger.info(f"  Winrate: {winrate:.1f}%")
         
@@ -301,7 +301,7 @@ class ThresholdOptimizer:
                 for suggestion in suggestions:
                     f.write(f"{suggestion}\n")
             
-            logger.info(f"\n✅ Suggestions sauvegardées dans: config_suggestions.txt")
+            logger.info("\n✅ Suggestions sauvegardées dans: config_suggestions.txt")
         else:
             logger.info("\n✅ Aucune modification nécessaire")
 

@@ -35,7 +35,7 @@ def apply_migration():
     # Configuration de connexion
     pg_config = {
         'host': os.getenv('PG_HOST', 'localhost'),
-        'port': int(os.getenv('PG_PORT', 5432)),
+        'port': int(os.getenv('PG_PORT') or 5432),
         'database': os.getenv('PG_DATABASE', 'tradecursor'),
         'user': os.getenv('PG_USER', 'postgres'),
         'password': os.getenv('PG_PASSWORD', ''),

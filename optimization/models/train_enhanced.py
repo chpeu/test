@@ -119,7 +119,7 @@ def train_xgboost_enhanced(
     # ====================
     # 4. TEMPORAL SPLIT
     # ====================
-    logger.info(f"\n📅 Split TEMPOREL (évite data leakage)...")
+    logger.info("\n📅 Split TEMPOREL (évite data leakage)...")
 
     train_df, val_df, test_df = temporal_train_test_split(
         df,
@@ -170,7 +170,7 @@ def train_xgboost_enhanced(
 
     selected_features = mi_df.head(max_features)['feature'].tolist()
 
-    logger.info(f"🔝 Top 10 features discriminantes:")
+    logger.info("🔝 Top 10 features discriminantes:")
     for i, row in mi_df.head(10).iterrows():
         logger.info(f"  {i+1}. {row['feature']}: {row['mi_score']:.4f}")
 
@@ -299,7 +299,7 @@ def train_xgboost_enhanced(
     # ====================
     # 10. ÉVALUATION
     # ====================
-    logger.info(f"\n📊 Évaluation complète...")
+    logger.info("\n📊 Évaluation complète...")
 
     metrics = evaluate_model_comprehensive(
         final_model,
@@ -318,15 +318,27 @@ def train_xgboost_enhanced(
         lgbm_importance = model.estimators_[1].feature_importances_
         avg_importance = (xgb_importance + lgbm_importance) / 2
 
+        if len(selected_features) != len(avg_importance):
+            logger.warning(
+                f"⚠️ Feature importance: {len(avg_importance)} valeurs pour "
+                f"{len(selected_features)} features sélectionnées — troncature"
+            )
         feature_importance = [
             {"feature": name, "importance": float(imp)}
-            for name, imp in zip(selected_features, avg_importance)
+            # strict=False assumé : le preprocessing peut changer le nombre de
+            # colonnes ; un écart est signalé, il ne doit pas jeter l'entraînement.
+            for name, imp in zip(selected_features, avg_importance, strict=False)
         ]
     else:
         importance = model.feature_importances_
+        if len(selected_features) != len(importance):
+            logger.warning(
+                f"⚠️ Feature importance: {len(importance)} valeurs pour "
+                f"{len(selected_features)} features sélectionnées — troncature"
+            )
         feature_importance = [
             {"feature": name, "importance": float(imp)}
-            for name, imp in zip(selected_features, importance)
+            for name, imp in zip(selected_features, importance, strict=False)
         ]
 
     feature_importance.sort(key=lambda x: x["importance"], reverse=True)
@@ -401,14 +413,14 @@ def train_xgboost_enhanced(
     logger.info(f"🔧 Features: {len(df.columns)} totales → {len(selected_features)} sélectionnées")
     logger.info(f"🎯 Modèle: {'Ensemble XGB+LGBM' if use_ensemble else 'XGBoost'} {'+ Calibration' if calibrate_proba else ''}")
 
-    logger.info(f"\n📈 RÉSULTATS TEST:")
+    logger.info("\n📈 RÉSULTATS TEST:")
     logger.info(f"  - Accuracy:  {metrics['test']['accuracy']:.3f}")
     logger.info(f"  - ROC-AUC:   {metrics['test']['roc_auc']:.3f}")
     logger.info(f"  - F1 Score:  {metrics['test']['f1']:.3f}")
     logger.info(f"  - Precision: {metrics['test']['precision']:.3f}")
     logger.info(f"  - Recall:    {metrics['test']['recall']:.3f}")
 
-    logger.info(f"\n📊 GAPS (Overfitting Check):")
+    logger.info("\n📊 GAPS (Overfitting Check):")
     logger.info(f"  - Accuracy Gap: {metrics['gaps']['accuracy']:.3f}")
     logger.info(f"  - ROC-AUC Gap:  {metrics['gaps']['roc_auc']:.3f}")
 
@@ -482,22 +494,22 @@ def evaluate_model_comprehensive(
     logger.info("📊 MÉTRIQUES DÉTAILLÉES")
     logger.info("=" * 80)
 
-    logger.info(f"\n🎯 TRAIN:")
+    logger.info("\n🎯 TRAIN:")
     logger.info(f"  Accuracy={train_metrics['accuracy']:.3f} | ROC-AUC={train_metrics['roc_auc']:.3f} | F1={train_metrics['f1']:.3f}")
 
-    logger.info(f"\n🎯 VALIDATION:")
+    logger.info("\n🎯 VALIDATION:")
     logger.info(f"  Accuracy={val_metrics['accuracy']:.3f} | ROC-AUC={val_metrics['roc_auc']:.3f} | F1={val_metrics['f1']:.3f}")
 
-    logger.info(f"\n🎯 TEST:")
+    logger.info("\n🎯 TEST:")
     logger.info(f"  Accuracy={test_metrics['accuracy']:.3f} | ROC-AUC={test_metrics['roc_auc']:.3f} | F1={test_metrics['f1']:.3f}")
     logger.info(f"  Precision={test_metrics['precision']:.3f} | Recall={test_metrics['recall']:.3f}")
     logger.info(f"  Log Loss={test_metrics['log_loss']:.3f} | Brier Score={test_metrics['brier_score']:.3f}")
 
-    logger.info(f"\n📉 GAPS (Train-Test):")
+    logger.info("\n📉 GAPS (Train-Test):")
     logger.info(f"  Accuracy: {accuracy_gap:+.3f}")
     logger.info(f"  ROC-AUC:  {roc_gap:+.3f}")
 
-    logger.info(f"\n📋 Confusion Matrix (Test):")
+    logger.info("\n📋 Confusion Matrix (Test):")
     logger.info(f"  [[TN={cm_test[0][0]}, FP={cm_test[0][1]}],")
     logger.info(f"   [FN={cm_test[1][0]}, TP={cm_test[1][1]}]]")
 
@@ -532,6 +544,6 @@ if __name__ == "__main__":
         calibrate_proba=True,
     )
 
-    print(f"\n✅ TERMINÉ !")
+    print("\n✅ TERMINÉ !")
     print(f"✅ Test Accuracy: {results['metadata']['metrics']['test']['accuracy']:.3f}")
     print(f"✅ Test ROC-AUC: {results['metadata']['metrics']['test']['roc_auc']:.3f}")

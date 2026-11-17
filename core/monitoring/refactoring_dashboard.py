@@ -398,7 +398,8 @@ class RefactoringDashboard:
     
     def _check_alert_conditions(self, metrics: Dict[str, Any]):
         """Vérifie les conditions d'alerte"""
-        current_time = datetime.utcnow()
+        # current_time n'était lu par aucune des conditions ci-dessous (les alertes
+        # portent leur propre horodatage dans _create_alert).
         
         # Vérifier taux d'erreur élevé
         error_rate = metrics.get('performance', {}).get('error_rate', 0)
@@ -494,6 +495,9 @@ class RefactoringDashboard:
         }
         
         logger.info(f"📝 Action utilisateur: {action_type} - {data}")
+        # L'entrée structurée partait à la poubelle après l'avoir construite : tracée
+        # en debug, elle sert enfin à reconstituer une action minute par minute.
+        logger.debug(f"📝 Détail action: {log_entry}")
     
     def run(self, debug=False):
         """Démarre le serveur Flask"""

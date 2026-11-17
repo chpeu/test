@@ -84,7 +84,7 @@ def test_metadata_file():
     
     # Afficher les metriques actuelles
     print()
-    print(f"  Metriques actuelles:")
+    print("  Metriques actuelles:")
     print(f"    - Test Accuracy: {metrics.get('test_accuracy', 0)*100:.2f}%")
     print(f"    - F1 Score: {metrics.get('f1_score', 0):.4f}")
     print(f"    - Precision: {metrics.get('precision', 0):.4f}")
@@ -180,7 +180,7 @@ def test_config_overrides():
     
     # Afficher les valeurs actuelles
     print()
-    print(f"  Parametres actuels:")
+    print("  Parametres actuels:")
     for p in gb_params:
         if p in config:
             print(f"    - {p}: {config[p]}")
@@ -198,7 +198,7 @@ def test_api_models_overview():
             print_fail(f"HTTP {response.status_code}")
             return False
         
-        print_ok(f"HTTP 200 OK")
+        print_ok("HTTP 200 OK")
         
         data = response.json()
         
@@ -228,7 +228,7 @@ def test_api_models_overview():
         overfitting = gb_model.get('overfitting_gap', 0)
         
         print()
-        print(f"  Metriques retournees par l'API:")
+        print("  Metriques retournees par l'API:")
         print(f"    - Accuracy: {accuracy*100:.2f}%" if accuracy < 1 else f"    - Accuracy: {accuracy:.2f}%")
         print(f"    - F1 Score: {f1:.4f}")
         print(f"    - Precision: {precision:.4f}")

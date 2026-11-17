@@ -355,7 +355,7 @@ def download_data_cli():
     if not df.empty:
         print(f"\n✅ Téléchargé: {len(df)} candles")
         print(df.head())
-        print(f"\nSauvegardé dans: historical_data/")
+        print("\nSauvegardé dans: historical_data/")
     else:
         print("❌ Échec téléchargement")
 

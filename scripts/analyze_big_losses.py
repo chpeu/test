@@ -63,7 +63,7 @@ def analyze_big_losses(limit=41, threshold=-0.5):
         exit_p = float(t['exit_price']) if t['exit_price'] else 0
         direction = t['direction']
         
-        print(f"\n   --- DIAGNOSTIC ---")
+        print("\n   --- DIAGNOSTIC ---")
         
         if entry and sl:
             sl_distance = abs(sl - entry) / entry * 100
@@ -85,10 +85,10 @@ def analyze_big_losses(limit=41, threshold=-0.5):
             print(f"   Perte reelle: {actual_loss:.2f}%")
             if sl_distance and actual_loss > sl_distance * 1.2:
                 print(f"   [ATTENTION] Perte ({actual_loss:.2f}%) depasse SL configure ({sl_distance:.2f}%)")
-                print(f"   -> Possible: Slippage, SL MEXC trigger, ou gap de prix")
+                print("   -> Possible: Slippage, SL MEXC trigger, ou gap de prix")
         
         if mfe <= 0:
-            print(f"   [SETUP] Trade jamais en profit - mauvaise entree")
+            print("   [SETUP] Trade jamais en profit - mauvaise entree")
         elif mfe > 0.1 and pnl_pct < -0.3:
             print(f"   [GESTION] Avait +{mfe:.2f}% mais perdu - probleme de gestion")
 

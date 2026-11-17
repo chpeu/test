@@ -94,8 +94,8 @@ def main():
         
         print("\n" + "🟢 DASHBOARD PRÊT!")
         print("━" * 40)
-        print(f"🌐 URL: http://localhost:5001")
-        print(f"📊 Monitoring: ACTIF")
+        print("🌐 URL: http://localhost:5001")
+        print("📊 Monitoring: ACTIF")
         print(f"🎯 Feature Flags: {len(fm.list_all_flags())} configurés")
         print("━" * 40)
         print("\nℹ️  Fonctionnalités disponibles:")

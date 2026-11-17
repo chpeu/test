@@ -60,7 +60,7 @@ class MLPredictorV2:
                 try:
                     with open(metadata_path, 'r') as f:
                         self.metadata = json.load(f)
-                    logger.info(f"✅ Metadata V2 chargée")
+                    logger.info("✅ Metadata V2 chargée")
                 except Exception as e:
                     logger.warning(f"⚠️ Erreur chargement metadata (non bloquant): {e}")
                     self.metadata = None
@@ -134,7 +134,8 @@ class MLPredictorV2:
             
             # Extraire infos du modèle
             cols = [desc[0] for desc in cursor.description]
-            model_data = dict(zip(cols, row))
+            # description et row proviennent du même curseur : même longueur garantie
+            model_data = dict(zip(cols, row, strict=True))
             
             # Charger depuis les paths
             model_path = model_data['model_path']

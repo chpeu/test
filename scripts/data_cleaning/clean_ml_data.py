@@ -145,7 +145,7 @@ for col, value in filters.items():
 final_count = len(ml_clean)
 total_excluded = initial_count - final_count
 
-print(f"\n--- RESUME ---")
+print("\n--- RESUME ---")
 print(f"Initial: {initial_count}")
 print(f"Final: {final_count}")
 print(f"Exclus total: {total_excluded} ({total_excluded/initial_count*100:.1f}%)")
@@ -154,7 +154,7 @@ print(f"Exclus total: {total_excluded} ({total_excluded/initial_count*100:.1f}%)
 if 'target_pnl' in ml_clean.columns:
     positifs = (ml_clean['target_pnl'] > 0).sum()
     negatifs = (ml_clean['target_pnl'] <= 0).sum()
-    print(f"\nDistribution finale:")
+    print("\nDistribution finale:")
     print(f"  Positifs: {positifs} ({positifs/final_count*100:.1f}%)")
     print(f"  Negatifs: {negatifs} ({negatifs/final_count*100:.1f}%)")
 

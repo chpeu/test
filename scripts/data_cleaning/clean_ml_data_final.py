@@ -168,7 +168,7 @@ if len(ml_clean) < 200:
 if 'target_pnl' in ml_clean.columns and len(ml_clean) > 0:
     positifs = (ml_clean['target_pnl'] > 0).sum()
     negatifs = (ml_clean['target_pnl'] <= 0).sum()
-    print(f"\nDistribution finale:")
+    print("\nDistribution finale:")
     print(f"  Positifs: {positifs} ({positifs/len(ml_clean)*100:.1f}%)")
     print(f"  Negatifs: {negatifs} ({negatifs/len(ml_clean)*100:.1f}%)")
 

@@ -73,7 +73,7 @@ def main():
             print(f"Exit: {exit_price:.8f}")
             print(f"Durée: {duration_min:.1f} min")
             
-            print(f"\n💰 Performance:")
+            print("\n💰 Performance:")
             print(f"   PnL final: {pnl_pct:.3f}%")
             print(f"   Max PnL (MFE): {max_pnl:.3f}%" if max_pnl else "   Max PnL (MFE): N/A")
             print(f"   Min PnL: {min_pnl:.3f}%" if min_pnl else "   Min PnL: N/A")
@@ -85,7 +85,7 @@ def main():
                     capture_rate = (pnl_pct / max_pnl * 100)
                     print(f"   📊 Taux de capture MFE: {capture_rate:.1f}%")
             
-            print(f"\n🎢 Trailing Stop:")
+            print("\n🎢 Trailing Stop:")
             print(f"   Activé: {'✅ OUI' if trailing_triggered else '❌ NON'}")
             print(f"   Break-Even: {'✅ OUI' if be_triggered else '❌ NON'}")
             
@@ -100,43 +100,43 @@ def main():
                 except Exception:
                     print(f"\n   📝 Trailing updates: {trailing_updates}")
             
-            print(f"\n🚪 Analyse de sortie:")
+            print("\n🚪 Analyse de sortie:")
             print(f"   Raison: {exit_reason}")
             
             if exit_reason == 'TS':
-                print(f"   ✅ Trailing Stop a fermé le trade")
+                print("   ✅ Trailing Stop a fermé le trade")
                 if max_pnl and pnl_pct:
                     if pullback > 0.15:
                         print(f"   ⚠️ PULLBACK IMPORTANT: {pullback:.3f}%")
-                        print(f"   💡 Le trailing était peut-être trop loin")
+                        print("   💡 Le trailing était peut-être trop loin")
                     else:
                         print(f"   ✅ Pullback acceptable: {pullback:.3f}%")
             elif exit_reason == 'SL' and pnl_pct < 0:
-                print(f"   ❌ SL touché en perte")
+                print("   ❌ SL touché en perte")
                 if max_pnl and max_pnl > 0.15:
                     print(f"   ⚠️ PROBLÈME MAJEUR: Trade avait {max_pnl:.3f}% de gains")
-                    print(f"   ⚠️ Trailing aurait dû protéger ces gains!")
+                    print("   ⚠️ Trailing aurait dû protéger ces gains!")
                     print(f"   ⚠️ Perte totale depuis MFE: {pullback:.3f}%")
             
             # Diagnostic spécifique
-            print(f"\n🔧 Diagnostic:")
+            print("\n🔧 Diagnostic:")
             
             if not trailing_triggered and max_pnl and max_pnl > 0.15:
                 print(f"   ❌ PROBLÈME: Trailing NON activé malgré MFE de {max_pnl:.3f}%")
-                print(f"   → Avec trigger 0.15%, trailing aurait dû s'activer")
-                print(f"   → Vérifier si la config était chargée au moment du trade")
+                print("   → Avec trigger 0.15%, trailing aurait dû s'activer")
+                print("   → Vérifier si la config était chargée au moment du trade")
             
             if trailing_triggered and exit_reason == 'SL' and pnl_pct < 0:
-                print(f"   ❌ PROBLÈME: Trailing activé MAIS SL touché en perte")
-                print(f"   → Le trailing n'a pas suivi le prix correctement")
-                print(f"   → Distance trailing (0.1%) peut-être trop large")
+                print("   ❌ PROBLÈME: Trailing activé MAIS SL touché en perte")
+                print("   → Le trailing n'a pas suivi le prix correctement")
+                print("   → Distance trailing (0.1%) peut-être trop large")
             
             if max_pnl and max_pnl > 0.3 and pnl_pct < 0.1:
-                print(f"\n   🚨 PERTE MAJEURE DE PROFITS:")
+                print("\n   🚨 PERTE MAJEURE DE PROFITS:")
                 print(f"      • Potentiel max: +{max_pnl:.3f}%")
                 print(f"      • Réalisé: +{pnl_pct:.3f}%")
                 print(f"      • Manqué: {max_pnl - pnl_pct:.3f}%")
-                print(f"   💡 Trailing distance 0.1% est TROP LARGE pour cette volatilité")
+                print("   💡 Trailing distance 0.1% est TROP LARGE pour cette volatilité")
             
             # Calcul du SL idéal qui aurait dû être en place
             if direction == 'LONG' and max_pnl and max_pnl > 0.15:
@@ -145,7 +145,7 @@ def main():
                 ideal_sl_at_mfe = ideal_price_at_mfe * (1 - 0.1 / 100)  # -0.1% distance
                 ideal_sl_pct_from_entry = ((ideal_sl_at_mfe - entry) / entry * 100)
                 
-                print(f"\n   📐 Calcul SL idéal:")
+                print("\n   📐 Calcul SL idéal:")
                 print(f"      • Au MFE ({max_pnl:.3f}%), prix était: {ideal_price_at_mfe:.8f}")
                 print(f"      • SL trailing aurait dû être à: {ideal_sl_at_mfe:.8f}")
                 print(f"      • = {ideal_sl_pct_from_entry:.3f}% depuis entry")

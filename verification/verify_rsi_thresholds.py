@@ -70,6 +70,6 @@ if eff_long == 60 and eff_short == 40:
 else:
     print("\n" + "=" * 70)
     print("ERREUR: Les seuils RSI ne sont pas correctement propages!")
-    print(f"  Attendu: long_max=60, short_min=40")
+    print("  Attendu: long_max=60, short_min=40")
     print(f"  Obtenu: long_max={eff_long}, short_min={eff_short}")
     print("=" * 70)

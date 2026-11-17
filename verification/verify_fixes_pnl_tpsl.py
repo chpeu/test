@@ -118,9 +118,9 @@ def test_fix_2_tpsl_direction():
         if not passed:
             all_passed = False
             if not tp_correct:
-                print(f"   ⚠️ TP du mauvais côté!")
+                print("   ⚠️ TP du mauvais côté!")
             if not sl_correct:
-                print(f"   ⚠️ SL du mauvais côté!")
+                print("   ⚠️ SL du mauvais côté!")
     
     print("\n" + "-" * 60)
     if all_passed:

@@ -34,17 +34,17 @@ if results.get('status') == 'success':
     train_metrics = metrics.get('train', {})
     gaps = metrics.get('gaps', {})
     
-    print(f"\n[TRAIN]")
+    print("\n[TRAIN]")
     print(f"  Accuracy:  {train_metrics.get('accuracy', 0):.3f}")
     print(f"  ROC-AUC:   {train_metrics.get('roc_auc', 0):.3f}")
     print(f"  F1 Score:  {train_metrics.get('f1_score', 0):.3f}")
     
-    print(f"\n[TEST]")
+    print("\n[TEST]")
     print(f"  Accuracy:  {test_metrics.get('accuracy', 0):.3f}")
     print(f"  ROC-AUC:   {test_metrics.get('roc_auc', 0):.3f}")
     print(f"  F1 Score:  {test_metrics.get('f1_score', 0):.3f}")
     
-    print(f"\n[GAPS]")
+    print("\n[GAPS]")
     print(f"  Accuracy:  {gaps.get('accuracy', 0):.3f}")
     print(f"  ROC-AUC:   {gaps.get('roc_auc', 0):.3f}")
     

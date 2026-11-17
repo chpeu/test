@@ -150,7 +150,7 @@ print(f"\nListe des colonnes ({len(columns)}):")
 for i, col in enumerate(columns, 1):
     print(f"  {i:3d}. {col}")
 
-print(f"\nPlaceholders par ligne:")
+print("\nPlaceholders par ligne:")
 for i, count in enumerate(placeholders_per_line, 737):
     print(f"  Ligne {i}: {count} placeholders")
 

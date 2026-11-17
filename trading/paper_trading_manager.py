@@ -232,7 +232,7 @@ class PaperTradingManager(AbstractTradingManager):
                     pnl_data=pnl_data,
                     mode='PAPER'
                 )
-                logger.debug(f"✅ Trade loggé via analytics_logger")
+                logger.debug("✅ Trade loggé via analytics_logger")
             except Exception as e:
                 logger.error(f"❌ Erreur log trade via analytics_logger: {e}")
         elif self.analytics_db:

@@ -46,7 +46,7 @@ cur.execute("""
 """)
 closed_today = cur.fetchone()
 
-print(f"\n📊 Trades fermés aujourd'hui:")
+print("\n📊 Trades fermés aujourd'hui:")
 print(f"   Count: {closed_today['count']}")
 print(f"   PnL: {closed_today['pnl_pct']:+.3f}% ({closed_today['pnl_usdt']:+.4f} USDT)")
 
@@ -102,16 +102,16 @@ for pos in open_positions:
 total_dashboard_pct = float(closed_today['pnl_pct'] or 0) + total_open_pnl
 total_dashboard_usdt = float(closed_today['pnl_usdt'] or 0) + total_open_usdt
 
-print(f"\n📊 TOTAL DASHBOARD ESTIMÉ:")
+print("\n📊 TOTAL DASHBOARD ESTIMÉ:")
 print(f"   Trades fermés: {closed_today['pnl_pct']:+.3f}%")
 print(f"   Positions ouvertes: {total_open_pnl:+.3f}%")
-print(f"   ----------------------------------------")
+print("   ----------------------------------------")
 print(f"   TOTAL: {total_dashboard_pct:+.3f}% ({total_dashboard_usdt:+.4f} USDT)")
 
-print(f"\n⚠️ Note: L'écart avec -1.74% peut venir de:")
-print(f"   - Taille réelle des positions (estimée à 10 USDT ici)")
-print(f"   - Frais de trading non inclus")
-print(f"   - Période différente (peut-être dernières 24h)")
+print("\n⚠️ Note: L'écart avec -1.74% peut venir de:")
+print("   - Taille réelle des positions (estimée à 10 USDT ici)")
+print("   - Frais de trading non inclus")
+print("   - Période différente (peut-être dernières 24h)")
 
 # 5. Vérifier dernières 24h complètes
 cur.execute("""
@@ -125,7 +125,7 @@ cur.execute("""
 """)
 last_24h = cur.fetchone()
 
-print(f"\n📊 Dernières 24h complètes:")
+print("\n📊 Dernières 24h complètes:")
 print(f"   PnL: {last_24h['pnl_pct']:+.3f}% ({last_24h['pnl_usdt']:+.4f} USDT)")
 
 cur.close()

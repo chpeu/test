@@ -62,7 +62,7 @@ def load_config():
     
     print(f"🔧 Type de modèle: {model_type}")
     print(f"📅 Timeframe: {timeframe} jours")
-    print(f"📊 Paramètres:")
+    print("📊 Paramètres:")
     for key, value in params.items():
         print(f"   - {key}: {value}")
     
@@ -133,7 +133,7 @@ def train_and_evaluate(X, y, params, model_type='gb'):
     
     # Créer le modèle
     if model_type == 'histgb':
-        print(f"🚀 Modèle: HistGradientBoostingClassifier")
+        print("🚀 Modèle: HistGradientBoostingClassifier")
         model = HistGradientBoostingClassifier(
             max_iter=params.get('n_estimators', 200),
             max_depth=params.get('max_depth', 3),
@@ -143,7 +143,7 @@ def train_and_evaluate(X, y, params, model_type='gb'):
             random_state=RANDOM_STATE
         )
     else:
-        print(f"🌳 Modèle: GradientBoostingClassifier")
+        print("🌳 Modèle: GradientBoostingClassifier")
         model = GradientBoostingClassifier(
             n_estimators=params.get('n_estimators', 200),
             max_depth=params.get('max_depth', 3),
@@ -156,7 +156,7 @@ def train_and_evaluate(X, y, params, model_type='gb'):
         )
     
     # Entraîner
-    print(f"⏳ Entraînement en cours...")
+    print("⏳ Entraînement en cours...")
     model.fit(X_train_scaled, y_train)
     
     # Évaluer
@@ -170,7 +170,7 @@ def train_and_evaluate(X, y, params, model_type='gb'):
     test_recall = recall_score(y_test, y_pred_test)
     gap = train_acc - test_acc
     
-    print(f"\n📈 RÉSULTATS:")
+    print("\n📈 RÉSULTATS:")
     print(f"   🏋️ Train Accuracy: {train_acc*100:.1f}%")
     print(f"   🎯 Test Accuracy:  {test_acc*100:.1f}%")
     print(f"   📊 F1 Score:       {test_f1:.3f}")
@@ -279,7 +279,7 @@ def save_model(results, params, feature_cols, model_type, cv_scores):
     with open(MODELS_DIR / "best_classifier_metadata.json", 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    print(f"✅ Métadonnées sauvegardées")
+    print("✅ Métadonnées sauvegardées")
     
     return metadata
 

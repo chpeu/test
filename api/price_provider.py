@@ -83,6 +83,13 @@ class HybridPriceProvider:
         # Appelé à chaque tick WebSocket pour détection immédiate du SL
         self._sl_check_callback = None
         self._sl_check_params = None  # {symbol, direction, sl_level, entry_price}
+
+        # Tâches « fire-and-forget » (mise à jour du cache, contrôle SL à chaque tick).
+        # asyncio ne garde qu'une référence FAIBLE sur les tâches: une create_task()
+        # jamais référencée peut être ramassée par le GC avant d'aller au bout — le
+        # contrôle du stop-loss disparaissait donc sans aucune erreur. On les retient
+        # ici jusqu'à leur terme (recette officielle de la doc asyncio).
+        self._background_tasks: set = set()
         
     @property
     def cache_lock(self) -> asyncio.Lock:
@@ -183,12 +190,12 @@ class HybridPriceProvider:
                 # 🔥 FIX: Mise à jour thread-safe via asyncio task
                 # Utiliser _update_cache pour garantir la cohérence avec le lock
                 try:
-                    # 🔥 FIX: Utiliser get_running_loop() au lieu de get_event_loop() (déprécié)
-                    loop = asyncio.get_running_loop()
-                    # 🔥 FIX: Stocker la tâche pour éviter garbage collection
-                    task = asyncio.create_task(self._update_cache(ccxt_symbol, ticker_info))
-                    # Note: On ne garde pas de référence car c'est un fire-and-forget
-                    # et la tâche se termine rapidement
+                    # Sonde : get_running_loop() lève RuntimeError hors boucle événements
+                    asyncio.get_running_loop()
+                    self._spawn_background(
+                        self._update_cache(ccxt_symbol, ticker_info),
+                        f"price_cache:{ccxt_symbol}",
+                    )
                 except RuntimeError:
                     # Pas de boucle événements active, créer une temporairement
                     # 🔥 FIX: Utiliser asyncio.run() pour créer une boucle temporaire
@@ -216,10 +223,11 @@ class HybridPriceProvider:
                     params = self._sl_check_params
                     if params.get('symbol') == ccxt_symbol:
                         try:
-                            loop = asyncio.get_running_loop()
-                            # Fire-and-forget: vérifier SL immédiatement
-                            asyncio.create_task(
-                                self._check_sl_realtime(last_price, params)
+                            asyncio.get_running_loop()  # sonde de boucle active
+                            # Fire-and-forget: vérifier SL immédiatement (référencée, voir _spawn_background)
+                            self._spawn_background(
+                                self._check_sl_realtime(last_price, params),
+                                f"sl_check:{ccxt_symbol}",
                             )
                         except RuntimeError:
                             # Pas de boucle, ignorer (ne devrait pas arriver)
@@ -228,6 +236,31 @@ class HybridPriceProvider:
                 if DEBUG_ENABLED:
                     logger.debug(f"📊 Prix MEXC WS: {mexc_symbol} -> {ccxt_symbol} = {last_price}")
     
+    def _spawn_background(self, coro, name: str) -> None:
+        """Lancer une coroutine sans l'attendre, en la gardant en mémoire.
+
+        asyncio ne conserve qu'une référence faible sur les tâches créées : sans
+        référence forte, une tâche « fire-and-forget » peut être collectée avant la fin
+        de son exécution — la mise à jour du cache ou le contrôle SL temps réel
+        disparaissait donc sans le moindre message. Ce set joue ce rôle de référence,
+        et le callback de fin trace toute exception, qu'un create_task() nu avale.
+        """
+        tasks = getattr(self, "_background_tasks", None)
+        if tasks is None:
+            tasks = self._background_tasks = set()
+        task = asyncio.create_task(coro, name=name)
+        tasks.add(task)
+
+        def _on_done(finished: asyncio.Task) -> None:
+            tasks.discard(finished)
+            if finished.cancelled():
+                return
+            exc = finished.exception()
+            if exc is not None:
+                logger.error(f"❌ Tâche de fond {name!r} échouée: {exc}", exc_info=exc)
+
+        task.add_done_callback(_on_done)
+
     async def _update_cache(self, symbol: str, data: dict):
         """Mise à jour thread-safe du cache"""
         async with self.cache_lock:

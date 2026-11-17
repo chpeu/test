@@ -108,7 +108,7 @@ try:
     if result:
         print(f"   ✅ Insertion réussie! metric_id={result}")
     else:
-        print(f"   ❌ Insertion échouée")
+        print("   ❌ Insertion échouée")
         exit(1)
         
 except Exception as e:
@@ -123,7 +123,7 @@ m = cur.fetchone()
 
 if m:
     m = dict(m)
-    print(f"\n✅ VÉRIFICATION DES COLONNES MODE FIXE:")
+    print("\n✅ VÉRIFICATION DES COLONNES MODE FIXE:")
     print("-"*50)
     
     checks = [
@@ -171,9 +171,9 @@ if m:
     print(f"\n📊 Résumé: {filled}/{len(checks)} colonnes remplies")
     
     if critical_ok:
-        print(f"\n✅ MODE FIXE: COLONNES CRITIQUES OK!")
+        print("\n✅ MODE FIXE: COLONNES CRITIQUES OK!")
     else:
-        print(f"\n❌ MODE FIXE: PROBLÈME AVEC COLONNES CRITIQUES")
+        print("\n❌ MODE FIXE: PROBLÈME AVEC COLONNES CRITIQUES")
 
 cur.close()
 conn.close()

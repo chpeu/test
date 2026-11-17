@@ -47,7 +47,7 @@ def test_position_size_calculation():
     print("=" * 60)
     print("TEST CALCUL TAILLE DE POSITION - SOL/USDT")
     print("=" * 60)
-    print(f"Configuration:")
+    print("Configuration:")
     print(f"  - Size USDT: {size_usdt} USDT")
     print(f"  - Entry price: {entry_price} USDT")
     print(f"  - Leverage: {leverage}x")
@@ -56,7 +56,7 @@ def test_position_size_calculation():
 
     # Specs du contrat
     spec = MockContractSpec()
-    print(f"Specs contrat SOL:")
+    print("Specs contrat SOL:")
     print(f"  - min_vol: {spec.min_vol} lot")
     print(f"  - vol_unit: {spec.vol_unit} lot")
     print()
@@ -83,7 +83,7 @@ def test_position_size_calculation():
         print(f"  - Capital requis: {spec.min_vol * entry_price:.2f} USDT (min)")
         print()
         print(">> RESULTAT: L'ordre sera REJETE car le capital est insuffisant.")
-        print(f"   Pour trader SOL avec ces specs, vous devez avoir au minimum:")
+        print("   Pour trader SOL avec ces specs, vous devez avoir au minimum:")
         print(f"   {spec.min_vol} lots x {entry_price} USDT/lot = {spec.min_vol * entry_price:.2f} USDT")
     else:
         size_usdt_new = amount_new * entry_price

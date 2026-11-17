@@ -128,7 +128,7 @@ try:
     resp = requests.get("http://localhost:5000/api/ml/dashboard/ml_trades_count", timeout=5)
     if resp.status_code == 200:
         data = resp.json()
-        print(f"   Status: OK")
+        print("   Status: OK")
         print(f"   Total trades: {data.get('total_trades')}")
         print(f"   Manual exclus: {data.get('manual_excluded')}")
         print(f"   Config differentes exclus: {data.get('different_config_excluded')}")
@@ -136,7 +136,7 @@ try:
         
         if 'current_config' in data:
             cc = data['current_config']
-            print(f"\n   Config actuelle (depuis API):")
+            print("\n   Config actuelle (depuis API):")
             print(f"      min_score: {cc.get('min_score')}")
             print(f"      snr_threshold: {cc.get('snr_threshold')}")
             print(f"      volume_mult: {cc.get('volume_mult')}")
@@ -145,25 +145,25 @@ try:
             if (abs(cc.get('min_score', 0) - current_config['min_score']) < 0.01 and
                 abs(cc.get('snr_threshold', 0) - current_config['snr_threshold']) < 0.01 and
                 abs(cc.get('volume_mult', 0) - current_config['volume_mult']) < 0.01):
-                print(f"\n   ✅ COHERENT avec config_overrides.json")
+                print("\n   ✅ COHERENT avec config_overrides.json")
             else:
-                print(f"\n   ❌ INCOHERENT! Backend utilise une config differente")
+                print("\n   ❌ INCOHERENT! Backend utilise une config differente")
                 print(f"      config_overrides.json: {current_config}")
                 print(f"      API retourne: {cc}")
         else:
-            print(f"\n   ⚠️  'current_config' absent de la reponse - backend pas mis a jour?")
+            print("\n   ⚠️  'current_config' absent de la reponse - backend pas mis a jour?")
             
         if data.get('config_filtered_trades') == with_current_config:
-            print(f"\n   ✅ Nombre de trades COHERENT avec query directe")
+            print("\n   ✅ Nombre de trades COHERENT avec query directe")
         else:
-            print(f"\n   ❌ INCOHERENT!")
+            print("\n   ❌ INCOHERENT!")
             print(f"      API: {data.get('config_filtered_trades')}")
             print(f"      Query directe: {with_current_config}")
     else:
         print(f"   ❌ Erreur HTTP {resp.status_code}")
         print(f"   {resp.text[:200]}")
 except requests.exceptions.ConnectionError:
-    print(f"   ⚠️  Backend non accessible (redemarrage necessaire)")
+    print("   ⚠️  Backend non accessible (redemarrage necessaire)")
 except Exception as e:
     print(f"   ❌ Erreur: {e}")
 
@@ -187,11 +187,11 @@ try:
         print(f"   Samples dans ml_features_clean: {ml_clean}")
         
         if model_samples == ml_clean:
-            print(f"   ✅ COHERENT - Modele entraine sur donnees nettoyees")
+            print("   ✅ COHERENT - Modele entraine sur donnees nettoyees")
         else:
-            print(f"   ⚠️  Difference: modele peut necessiter re-entrainement")
+            print("   ⚠️  Difference: modele peut necessiter re-entrainement")
     except Exception:
-        print(f"   ⚠️  Table ml_features_clean non trouvee")
+        print("   ⚠️  Table ml_features_clean non trouvee")
         
 except Exception as e:
     print(f"   ❌ Erreur lecture metadata: {e}")

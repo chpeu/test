@@ -13,7 +13,7 @@ def migrate_robust_v3():
         'password': os.getenv('POSTGRES_PASSWORD'),
     }
     
-    print(f"🚀 Connexion à PostgreSQL pour migration robuste v3...")
+    print("🚀 Connexion à PostgreSQL pour migration robuste v3...")
     
     conn = None
     try:

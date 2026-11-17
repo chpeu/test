@@ -96,7 +96,7 @@ def test_telegram_config():
             telegram_notify_settings=telegram_notify_settings
         )
 
-        print(f"   - NotificationManager cree: OK")
+        print("   - NotificationManager cree: OK")
         print(f"   - TelegramNotifier: {'OK Active' if notification_manager.telegram_notifier else 'XX Desactive'}")
         print(f"   - Settings: {notification_manager.telegram_notify_settings}")
 

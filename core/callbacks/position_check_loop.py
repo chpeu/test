@@ -479,7 +479,6 @@ async def _emit_position_update(position, current_price: float):
             'partial_tp_taken': getattr(position, 'partial_tp_taken', False),
             'partial_tp_sold': getattr(position, 'partial_tp_sold', False),
             'partial_tp_percent': getattr(position, 'partial_tp_percent', None),
-            'tp_escalier_levels': getattr(position, 'tp_escalier_levels', []),
             'current_tp_level': getattr(position, 'current_tp_level', None),
             'partial_profit_usdt': getattr(position, 'partial_profit_usdt', 0.0),
             'partial_profit_pct': getattr(position, 'partial_profit_pct', None),
@@ -497,11 +496,12 @@ async def _emit_position_update(position, current_price: float):
             'tp_escalier_enabled': getattr(position, 'tp_escalier_enabled', False),
             'tp_escalier_current_level': getattr(position, 'tp_escalier_current_level', None),
             'tp_escalier_profits': getattr(position, 'tp_escalier_profits', None),
-            'tp_escalier_levels': json.dumps(getattr(position, 'tp_escalier_levels', [])) if hasattr(position, 'tp_escalier_levels') and getattr(position, 'tp_escalier_levels') else None,  # 🔥 FIX: Niveaux TP escalier
+            # Niveaux TP escalier : sérialisés en JSON (chaîne) — format réellement reçu
+            # par le frontend. La clé était déclarée deux fois dans le dictionnaire
+            # (brute plus haut, JSON ici) : la seconde écrasait la première.
+            'tp_escalier_levels': json.dumps(position.tp_escalier_levels) if getattr(position, 'tp_escalier_levels', None) else None,
             # 🔥 FIX: Ajouter levier utilisé pour affichage correct (levier auto adapté)
             'leverage_used': getattr(position, 'leverage_used', None),
-            # 🔥 FIX: Ajouter force_full_tp_for_partial pour affichage message TP
-            'force_full_tp_for_partial': getattr(position, 'force_full_tp_for_partial', False),
             # 🔥 FIX: Ajouter multiplicateur sizing adaptatif
             'adaptive_sizing_multiplier': getattr(position, 'adaptive_sizing_multiplier', None),
             # 🔥 FIX: Ajouter ML confidence et calibrated winrate pour affichage badge
@@ -522,7 +522,6 @@ async def _emit_position_update(position, current_price: float):
             'trailing_distance_mult_effective': trailing_distance_mult_effective,
             'trailing_trigger_pct': trailing_trigger_pct,
             'trailing_distance_pct_effective': trailing_distance_pct,
-            'trailing_activated': getattr(position, 'trailing_activated', False),
             'trailing_activated_at': _to_iso(getattr(position, 'trailing_activated_at', None)),
             'trailing_final_sl': getattr(position, 'trailing_final_sl', None),
             'trailing_distance_pct': getattr(position, 'trailing_distance_pct', None),

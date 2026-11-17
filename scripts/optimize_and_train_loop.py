@@ -174,7 +174,7 @@ class MLOptimizerLoop:
         self.best_params = study.best_params
         self.best_score = study.best_value
         
-        logger.info(f"✅ Optimisation terminée!")
+        logger.info("✅ Optimisation terminée!")
         logger.info(f"   Best score ({self.metric}): {self.best_score:.4f}")
         logger.info(f"   Best params: {json.dumps(self.best_params, indent=2)}")
         
@@ -338,7 +338,7 @@ class MLOptimizerLoop:
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
         
-        logger.info(f"✅ config_overrides.json mis à jour avec les nouveaux paramètres ML")
+        logger.info("✅ config_overrides.json mis à jour avec les nouveaux paramètres ML")
     
     def run(self):
         """Exécute la boucle complète: load -> optimize -> train."""

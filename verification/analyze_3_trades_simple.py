@@ -86,15 +86,15 @@ def main():
             print(f"PnL: {pnl_pct:.3f}%")
             print(f"Max PnL (MFE): {max_pnl:.3f}%" if max_pnl else "Max PnL (MFE): N/A")
             
-            print(f"\n🎢 Trailing Stop:")
+            print("\n🎢 Trailing Stop:")
             print(f"  Activé: {'✅ OUI' if trailing_triggered else '❌ NON'}")
             print(f"  Break-Even: {'✅ OUI' if be_triggered else '❌ NON'}")
             
             # Analyse de la performance
-            print(f"\n📊 Analyse:")
+            print("\n📊 Analyse:")
             
             if trailing_triggered:
-                print(f"  ✅ Trailing a été activé")
+                print("  ✅ Trailing a été activé")
                 if exit_reason == 'TS':
                     print(f"  ✅ Trade fermé par Trailing Stop - protégé {pnl_pct:.3f}%")
                     if max_pnl:
@@ -105,10 +105,10 @@ def main():
                     if max_pnl and max_pnl > 0:
                         print(f"  ⚠️ Aurait pu capturer jusqu'à {max_pnl:.3f}%")
             else:
-                print(f"  ❌ Trailing NON activé")
+                print("  ❌ Trailing NON activé")
                 if max_pnl and max_pnl > 0:
                     print(f"  ⚠️ Trade avait du potentiel (MFE: {max_pnl:.3f}%)")
-                    print(f"  💡 Aurait bénéficié du trailing")
+                    print("  💡 Aurait bénéficié du trailing")
                 elif max_pnl and max_pnl < 0.15:
                     print(f"  ✅ Normal - PnL trop faible pour trigger ({max_pnl:.3f}%)")
             
@@ -116,7 +116,7 @@ def main():
                 print(f"  ❌ SL touché en perte ({pnl_pct:.3f}%)")
                 if max_pnl and max_pnl > 0:
                     print(f"  ⚠️ Trade était en profit (MFE: {max_pnl:.3f}%) puis retourné en perte")
-                    print(f"  💡 Trailing aurait pu sauver ce trade")
+                    print("  💡 Trailing aurait pu sauver ce trade")
             
             print()
         

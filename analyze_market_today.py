@@ -234,40 +234,40 @@ def analyze_market_today():
     print("=" * 80)
     
     if not scan_df.empty and not opp_df.empty:
-        print(f"\n📈 ACTIVITÉ:")
+        print("\n📈 ACTIVITÉ:")
         print(f"   • Scans: {int(scan_df.iloc[0]['total_scans'])}")
         print(f"   • Opportunités: {int(opp_df.iloc[0]['total_opportunities'])}")
         print(f"   • Trades: {trades}")
         print(f"   • Conversion: {conv_rate:.1f}%")
         
-        print(f"\n📊 CONDITIONS:")
+        print("\n📊 CONDITIONS:")
         print(f"   • Volatilité (ATR): {opp_df.iloc[0]['avg_atr_pct']:.3f}%")
         print(f"   • Score moyen: {opp_df.iloc[0]['avg_score']:.2f}")
         print(f"   • Volume: {opp_df.iloc[0]['avg_volume_ratio']:.2f}x")
         
-        print(f"\n🔍 ANALYSE:")
+        print("\n🔍 ANALYSE:")
         if opp_df.iloc[0]['avg_atr_pct'] < 0.2:
-            print(f"   • Volatilité FAIBLE → moins d'opportunités")
+            print("   • Volatilité FAIBLE → moins d'opportunités")
         elif opp_df.iloc[0]['avg_atr_pct'] > 0.5:
-            print(f"   • Volatilité ÉLEVÉE → plus de risques")
+            print("   • Volatilité ÉLEVÉE → plus de risques")
         else:
-            print(f"   • Volatilité NORMALE → conditions idéales")
+            print("   • Volatilité NORMALE → conditions idéales")
         
         if conv_rate < 20:
             print(f"   • Taux de conversion FAIBLE ({conv_rate:.1f}%)")
-            print(f"     → Filtres trop stricts ou ML filter bloquant ?")
+            print("     → Filtres trop stricts ou ML filter bloquant ?")
         elif conv_rate > 50:
             print(f"   • Taux de conversion ÉLEVÉ ({conv_rate:.1f}%)")
         else:
             print(f"   • Taux de conversion NORMAL ({conv_rate:.1f}%)")
         
-        print(f"\n💡 RECOMMANDATIONS:")
+        print("\n💡 RECOMMANDATIONS:")
         if opp_df.iloc[0]['avg_atr_pct'] < 0.2:
-            print(f"   • Volatilité faible: envisager d'élargir les filtres")
+            print("   • Volatilité faible: envisager d'élargir les filtres")
         if conv_rate < 20:
-            print(f"   • Conversion faible: vérifier les rejets ML")
+            print("   • Conversion faible: vérifier les rejets ML")
         if trades < 5:
-            print(f"   • Peu de trades: normal si volatilité faible")
+            print("   • Peu de trades: normal si volatilité faible")
 
 if __name__ == '__main__':
     try:

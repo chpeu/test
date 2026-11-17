@@ -46,7 +46,7 @@ def main():
     print_section("1. API Configuration")
     ok, data = check_api("/api/config")
     if ok:
-        print(f"   ✅ /api/config OK")
+        print("   ✅ /api/config OK")
         print(f"   📊 Paramètres: {len(data)} clés")
         results.append(("Config API", True))
     else:
@@ -57,7 +57,7 @@ def main():
     print_section("2. API Market Regime")
     ok, data = check_api("/api/regime/status")
     if ok:
-        print(f"   ✅ /api/regime/status OK")
+        print("   ✅ /api/regime/status OK")
         print(f"   📈 Régime actuel: {data.get('current_regime', 'N/A')}")
         print(f"   📊 ATR moyen: {data.get('avg_atr', 0):.4f}%")
         results.append(("Regime API", True))
@@ -69,7 +69,7 @@ def main():
     print_section("3. API Corrélations & Suggestions")
     ok, data = check_api("/api/ml/analytics/correlations?days=7")
     if ok:
-        print(f"   ✅ /api/ml/analytics/correlations OK")
+        print("   ✅ /api/ml/analytics/correlations OK")
         suggestions = data.get('suggestions', [])
         print(f"   💡 Suggestions: {len(suggestions)}")
         for s in suggestions[:3]:
@@ -83,7 +83,7 @@ def main():
     print_section("4. API Bot Status")
     ok, data = check_api("/api/status")
     if ok:
-        print(f"   ✅ /api/status OK")
+        print("   ✅ /api/status OK")
         print(f"   🤖 Bot actif: {data.get('active', 'N/A')}")
         print(f"   💰 Position: {data.get('position', 'None')}")
         results.append(("Bot Status API", True))
@@ -97,10 +97,10 @@ def main():
     ok2, regime = check_api("/api/regime/status")
     if ok and ok2:
         regime_config = regime.get('config_active', {})
-        print(f"   📋 Config bot:")
+        print("   📋 Config bot:")
         print(f"      - min_score_required: {config.get('min_score_required', 'N/A')}")
         print(f"      - atr_mult_sl: {config.get('atr_mult_sl', 'N/A')}")
-        print(f"   📋 Config régime actif:")
+        print("   📋 Config régime actif:")
         print(f"      - min_score_required: {regime_config.get('min_score_required', 'N/A')}")
         print(f"      - atr_mult_sl: {regime_config.get('atr_mult_sl', 'N/A')}")
         results.append(("Config Active", True))

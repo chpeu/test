@@ -20,7 +20,7 @@ def check_websocket_status():
         response = requests.get(f"{BASE_URL}/api/prices/live", timeout=5)
         if response.status_code == 200:
             data = response.json()
-            print(f"📊 État WebSocket:")
+            print("📊 État WebSocket:")
             print(f"   - Connecté: {data.get('websocket_connected', False)}")
             print(f"   - Cache size: {data.get('cache_size', 0)}")
             print(f"   - Prix en cache: {len(data.get('prices', {}))}")
@@ -131,7 +131,7 @@ def start_websocket():
         
         if response.status_code == 200:
             data = response.json()
-            print(f"✅ WebSocket démarré!")
+            print("✅ WebSocket démarré!")
             print(f"   - Symboles: {data.get('symbols_count', 0)}")
             print(f"   - Premiers: {', '.join(data.get('symbols', [])[:5])}")
             return True
@@ -188,7 +188,7 @@ def main():
                 prices = final_status.get('prices', {})
                 if prices:
                     print("\n📊 Premiers prix en cache:")
-                    for i, (symbol, price_data) in enumerate(list(prices.items())[:5]):
+                    for _i, (symbol, price_data) in enumerate(list(prices.items())[:5]):
                         print(f"   {symbol}: {price_data.get('price', 0)} (âge: {price_data.get('age_seconds', 0)}s)")
             else:
                 print()
@@ -211,7 +211,7 @@ def main():
         prices = status.get('prices', {})
         if prices:
             print("\n📊 Premiers prix en cache:")
-            for i, (symbol, price_data) in enumerate(list(prices.items())[:5]):
+            for _i, (symbol, price_data) in enumerate(list(prices.items())[:5]):
                 print(f"   {symbol}: {price_data.get('price', 0)} (âge: {price_data.get('age_seconds', 0)}s)")
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ def load_api_keys() -> Dict[str, dict]:
         default_key = os.getenv("DEFAULT_API_KEY")
         if not default_key:
             default_key = secrets.token_urlsafe(32)
-            print(f"⚠️  ATTENTION: Aucune API key configurée!")
+            print("⚠️  ATTENTION: Aucune API key configurée!")
             print(f"   Clé générée automatiquement: {default_key}")
             print(f"   Ajoutez DEFAULT_API_KEY={default_key} dans votre .env")
 

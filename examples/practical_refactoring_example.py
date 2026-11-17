@@ -412,12 +412,12 @@ class PracticalRefactoringDemo:
             
             performance_delta = ((testable_avg_time - legacy_avg_time) / legacy_avg_time) * 100
             
-            print(f"  Legacy:")
+            print("  Legacy:")
             print(f"    ⏱️ Temps moyen: {legacy_avg_time:.6f}s")
             print(f"    🔢 Opérations: {legacy_metrics['operations']}")
             print(f"    ❌ Taux erreur: {legacy_error_rate:.4f}")
             
-            print(f"  Testable:")
+            print("  Testable:")
             print(f"    ⏱️ Temps moyen: {testable_avg_time:.6f}s")  
             print(f"    🔢 Opérations: {testable_metrics['operations']}")
             print(f"    ❌ Taux erreur: {testable_error_rate:.4f}")
@@ -447,7 +447,7 @@ class PracticalRefactoringDemo:
             print("  🔙 Recommandation: Rollback et investigation")
         
         # Flag status final
-        print(f"\n🏁 Status Final Feature Flags:")
+        print("\n🏁 Status Final Feature Flags:")
         for flag_name in ['use_testable_position_manager', 'use_testable_analyzer']:
             status = self.fm.get_flag_status(flag_name)
             print(f"  {flag_name}: {status['rollout_percentage']:.1f}% ({'✅ ON' if status['enabled'] else '❌ OFF'})")

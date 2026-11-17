@@ -23,7 +23,7 @@ print("🔍 ANALYSE DU GAP DE MÉTRIQUES ATR")
 print("="*70)
 
 if last_metric:
-    print(f"\n📊 Dernière métrique ATR enregistrée:")
+    print("\n📊 Dernière métrique ATR enregistrée:")
     print(f"   Trade ID: {last_metric['trade_id'][:8]}...")
     print(f"   Created: {last_metric['created_at']}")
 else:
@@ -42,13 +42,13 @@ print(f"   Gap: {total_trades - total_metrics}")
 first_missing = None
 
 if first_missing:
-    print(f"\n⚠️ Premier trade SANS métrique:")
+    print("\n⚠️ Premier trade SANS métrique:")
     print(f"   Trade: {first_missing['symbol']}")
     print(f"   Exit: {first_missing['timestamp_exit']}")
     print(f"   Reason: {first_missing['exit_reason']}")
 
 # Compter trades par jour
-print(f"\n📈 TRADES PAR JOUR (3 derniers jours):")
+print("\n📈 TRADES PAR JOUR (3 derniers jours):")
 print("-"*50)
 
 cur.execute("""

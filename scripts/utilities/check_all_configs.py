@@ -79,7 +79,7 @@ LIMIT 15
 try:
     with engine.connect() as conn:
         combos = pd.read_sql(combo_query, conn)
-    print(f"\nTop 15 combinaisons (score/snr/vol/confluence):\n")
+    print("\nTop 15 combinaisons (score/snr/vol/confluence):\n")
     print(combos.to_string(index=False))
 except Exception as e:
     print(f"Erreur: {e}")

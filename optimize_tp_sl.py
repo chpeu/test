@@ -49,8 +49,6 @@ def analyze_and_suggest_tp_sl():
     # Analyser les distances en % depuis l'entrée
     print(f"\n📈 ANALYSE DES DISTANCES DE PRIX ({len(trades)} trades):")
     
-    max_gains = []
-    max_losses = []
     sl_distances = []
     tp_distances = []
     
@@ -75,20 +73,20 @@ def analyze_and_suggest_tp_sl():
                     tp_distances.append(tp_dist_pct)
     
     if sl_distances:
-        print(f"\n🛡️  DISTANCES SL (moyennes):")
+        print("\n🛡️  DISTANCES SL (moyennes):")
         print(f"   SL moyen: {np.mean(sl_distances):.2f}%")
         print(f"   SL min: {np.min(sl_distances):.2f}%")
         print(f"   SL max: {np.max(sl_distances):.2f}%")
         print(f"   SL médian: {np.median(sl_distances):.2f}%")
     
     if tp_distances:
-        print(f"\n🎯 DISTANCES TP (moyennes):")
+        print("\n🎯 DISTANCES TP (moyennes):")
         print(f"   TP moyen: {np.mean(tp_distances):.2f}%")
         print(f"   TP min: {np.min(tp_distances):.2f}%")
         print(f"   TP max: {np.max(tp_distances):.2f}%")
     
     # Analyser les PnL par raison de sortie
-    print(f"\n📋 PERFORMANCE PAR RAISON DE SORTIE:")
+    print("\n📋 PERFORMANCE PAR RAISON DE SORTIE:")
     cursor.execute("""
         SELECT 
             exit_reason,
@@ -106,31 +104,31 @@ def analyze_and_suggest_tp_sl():
         print(f"   {reason:15s}: {count:3d} trades | PnL moyen: {avg_pnl:+.3f}% (±{stddev:.3f}%)")
     
     # Suggestions basées sur l'analyse
-    print(f"\n💡 SUGGESTIONS D'OPTIMISATION:")
+    print("\n💡 SUGGESTIONS D'OPTIMISATION:")
     
     # Suggestion 1: Réduire le TP pour qu'il soit atteignable
     if tp_distances:
         realistic_tp = np.percentile(tp_distances, 25)  # 25ème percentile
-        print(f"\n1. TP RÉALISTE:")
-        print(f"   Actuel: 500% (jamais atteint)")
+        print("\n1. TP RÉALISTE:")
+        print("   Actuel: 500% (jamais atteint)")
         print(f"   Suggéré: {realistic_tp:.1f}% (25ème percentile)")
-        print(f"   Rationnel: Un TP plus raisonnable sera plus souvent atteint")
+        print("   Rationnel: Un TP plus raisonnable sera plus souvent atteint")
     
     # Suggestion 2: Ajuster le SL pour améliorer le ratio
     if sl_distances:
         current_sl = 25.0
         suggested_sl = np.percentile(sl_distances, 75)  # 75ème percentile
-        print(f"\n2. SL PLUS SERRÉ:")
+        print("\n2. SL PLUS SERRÉ:")
         print(f"   Actuel: {current_sl:.1f}%")
         print(f"   Suggéré: {suggested_sl:.1f}% (75ème percentile)")
-        print(f"   Impact: Réduira les pertes moyennes")
+        print("   Impact: Réduira les pertes moyennes")
         
         if realistic_tp and suggested_sl:
             new_ratio = realistic_tp / suggested_sl
             print(f"   Nouveau ratio: {new_ratio:.2f} (vs 20.0 théorique)")
     
     # Suggestion 3: Configurations alternatives
-    print(f"\n3. CONFIGURATIONS ALTERNATIVES TESTÉES:")
+    print("\n3. CONFIGURATIONS ALTERNATIVES TESTÉES:")
     
     configs = [
         {"tp": 1.0, "sl": 0.5, "ratio": 2.0},
@@ -186,11 +184,11 @@ def analyze_and_suggest_tp_sl():
         print(f"      → Winrate: {winrate:.1f}% | PnL moyen: {avg_pnl:+.3f}%")
     
     # Conclusion
-    print(f"\n🎯 CONCLUSION:")
-    print(f"   Le problème principal est un TP irréaliste (500%) qui n'est jamais atteint.")
-    print(f"   Les trades se ferment par trailing stop avec des gains minimes.")
-    print(f"   Solution: Réduire le TP à 1-2% et resserrer le SL à 0.4-0.8%")
-    print(f"   Cela améliorera le ratio réel gains/pertes.")
+    print("\n🎯 CONCLUSION:")
+    print("   Le problème principal est un TP irréaliste (500%) qui n'est jamais atteint.")
+    print("   Les trades se ferment par trailing stop avec des gains minimes.")
+    print("   Solution: Réduire le TP à 1-2% et resserrer le SL à 0.4-0.8%")
+    print("   Cela améliorera le ratio réel gains/pertes.")
     
     cursor.close()
     conn.close()

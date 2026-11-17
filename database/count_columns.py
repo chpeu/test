@@ -41,7 +41,7 @@ columns = [
 
 total = sum(columns)
 print(f"Total colonnes dans INSERT: {total}")
-print(f"Placeholders attendus: 111")
+print("Placeholders attendus: 111")
 print(f"Différence: {total - 111}")
 
 # Vérifier la ligne 712-717 (indicateurs de sortie)

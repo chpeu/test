@@ -48,7 +48,7 @@ def analyze_post_exit_timing():
     print(f"   - Samples moyens: {stats['avg_samples']:.0f}")
     print(f"   - Interval: {stats['avg_interval_ms']:.0f}ms")
     
-    print(f"\n⏱️ Temps jusqu'au MFE post-exit:")
+    print("\n⏱️ Temps jusqu'au MFE post-exit:")
     print(f"   - Moyenne: {stats['avg_time_to_mfe']:.1f}s")
     print(f"   - Min: {stats['min_time_to_mfe']:.1f}s")
     print(f"   - Max: {stats['max_time_to_mfe']:.1f}s")
@@ -81,7 +81,7 @@ def analyze_post_exit_timing():
             END
     """)
     
-    print(f"\n📊 Distribution du temps jusqu'au MFE:")
+    print("\n📊 Distribution du temps jusqu'au MFE:")
     for row in cursor.fetchall():
         pct = row['count'] / stats['total_trades'] * 100
         bar = '█' * int(pct / 2)
@@ -97,7 +97,7 @@ def analyze_post_exit_timing():
     """)
     late_mfe = cursor.fetchone()
     
-    print(f"\n⚠️ Trades avec MFE après 5 min ou non capturé:")
+    print("\n⚠️ Trades avec MFE après 5 min ou non capturé:")
     print(f"   - Count: {late_mfe['count']}")
     if late_mfe['avg_mfe']:
         print(f"   - MFE moyen: {late_mfe['avg_mfe']:.2f}%")

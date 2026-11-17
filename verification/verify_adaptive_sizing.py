@@ -47,7 +47,7 @@ reset_adaptive_sizing_manager()
 
 # Créer manager avec config depuis TRADING_CONFIG
 manager = get_adaptive_sizing_manager()
-print(f"   ✅ Manager créé avec config depuis TRADING_CONFIG")
+print("   ✅ Manager créé avec config depuis TRADING_CONFIG")
 print(f"   Config chargée: enabled={manager.config.enabled}")
 
 # =============================================================================
@@ -141,7 +141,7 @@ print(f"   Après grosse perte: {SYMBOL_A} mult={manager.get_size_multiplier(SYM
 # Vérifier que stats ont été reset
 stats_btc_after = manager.pair_stats.get(SYMBOL_A)
 if stats_btc_after.total_trades == 0:
-    print(f"   ✅ TEST 3 PASS: Stats reset après grosse perte")
+    print("   ✅ TEST 3 PASS: Stats reset après grosse perte")
     tests_passed += 1
     tests_total += 1
 else:
@@ -156,7 +156,7 @@ print("  RÉSUMÉ")
 print("=" * 70)
 
 all_stats = manager.get_all_stats()
-print(f"\n   Stats toutes paires:")
+print("\n   Stats toutes paires:")
 for symbol, data in all_stats.items():
     print(f"      {symbol}: {data['wins']}W/{data['losses']}L = {data['winrate']:.0%} | mult={data['current_multiplier']:.2f}")
 

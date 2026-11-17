@@ -259,7 +259,7 @@ def test_2_time_series_split(X, y, hyperparams, df_clean):
     avg_f1 = np.mean([r['f1'] for r in fold_results])
     avg_auc = np.mean([r['auc'] for r in fold_results])
     
-    print(f"\n📊 Moyenne Time Series:")
+    print("\n📊 Moyenne Time Series:")
     print(f"   Accuracy: {avg_acc:.4f}")
     print(f"   F1 Score: {avg_f1:.4f}")
     print(f"   ROC AUC:  {avg_auc:.4f}")
@@ -541,7 +541,7 @@ def generate_final_verdict(all_results):
     gap = all_results['overfitting']['gap']
     mc_std = all_results['monte_carlo']['std']
     
-    print(f"\n📊 RÉSUMÉ DES TESTS:")
+    print("\n📊 RÉSUMÉ DES TESTS:")
     print(f"   CV Accuracy (5-fold): {cv_acc:.1%}")
     print(f"   Time Series Accuracy: {ts_acc:.1%}")
     print(f"   Gap Train-Test: {gap:.1%}")
@@ -589,16 +589,16 @@ def generate_final_verdict(all_results):
     
     if score >= 4:
         print(f"\n{Colors.GREEN}{Colors.BOLD}✅ VERDICT: MODÈLE UTILE - Recommandé pour filtrage{Colors.ENDC}")
-        print(f"   Le modèle offre une amélioration réelle par rapport au hasard.")
-        print(f"   Suggestion: Utiliser avec confiance > 60%")
+        print("   Le modèle offre une amélioration réelle par rapport au hasard.")
+        print("   Suggestion: Utiliser avec confiance > 60%")
     elif score >= 3:
         print(f"\n{Colors.YELLOW}{Colors.BOLD}⚠️ VERDICT: UTILITÉ MARGINALE - À utiliser avec précaution{Colors.ENDC}")
-        print(f"   Le modèle offre une légère amélioration mais n'est pas fiable.")
-        print(f"   Suggestion: Utiliser uniquement pour filtrer les trades à haute confiance (>70%)")
+        print("   Le modèle offre une légère amélioration mais n'est pas fiable.")
+        print("   Suggestion: Utiliser uniquement pour filtrer les trades à haute confiance (>70%)")
     else:
         print(f"\n{Colors.RED}{Colors.BOLD}❌ VERDICT: MODÈLE NON RECOMMANDÉ{Colors.ENDC}")
-        print(f"   Le modèle n'offre pas d'amélioration significative vs le hasard.")
-        print(f"   Suggestion: Désactiver le filtre ML ou réentraîner avec plus de données")
+        print("   Le modèle n'offre pas d'amélioration significative vs le hasard.")
+        print("   Suggestion: Désactiver le filtre ML ou réentraîner avec plus de données")
     
     return score
 
@@ -606,7 +606,7 @@ def generate_final_verdict(all_results):
 def main():
     """Exécution de l'audit complet"""
     print(f"\n{'='*60}")
-    print(f"🔬 AUDIT COMPLET DU MODÈLE GRADIENTBOOSTING")
+    print("🔬 AUDIT COMPLET DU MODÈLE GRADIENTBOOSTING")
     print(f"   Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}")
     

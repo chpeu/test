@@ -40,21 +40,21 @@ for col in trades.columns:
 # Analyser par presence de exit_api_response (trades LIVE fermes ont une reponse)
 if 'exit_api_response' in trades.columns:
     has_exit_api = trades['exit_api_response'].notna()
-    print(f"\n--- Trades avec exit_api_response ---")
+    print("\n--- Trades avec exit_api_response ---")
     print(f"Avec reponse API (LIVE ferme): {has_exit_api.sum()}")
     print(f"Sans reponse API (paper/non ferme): {(~has_exit_api).sum()}")
 
 # Analyser par presence de entry_api_response
 if 'entry_api_response' in trades.columns:
     has_entry_api = trades['entry_api_response'].notna()
-    print(f"\n--- Trades avec entry_api_response ---")
+    print("\n--- Trades avec entry_api_response ---")
     print(f"Avec reponse API entree: {has_entry_api.sum()}")
     print(f"Sans reponse API entree: {(~has_entry_api).sum()}")
 
 # Analyser exit_fee_usdt (trades LIVE ont des frais)
 if 'exit_fee_usdt' in trades.columns:
     has_exit_fee = trades['exit_fee_usdt'].notna() & (trades['exit_fee_usdt'] != 0)
-    print(f"\n--- Trades avec exit_fee_usdt ---")
+    print("\n--- Trades avec exit_fee_usdt ---")
     print(f"Avec frais sortie: {has_exit_fee.sum()}")
     print(f"Sans frais sortie: {(~has_exit_fee).sum()}")
 

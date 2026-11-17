@@ -105,7 +105,7 @@ def check_data_availability():
         print(f"   📊 Trades disponibles: {count}")
         
         if count < 100:
-            print(f"   ⚠️ Moins de 100 trades - optimisation peut être instable")
+            print("   ⚠️ Moins de 100 trades - optimisation peut être instable")
         else:
             print("   ✅ Données suffisantes pour optimisation")
         
@@ -176,12 +176,12 @@ def run_quick_optimization_test():
         
         print("   ⏳ Optimisation (5 trials)...")
         best_params = optimizer.optimize(n_trials=5, timeout_minutes=2)
-        print(f"   ✅ Meilleurs paramètres trouvés")
+        print("   ✅ Meilleurs paramètres trouvés")
         
         print("   ⏳ Validation holdout...")
         metrics = optimizer.validate_on_holdout()
         
-        print(f"\n   📊 RÉSULTATS TEST:")
+        print("\n   📊 RÉSULTATS TEST:")
         print(f"      Test Accuracy: {metrics['test_accuracy']*100:.1f}%")
         print(f"      Overfitting Gap: {metrics['overfitting_gap']*100:.1f}%")
         print(f"      F1 Score: {metrics['f1_score']:.3f}")

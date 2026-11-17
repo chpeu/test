@@ -86,7 +86,7 @@ async def test_websocket_via_vite_proxy():
                         print(f"⏳ [{elapsed}s] Attente... (pings: {ping_received}, pongs: {pong_sent})")
                     continue
             
-            print(f"\n📊 RÉSULTATS test via proxy Vite:")
+            print("\n📊 RÉSULTATS test via proxy Vite:")
             print(f"   • Durée: {timeout_seconds}s")
             print(f"   • Pings reçus: {ping_received}")
             print(f"   • Pongs envoyés: {pong_sent}")

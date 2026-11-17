@@ -88,7 +88,7 @@ try:
     if result:
         print(f"   ✅ Insertion réussie! metric_id={result}")
     else:
-        print(f"   ❌ Insertion échouée")
+        print("   ❌ Insertion échouée")
         
 except Exception as e:
     print(f"   ❌ Exception: {e}")
@@ -101,7 +101,7 @@ m = cur.fetchone()
 
 if m:
     m = dict(m)
-    print(f"\n✅ DONNÉES INSÉRÉES:")
+    print("\n✅ DONNÉES INSÉRÉES:")
     print("-"*50)
     
     # Colonnes critiques mode FIXE
@@ -143,14 +143,14 @@ if m:
     # Nettoyage du test
     cur.execute("DELETE FROM trade_atr_metrics WHERE trade_id = %s", (test_trade_id,))
     conn.commit()
-    print(f"\n🧹 Métrique test supprimée")
+    print("\n🧹 Métrique test supprimée")
     
     if all_ok:
-        print(f"\n✅ MODE FIXE: TOUTES LES COLONNES SE REMPLISSENT CORRECTEMENT!")
+        print("\n✅ MODE FIXE: TOUTES LES COLONNES SE REMPLISSENT CORRECTEMENT!")
     else:
-        print(f"\n⚠️ MODE FIXE: CERTAINES COLONNES NE SONT PAS REMPLIES")
+        print("\n⚠️ MODE FIXE: CERTAINES COLONNES NE SONT PAS REMPLIES")
 else:
-    print(f"\n❌ Métrique NON trouvée")
+    print("\n❌ Métrique NON trouvée")
 
 cur.close()
 conn.close()

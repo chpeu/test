@@ -46,7 +46,7 @@ def main():
         # Conditions pour activation du trailing
         print("Conditions pour activation du trailing (ligne 2976-2983):")
         print(f"1. Mode FIXE + trailing_enabled = False → SKIP: {tp_sl_mode == 'FIXE' and not trailing_enabled}")
-        print(f"2. partial_tp_sold OR pnl >= trigger → CHECK")
+        print("2. partial_tp_sold OR pnl >= trigger → CHECK")
         
         if tp_sl_mode == 'FIXE' and not trailing_enabled:
             print("❌ PROBLÈME: Trailing sera ignoré en mode FIXE!")
@@ -113,7 +113,7 @@ def main():
         current_tp = 101.0  # TP initial +1%
         direction = "LONG"
         
-        print(f"Position LONG fictive:")
+        print("Position LONG fictive:")
         print(f"  Entry: {entry_price}")
         print(f"  SL initial: {current_sl}")
         print(f"  TP initial: {current_tp}")
@@ -166,16 +166,16 @@ def main():
                     current_sl = new_sl
                     print(f"   ✅ SL mis à jour: {current_sl:.4f}")
                 else:
-                    print(f"   ⏹️ SL non mis à jour (pas favorable)")
+                    print("   ⏹️ SL non mis à jour (pas favorable)")
                 
             # Check fermeture
             if price <= current_sl:
                 close_reason = 'TS' if pnl >= 0 else 'SL'
                 print(f"   🔚 Position devrait fermer: {close_reason}")
             elif price >= current_tp:
-                print(f"   🔚 Position devrait fermer: TP")
+                print("   🔚 Position devrait fermer: TP")
             else:
-                print(f"   ➡️ Position continue")
+                print("   ➡️ Position continue")
         
         # 7. Solutions proposées
         print("\n" + "=" * 60)

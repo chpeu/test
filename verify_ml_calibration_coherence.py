@@ -84,9 +84,9 @@ def main():
                             latest_update_naive = latest_update.replace(tzinfo=None)
                             
                             if latest_update_naive > gb_date_naive:
-                                print(f'   [OK] Calibration mise a jour APRES entrainement GB')
+                                print('   [OK] Calibration mise a jour APRES entrainement GB')
                             else:
-                                print(f'   [WARNING] Calibration plus ancienne que le modele GB!')
+                                print('   [WARNING] Calibration plus ancienne que le modele GB!')
                                 print(f'             Modele GB: {gb_date_naive}')
                                 print(f'             Derniere calib: {latest_update_naive}')
                 else:
@@ -127,7 +127,7 @@ def main():
                     if diff < 10:  # Tolérance de 10%
                         print(f'      [OK] Coherent avec GB accuracy ({expected_accuracy:.1f}%)')
                     else:
-                        print(f'      [WARNING] Ecart significatif avec GB accuracy!')
+                        print('      [WARNING] Ecart significatif avec GB accuracy!')
                         print(f'                Calibration: {avg_winrate:.1f}% vs GB: {expected_accuracy:.1f}%')
 
         finally:
@@ -166,9 +166,9 @@ def main():
                         diff = abs(winrate*100 - expected_accuracy)
                         
                         if diff < 5:  # Tolérance de 5%
-                            print(f'   [OK] Performance coherente avec modele GB')
+                            print('   [OK] Performance coherente avec modele GB')
                         else:
-                            print(f'   [WARNING] Performance diverge du modele GB!')
+                            print('   [WARNING] Performance diverge du modele GB!')
                             print(f'             Observe: {winrate*100:.1f}% vs Attendu: {expected_accuracy:.1f}%')
                     else:
                         print('   [WARNING] Aucun trade avec ml_confidence apres entrainement GB')
@@ -202,7 +202,7 @@ def main():
                 if (min_wr / 100.0) >= gb_accuracy_threshold:
                     print(f'   [OK] Seuil coherent avec modele GB (min {gb_accuracy_threshold*100:.1f}%)')
                 else:
-                    print(f'   [WARNING] Seuil peut-etre trop bas par rapport au modele GB')
+                    print('   [WARNING] Seuil peut-etre trop bas par rapport au modele GB')
                     print(f'             Recommande min: {gb_accuracy_threshold*100:.1f}%')
             except Exception:
                 print('   [WARNING] Seuil ml_calib_min_winrate non numérique, impossible de comparer')

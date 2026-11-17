@@ -95,7 +95,7 @@ def main():
         exit_price = t.get('exit', 0)
         direction = t.get('direction', '')
         pnl_pct_recorded = t.get('net_pnl_pct', 0)
-        size_usdt = t.get('size_initial_usdt', t.get('size', 25))
+        t.get('size_initial_usdt', t.get('size', 25))
         
         if entry and exit_price and entry > 0:
             # Calculer le PnL theorique

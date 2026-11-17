@@ -198,14 +198,14 @@ def check_phase1c_whatif():
         simulator = WhatIfSimulator()
         
         if hasattr(simulator, 'simulate_regime_scenarios'):
-            print(f"  [OK] simulate_regime_scenarios() presente")
+            print("  [OK] simulate_regime_scenarios() presente")
             results['method'] = True
         else:
-            print(f"  [ERREUR] simulate_regime_scenarios() manquante")
+            print("  [ERREUR] simulate_regime_scenarios() manquante")
             results['method'] = False
         
         if hasattr(simulator, 'update_regime_whatif'):
-            print(f"  [OK] update_regime_whatif() presente")
+            print("  [OK] update_regime_whatif() presente")
         
     except Exception as e:
         print(f"  [ERREUR] Import WhatIfSimulator: {e}")
@@ -240,7 +240,7 @@ def check_phase1c_whatif():
     """)
     rows = cur.fetchall()
     if rows:
-        print(f"\n  Distribution regimes optimaux:")
+        print("\n  Distribution regimes optimaux:")
         for regime, count in rows:
             pct = 100 * count / optimal if optimal > 0 else 0
             print(f"    - {regime}: {count} trades ({pct:.0f}%)")
@@ -278,9 +278,9 @@ def check_toggles_status():
             all_off = False
     
     if all_off:
-        print(f"\n  [OK] Tous toggles OFF - Comportement V1 preserve")
+        print("\n  [OK] Tous toggles OFF - Comportement V1 preserve")
     else:
-        print(f"\n  [INFO] Certains toggles actifs - Mode V2 partiel")
+        print("\n  [INFO] Certains toggles actifs - Mode V2 partiel")
     
     return True
 

@@ -13,7 +13,7 @@ def verify_post_restart():
     
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -74,8 +74,8 @@ def verify_post_restart():
                 print(f"   ├─ Durée: {duration:.0f}s")
             
             # Vérifier colonnes anti-giveback CONFIG
-            print(f"   │")
-            print(f"   ├─ 🛡️ CONFIG ANTI-GIVEBACK:")
+            print("   │")
+            print("   ├─ 🛡️ CONFIG ANTI-GIVEBACK:")
             ag_config_filled = 0
             ag_config_total = 4
             
@@ -83,32 +83,32 @@ def verify_post_restart():
                 print(f"   │   ├─ trailing_mfe_enabled: {trade['config_trailing_mfe_enabled']}")
                 ag_config_filled += 1
             else:
-                print(f"   │   ├─ trailing_mfe_enabled: ❌ NULL")
+                print("   │   ├─ trailing_mfe_enabled: ❌ NULL")
                 
             if trade['config_trailing_mfe_trigger_pct'] is not None:
                 print(f"   │   ├─ trailing_mfe_trigger_pct: {trade['config_trailing_mfe_trigger_pct']:.2f}%")
                 ag_config_filled += 1
             else:
-                print(f"   │   ├─ trailing_mfe_trigger_pct: ❌ NULL")
+                print("   │   ├─ trailing_mfe_trigger_pct: ❌ NULL")
                 
             if trade['config_trailing_mfe_lock_in_pct'] is not None:
                 print(f"   │   ├─ trailing_mfe_lock_in_pct: {trade['config_trailing_mfe_lock_in_pct']:.2f}%")
                 ag_config_filled += 1
             else:
-                print(f"   │   ├─ trailing_mfe_lock_in_pct: ❌ NULL")
+                print("   │   ├─ trailing_mfe_lock_in_pct: ❌ NULL")
                 
             if trade['config_partial_tp_be_lock_in_pct'] is not None:
                 print(f"   │   └─ partial_tp_be_lock_in_pct: {trade['config_partial_tp_be_lock_in_pct']:.2f}%")
                 ag_config_filled += 1
             else:
-                print(f"   │   └─ partial_tp_be_lock_in_pct: ❌ NULL")
+                print("   │   └─ partial_tp_be_lock_in_pct: ❌ NULL")
             
             config_coverage = ag_config_filled / ag_config_total * 100
             print(f"   │   📋 Couverture config: {ag_config_filled}/{ag_config_total} ({config_coverage:.0f}%)")
             
             # Vérifier colonnes anti-giveback TRACKING
-            print(f"   │")
-            print(f"   ├─ 🎯 TRACKING ANTI-GIVEBACK:")
+            print("   │")
+            print("   ├─ 🎯 TRACKING ANTI-GIVEBACK:")
             ag_tracking_info = 0
             
             print(f"   │   ├─ trailing_mfe_triggered: {trade['trailing_mfe_triggered']}")
@@ -123,11 +123,11 @@ def verify_post_restart():
                 if trade['trailing_mfe_new_sl']:
                     print(f"   │   └─ new_sl: {trade['trailing_mfe_new_sl']}")
             else:
-                print(f"   │   └─ (Trailing MFE non déclenché)")
+                print("   │   └─ (Trailing MFE non déclenché)")
             
             # Vérifier protections existantes
-            print(f"   │")
-            print(f"   ├─ 🔒 PROTECTIONS CLASSIQUES:")
+            print("   │")
+            print("   ├─ 🔒 PROTECTIONS CLASSIQUES:")
             print(f"   │   ├─ break_even_set: {trade['break_even_set']}")
             if trade['break_even_triggered_at']:
                 print(f"   │   ├─ break_even_triggered_at: {trade['break_even_triggered_at']}")
@@ -142,7 +142,7 @@ def verify_post_restart():
             be_set = trade['break_even_set'] or False
             mfe_triggered = trade['trailing_mfe_triggered'] or False
             
-            print(f"   │")
+            print("   │")
             if (be_set or mfe_triggered) and pnl < 0 and mfe > 0.05:
                 gap = mfe - pnl
                 print(f"   └─ ⚠️ GIVEBACK DÉTECTÉ: MFE {mfe:.2f}% → PnL {pnl:.2f}% (gap: {gap:.2f}%)")
@@ -151,7 +151,7 @@ def verify_post_restart():
             elif mfe > 0.15 and pnl < -0.1:
                 print(f"   └─ 🔴 Gestion problématique: MFE {mfe:.2f}% → PnL {pnl:.2f}% (pas de protection)")
             else:
-                print(f"   └─ 📊 Trade standard")
+                print("   └─ 📊 Trade standard")
             
             print("")
         
@@ -185,7 +185,7 @@ def verify_post_restart():
                 print(f"Lock-in moyen configuré: {stats['avg_mfe_lock_in_pct']:.2f}%")
         
         # Vérifier invert_signals sur les récents trades
-        print(f"\n🔄 VÉRIFICATION INVERT_SIGNALS:")
+        print("\n🔄 VÉRIFICATION INVERT_SIGNALS:")
         cursor.execute("""
             SELECT symbol, direction, COUNT(*) as count
             FROM trades 

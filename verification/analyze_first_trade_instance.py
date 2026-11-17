@@ -96,7 +96,7 @@ def analyze_trade(trade):
     ts_entry = trade.get('timestamp_entry')
     ts_exit = trade.get('timestamp_exit')
     
-    print(f"\n📊 INFORMATIONS DE BASE")
+    print("\n📊 INFORMATIONS DE BASE")
     print("-"*40)
     print(f"   Symbol: {symbol}")
     print(f"   Direction: {direction}")
@@ -115,14 +115,14 @@ def analyze_trade(trade):
         print(f"   Entrée: {ts_entry}")
         print(f"   Sortie: {ts_exit}")
     
-    print(f"\n💰 RÉSULTAT")
+    print("\n💰 RÉSULTAT")
     print("-"*40)
     print(f"   PnL: {pnl_pct:+.3f}%")
     print(f"   PnL USDT: {pnl_usdt:+.4f} USDT")
     print(f"   Exit Reason: {exit_reason}")
     
     # Métriques ATR
-    print(f"\n📈 MÉTRIQUES ATR")
+    print("\n📈 MÉTRIQUES ATR")
     print("-"*40)
     print(f"   ATR 1m: {trade.get('entry_atr_pct_1m', 'N/A')}%")
     print(f"   ATR 5m: {trade.get('entry_atr_pct_5m', 'N/A')}%")
@@ -130,7 +130,7 @@ def analyze_trade(trade):
     print(f"   Mult TP: {trade.get('param_atr_mult_tp', 'N/A')}")
     
     # MFE/MAE
-    print(f"\n🎯 MFE / MAE (Excursions)")
+    print("\n🎯 MFE / MAE (Excursions)")
     print("-"*40)
     mfe = trade.get('mfe')
     mae = trade.get('mae')
@@ -146,7 +146,7 @@ def analyze_trade(trade):
         if max_price:
             print(f"      → Prix max: {max_price}")
     else:
-        print(f"   MFE: ❌ NON ENREGISTRÉ")
+        print("   MFE: ❌ NON ENREGISTRÉ")
     
     if mae is not None:
         print(f"   MAE (Max Adverse): {mae:.3f}%")
@@ -155,17 +155,17 @@ def analyze_trade(trade):
         if min_price:
             print(f"      → Prix min: {min_price}")
     else:
-        print(f"   MAE: ❌ NON ENREGISTRÉ")
+        print("   MAE: ❌ NON ENREGISTRÉ")
     
     # Efficacité capture
     if mfe and pnl_pct and mfe > 0:
         capture_rate = (pnl_pct / mfe * 100)
         print(f"   📊 Capture MFE: {capture_rate:.1f}%")
         if capture_rate < 50:
-            print(f"      ⚠️ Moins de 50% du MFE capturé!")
+            print("      ⚠️ Moins de 50% du MFE capturé!")
     
     # Break-Even
-    print(f"\n🛡️ BREAK-EVEN")
+    print("\n🛡️ BREAK-EVEN")
     print("-"*40)
     be_triggered = trade.get('be_triggered', False)
     be_at = trade.get('be_triggered_at')
@@ -174,19 +174,19 @@ def analyze_trade(trade):
     
     print(f"   Config trigger: {param_be}%")
     if be_triggered:
-        print(f"   ✅ BE ACTIVÉ")
+        print("   ✅ BE ACTIVÉ")
         if be_at:
             print(f"      → À: {be_at}")
         if be_pnl:
             print(f"      → PnL au moment: +{be_pnl:.3f}%")
     else:
-        print(f"   ❌ BE NON ACTIVÉ")
+        print("   ❌ BE NON ACTIVÉ")
         if mfe and param_be:
             if mfe >= param_be:
                 print(f"      ⚠️ ANOMALIE: MFE {mfe:.3f}% >= trigger {param_be}% mais BE non activé!")
     
     # Trailing Stop
-    print(f"\n🎢 TRAILING STOP")
+    print("\n🎢 TRAILING STOP")
     print("-"*40)
     trailing_activated = trade.get('trailing_activated', False)
     trailing_at = trade.get('trailing_activated_at')
@@ -199,7 +199,7 @@ def analyze_trade(trade):
     print(f"   Config distance: {param_trailing_distance}%")
     
     if trailing_activated:
-        print(f"   ✅ TRAILING ACTIVÉ")
+        print("   ✅ TRAILING ACTIVÉ")
         if trailing_at:
             print(f"      → À: {trailing_at}")
         if trailing_final_sl:
@@ -207,13 +207,13 @@ def analyze_trade(trade):
         if trailing_distance:
             print(f"      → Distance finale: {trailing_distance}%")
     else:
-        print(f"   ❌ TRAILING NON ACTIVÉ")
+        print("   ❌ TRAILING NON ACTIVÉ")
         if mfe and param_trailing_trigger:
             if mfe >= param_trailing_trigger:
                 print(f"      ⚠️ ANOMALIE: MFE {mfe:.3f}% >= trigger {param_trailing_trigger}% mais trailing non activé!")
     
     # TP Partiel
-    print(f"\n💰 TP PARTIEL")
+    print("\n💰 TP PARTIEL")
     print("-"*40)
     partial_tp = trade.get('partial_tp_percent')
     param_partial = trade.get('param_partial_tp_trigger')
@@ -222,10 +222,10 @@ def analyze_trade(trade):
     if partial_tp:
         print(f"   ✅ TP PARTIEL EXÉCUTÉ: {partial_tp}%")
     else:
-        print(f"   ❌ Pas de TP partiel")
+        print("   ❌ Pas de TP partiel")
     
     # Stagnation
-    print(f"\n⏰ STAGNATION")
+    print("\n⏰ STAGNATION")
     print("-"*40)
     stagnation = trade.get('stagnation_detected', False)
     stagnation_at = trade.get('stagnation_detected_at')
@@ -233,7 +233,7 @@ def analyze_trade(trade):
     stagnation_pnl = trade.get('stagnation_pnl_at_exit')
     
     if stagnation:
-        print(f"   ⚠️ STAGNATION DÉTECTÉE")
+        print("   ⚠️ STAGNATION DÉTECTÉE")
         if stagnation_at:
             print(f"      → À: {stagnation_at}")
         if stagnation_duration:
@@ -241,10 +241,10 @@ def analyze_trade(trade):
         if stagnation_pnl:
             print(f"      → PnL à la sortie: {stagnation_pnl:.3f}%")
     else:
-        print(f"   ✅ Pas de stagnation")
+        print("   ✅ Pas de stagnation")
     
     # Reconstitution du film
-    print(f"\n🎬 RECONSTITUTION DU FILM")
+    print("\n🎬 RECONSTITUTION DU FILM")
     print("="*80)
     
     events = []
@@ -303,7 +303,7 @@ def analyze_trade(trade):
             events.append({
                 'time': trailing_offset,
                 'type': 'TRAILING',
-                'desc': f"Trailing activé",
+                'desc': "Trailing activé",
                 'details': f"SL final: {trailing_final_sl}" if trailing_final_sl else ""
             })
         except Exception:
@@ -344,7 +344,7 @@ def analyze_trade(trade):
             print(f"   {event['details']}")
     
     # Diagnostic
-    print(f"\n\n🔍 DIAGNOSTIC")
+    print("\n\n🔍 DIAGNOSTIC")
     print("="*80)
     
     issues = []

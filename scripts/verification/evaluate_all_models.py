@@ -104,7 +104,7 @@ try:
         except Exception:
             auc_v1 = 0.5
         
-        print(f"\n   Resultats XGBoost V1:")
+        print("\n   Resultats XGBoost V1:")
         print(f"      Accuracy:  {acc_v1*100:.1f}%")
         print(f"      Precision: {prec_v1*100:.1f}%")
         print(f"      Recall:    {rec_v1*100:.1f}%")
@@ -133,7 +133,7 @@ try:
     predictor_v2 = get_predictor_v2()
     
     if predictor_v2.is_loaded:
-        print(f"   Modele charge")
+        print("   Modele charge")
         
         # Pour V2, on prédit le PNL% et on convertit en classification
         y_pred_v2 = []
@@ -161,7 +161,7 @@ try:
         rec_v2 = recall_score(y_test, y_pred_v2, zero_division=0)
         f1_v2 = f1_score(y_test, y_pred_v2, zero_division=0)
         
-        print(f"\n   Resultats XGBoost V2:")
+        print("\n   Resultats XGBoost V2:")
         print(f"      Accuracy:  {acc_v2*100:.1f}%")
         print(f"      Precision: {prec_v2*100:.1f}%")
         print(f"      Recall:    {rec_v2*100:.1f}%")
@@ -189,7 +189,7 @@ try:
     predictor_gb = get_gb_predictor()
     
     if predictor_gb.is_loaded:
-        print(f"   Modele charge")
+        print("   Modele charge")
         
         y_pred_gb = []
         y_proba_gb = []
@@ -216,7 +216,7 @@ try:
         except Exception:
             auc_gb = 0.5
         
-        print(f"\n   Resultats GradientBoosting:")
+        print("\n   Resultats GradientBoosting:")
         print(f"      Accuracy:  {acc_gb*100:.1f}%")
         print(f"      Precision: {prec_gb*100:.1f}%")
         print(f"      Recall:    {rec_gb*100:.1f}%")
@@ -250,7 +250,7 @@ try:
         # Test avec différents seuils
         thresholds = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
         
-        print(f"\n   Test avec differents seuils P(loss):")
+        print("\n   Test avec differents seuils P(loss):")
         print(f"   {'Seuil':<10} {'Rejetes':<12} {'Conserves':<12} {'WR Sans':<12} {'WR Avec':<12} {'Gain':<10}")
         print("   " + "-" * 68)
         

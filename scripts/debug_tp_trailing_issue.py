@@ -78,15 +78,15 @@ def main():
         print("-" * 40)
         
         print("📋 Logique TP Partiel (position_manager.py ligne 2863):")
-        print(f"   if not tp_escalier_enabled AND get_effective_value('use_partial_tp'):")
+        print("   if not tp_escalier_enabled AND get_effective_value('use_partial_tp'):")
         print(f"   → use_partial_tp = {use_partial_tp}")
         if use_partial_tp:
             print("   ✅ TP Partiel devrait être vérifié")
         else:
             print("   ❌ TP Partiel ne sera PAS vérifié")
         
-        print(f"\n📋 Logique Trailing (position_manager.py ligne 2976-2983):")
-        print(f"   if tp_sl_mode == 'FIXE' and not trailing_enabled:")
+        print("\n📋 Logique Trailing (position_manager.py ligne 2976-2983):")
+        print("   if tp_sl_mode == 'FIXE' and not trailing_enabled:")
         print(f"   → Mode: {tp_sl_mode}, Enabled: {trailing_enabled}")
         
         if tp_sl_mode == 'FIXE' and not trailing_enabled:
@@ -160,7 +160,7 @@ def main():
         
         # 6. Test des conditions de déclenchement
         if position_manager and position_manager.active_position:
-            print(f"\n🧪 TEST CONDITIONS DÉCLENCHEMENT")
+            print("\n🧪 TEST CONDITIONS DÉCLENCHEMENT")
             print("-" * 40)
             
             active_pos = position_manager.active_position
@@ -168,7 +168,7 @@ def main():
             current_price = active_pos.entry * 1.005 if active_pos.direction == 'LONG' else active_pos.entry * 0.995
             
             print(f"Prix simulé: {current_price}")
-            print(f"PnL simulé: +0.5%")
+            print("PnL simulé: +0.5%")
             
             # Test TP partiel
             try:
@@ -187,7 +187,7 @@ def main():
             
             # Test trailing
             if trailing_enabled:
-                print(f"Trailing: conditions remplies pour vérification")
+                print("Trailing: conditions remplies pour vérification")
             else:
                 print("Trailing: désactivé")
         

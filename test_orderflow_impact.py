@@ -163,7 +163,7 @@ def run_comparison(n_trials=30):
     metrics = ['test_acc', 'f1', 'precision', 'recall', 'gap']
     metric_names = ['Test Accuracy', 'F1 Score', 'Precision', 'Recall', 'Overfitting Gap']
     
-    for metric, name in zip(metrics, metric_names):
+    for metric, name in zip(metrics, metric_names, strict=True):  # 5 metriques, 5 libelles
         sans = np.array(results['sans_orderflow'][metric])
         avec = np.array(results['avec_orderflow'][metric])
         
@@ -193,7 +193,7 @@ def run_comparison(n_trials=30):
     }).sort_values('importance', ascending=False)
     
     print("\nTop 15 features:")
-    for i, row in importance.head(15).iterrows():
+    for _i, row in importance.head(15).iterrows():
         marker = "🔥" if row['feature'] in ORDER_FLOW_COLS else "  "
         print(f"   {marker} {row['feature']}: {row['importance']:.4f}")
     

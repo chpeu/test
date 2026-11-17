@@ -34,7 +34,7 @@ if pg_logger.enabled:
             """)
             avax = cur.fetchone()
             if avax:
-                print(f"\nAVAX trade in PostgreSQL:")
+                print("\nAVAX trade in PostgreSQL:")
                 print(f"  ID: {avax[0]}")
                 print(f"  Session ID: {avax[2]}")
                 print(f"  Exit Reason: {avax[3]}")
@@ -52,7 +52,7 @@ if pg_logger.enabled:
                 ORDER BY MAX(created_at) DESC
             """)
             sessions = cur.fetchall()
-            print(f"\nRecent sessions (last 24h):")
+            print("\nRecent sessions (last 24h):")
             for s in sessions:
                 print(f"  Session {s[0][:8]}...: {s[1]} trades ({s[2]} to {s[3]})")
                 

@@ -104,13 +104,13 @@ def main():
             print(f"Durée: {duration_min:.1f} min")
             print(f"Exit reason: {exit_reason}")
             
-            print(f"\n💰 Performance:")
+            print("\n💰 Performance:")
             print(f"   PnL final: {pnl_pct:.3f}%")
             print(f"   Max PnL (MFE): {max_pnl_reached:.3f}%" if max_pnl_reached else "   Max PnL (MFE): N/A")
             print(f"   Min PnL: {min_pnl_reached:.3f}%" if min_pnl_reached else "   Min PnL: N/A")
             
             # Analyse du trailing
-            print(f"\n🎢 Trailing Stop:")
+            print("\n🎢 Trailing Stop:")
             print(f"   Activé: {'✅ OUI' if trailing_activated else '❌ NON'}")
             
             if trailing_activated:
@@ -129,7 +129,7 @@ def main():
                             print(f"   ✅ Pullback acceptable: {pullback:.3f}% ≤ {trailing_final_distance_pct*1.5:.3f}% (1.5× distance)")
             else:
                 # Analyser pourquoi le trailing n'a pas été activé
-                print(f"\n   ❓ Pourquoi trailing NON activé:")
+                print("\n   ❓ Pourquoi trailing NON activé:")
                 
                 if entry_atr_1m and param_trailing_trigger_atr_mult:
                     expected_trigger = entry_atr_1m * param_trailing_trigger_atr_mult
@@ -140,29 +140,29 @@ def main():
                     if max_pnl_reached:
                         if max_pnl_reached < expected_trigger:
                             print(f"   • Max PnL ({max_pnl_reached:.3f}%) < Trigger ({expected_trigger:.3f}%)")
-                            print(f"   ✅ Normal: Le PnL n'a jamais atteint le seuil trigger")
+                            print("   ✅ Normal: Le PnL n'a jamais atteint le seuil trigger")
                         else:
                             print(f"   • Max PnL ({max_pnl_reached:.3f}%) >= Trigger ({expected_trigger:.3f}%)")
-                            print(f"   ⚠️ PROBLÈME: Trailing aurait dû s'activer!")
+                            print("   ⚠️ PROBLÈME: Trailing aurait dû s'activer!")
                 else:
-                    print(f"   • Config trailing non disponible dans métriques")
+                    print("   • Config trailing non disponible dans métriques")
                     if max_pnl_reached:
                         print(f"   • Max PnL: {max_pnl_reached:.3f}%")
                         if max_pnl_reached < 0.15:
-                            print(f"   ✅ Normal: PnL trop faible pour activer trailing")
+                            print("   ✅ Normal: PnL trop faible pour activer trailing")
             
             # Break-even
-            print(f"\n🎯 Break-Even:")
+            print("\n🎯 Break-Even:")
             print(f"   Déclenché: {'✅ OUI' if be_triggered else '❌ NON'}")
             if be_triggered and be_triggered_pnl_pct:
                 print(f"   PnL trigger: {be_triggered_pnl_pct:.3f}%")
             
             # Stagnation
-            print(f"\n⏱️ Stagnation:")
+            print("\n⏱️ Stagnation:")
             print(f"   Détectée: {'⚠️ OUI' if stagnation_detected else '✅ NON'}")
             
             # Analyse de la sortie
-            print(f"\n🚪 Analyse de la sortie:")
+            print("\n🚪 Analyse de la sortie:")
             
             if exit_reason == 'SL':
                 if pnl_pct < 0:
@@ -170,7 +170,7 @@ def main():
                     if max_pnl_reached and max_pnl_reached > 0:
                         print(f"   ⚠️ Trade était en profit (MFE: {max_pnl_reached:.3f}%) mais a retourné en perte")
                         if not trailing_activated:
-                            print(f"   💡 Trailing aurait pu sauver ce trade")
+                            print("   💡 Trailing aurait pu sauver ce trade")
                 else:
                     print(f"   ⚠️ SL touché en profit ({pnl_pct:.3f}%) - comportement inhabituel")
                     
@@ -190,10 +190,10 @@ def main():
                 print(f"   ℹ️ Autre raison: {exit_reason} ({pnl_pct:.3f}%)")
             
             # Recommandations spécifiques
-            print(f"\n💡 Recommandation pour ce trade:")
+            print("\n💡 Recommandation pour ce trade:")
             
             if not trailing_activated and max_pnl_reached and max_pnl_reached > 0.10:
-                print(f"   → Réduire le seuil de trigger trailing (actuellement ~0.18%)")
+                print("   → Réduire le seuil de trigger trailing (actuellement ~0.18%)")
                 
             if trailing_activated and max_pnl_reached and pnl_pct:
                 pullback = max_pnl_reached - pnl_pct
@@ -201,7 +201,7 @@ def main():
                     print(f"   → Distance trailing trop large ({trailing_final_distance_pct:.3f}%), réduire à ~0.10%")
             
             if exit_reason == 'SL' and pnl_pct < 0 and max_pnl_reached and max_pnl_reached > 0:
-                print(f"   → Trade prometteur gâché, activer trailing plus tôt")
+                print("   → Trade prometteur gâché, activer trailing plus tôt")
             
             print()
         
@@ -226,28 +226,28 @@ def main():
         print(f"PnL moyen: {avg_pnl:.3f}%")
         print(f"Durée moyenne: {avg_duration:.1f} min")
         
-        print(f"\nRaisons de sortie:")
+        print("\nRaisons de sortie:")
         for reason, count in exit_reasons.items():
             print(f"   • {reason}: {count} trades")
         
         # Conclusion générale
-        print(f"\n" + "=" * 80)
+        print("\n" + "=" * 80)
         print("🎯 CONCLUSION GLOBALE")
         print("=" * 80)
         
         if trailing_rate < 30:
             print(f"\n⚠️ TAUX D'ACTIVATION TRAILING FAIBLE ({trailing_rate:.0f}%)")
-            print(f"   → Les trades n'atteignent pas le seuil trigger")
-            print(f"   → Recommandation: Réduire trailing_trigger_atr_mult de 1.5 à 1.0")
+            print("   → Les trades n'atteignent pas le seuil trigger")
+            print("   → Recommandation: Réduire trailing_trigger_atr_mult de 1.5 à 1.0")
         elif trailing_rate > 70:
             print(f"\n✅ TAUX D'ACTIVATION TRAILING BON ({trailing_rate:.0f}%)")
-            print(f"   → La majorité des trades activent le trailing")
+            print("   → La majorité des trades activent le trailing")
         else:
             print(f"\n📊 TAUX D'ACTIVATION TRAILING MOYEN ({trailing_rate:.0f}%)")
         
         if avg_pnl < 0:
             print(f"\n❌ PNL MOYEN NÉGATIF ({avg_pnl:.3f}%)")
-            print(f"   → Problème principal: SL trop serré ou mauvais timing d'entrée")
+            print("   → Problème principal: SL trop serré ou mauvais timing d'entrée")
         else:
             print(f"\n✅ PNL MOYEN POSITIF ({avg_pnl:.3f}%)")
         

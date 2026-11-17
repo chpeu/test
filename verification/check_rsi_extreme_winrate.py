@@ -95,7 +95,7 @@ FROM rsi_trades
 
 with engine.connect() as conn:
     r = conn.execute(query3).fetchone()
-    print(f"\n" + "-" * 70)
+    print("\n" + "-" * 70)
     print("QUICK EXIT IMPACT ANALYSIS (threshold=0.05%, slippage=0.03%)")
     print("-" * 70)
     print(f"Quick Exit would trigger: {r[0]} trades")

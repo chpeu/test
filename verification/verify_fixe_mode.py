@@ -139,15 +139,15 @@ def verify_fixe_trade(trade: Dict[str, Any], metrics: Dict[str, Any]) -> List[st
     # 3. Vérifier que stagnation_positive_triggered est FALSE
     if metrics.get('stagnation_positive_triggered'):
         errors.append(
-            f"❌ stagnation_positive_triggered=TRUE en mode FIXE "
-            f"(ne devrait être activé qu'en mode ATR)"
+            "❌ stagnation_positive_triggered=TRUE en mode FIXE "
+            "(ne devrait être activé qu'en mode ATR)"
         )
     
     # 4. Vérifier que les métriques MFE stagnation sont NULL (non utilisées en FIXE)
     if metrics.get('stagnation_mfe_at_exit') is not None:
         errors.append(
-            f"⚠️ stagnation_mfe_at_exit renseigné en mode FIXE "
-            f"(devrait être NULL car MFE protect non utilisé)"
+            "⚠️ stagnation_mfe_at_exit renseigné en mode FIXE "
+            "(devrait être NULL car MFE protect non utilisé)"
         )
     
     # 5. Vérifier que les TP/SL sont basés sur des pourcentages fixes

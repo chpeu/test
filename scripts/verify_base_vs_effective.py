@@ -47,7 +47,7 @@ def print_test(test_name: str, passed: bool, details: str = ""):
 
 def main():
     print(f"\n{BOLD}[VERIFICATION] Base Config vs Effective Config{RESET}")
-    print(f"   Date: 08/12/2025")
+    print("   Date: 08/12/2025")
     
     all_passed = True
     
@@ -60,7 +60,7 @@ def main():
     initial_min_score = TRADING_CONFIG.get('min_score_required')
     initial_atr_mult_sl = TRADING_CONFIG.get('atr_mult_sl')
     
-    print(f"  Valeurs initiales (sliders):")
+    print("  Valeurs initiales (sliders):")
     print(f"    min_score_required: {initial_min_score}")
     print(f"    atr_mult_sl: {initial_atr_mult_sl}")
     
@@ -94,7 +94,7 @@ def main():
     effective_min_score = effective.get('min_score_required')
     effective_atr_mult_sl = effective.get('atr_mult_sl')
     
-    print(f"  Valeurs effectives:")
+    print("  Valeurs effectives:")
     print(f"    min_score_required: {effective_min_score}")
     print(f"    atr_mult_sl: {effective_atr_mult_sl}")
     
@@ -178,7 +178,7 @@ def main():
     differences = summary.get('differences', {})
     has_min_score_diff = 'min_score_required' in differences
     
-    print(f"  Différences détectées:")
+    print("  Différences détectées:")
     for key, diff in differences.items():
         print(f"    {key}: base={diff['base']} → effective={diff['effective']}")
     
@@ -225,13 +225,13 @@ def main():
     
     if all_passed:
         print(f"\n  {GREEN}✅ TOUS LES TESTS PASSÉS{RESET}")
-        print(f"\n  Le système de séparation base/effective fonctionne correctement.")
-        print(f"  - Les sliders ne sont jamais modifiés automatiquement")
-        print(f"  - L'onglet 'Variables en cours' affichera les valeurs effectives")
-        print(f"  - Les ajustements régime/CB sont correctement appliqués")
+        print("\n  Le système de séparation base/effective fonctionne correctement.")
+        print("  - Les sliders ne sont jamais modifiés automatiquement")
+        print("  - L'onglet 'Variables en cours' affichera les valeurs effectives")
+        print("  - Les ajustements régime/CB sont correctement appliqués")
     else:
         print(f"\n  {RED}❌ CERTAINS TESTS ONT ÉCHOUÉ{RESET}")
-        print(f"\n  Vérifiez les erreurs ci-dessus.")
+        print("\n  Vérifiez les erreurs ci-dessus.")
     
     # Nettoyer
     clear_all_adjustments()

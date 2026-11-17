@@ -54,7 +54,9 @@ def _fetch_one_dict(cur, query: str, params: Tuple[Any, ...]) -> Optional[Dict[s
             cols.append(d[0])
         else:
             cols.append(str(d))
-    return dict(zip(cols, row))
+    # strict=True : un nom de colonne manquant devrait exploser ici plutôt que de
+    # décaler les valeurs — ce dict alimente la détection des doublons à supprimer.
+    return dict(zip(cols, row, strict=True))
 
 
 def main() -> int:

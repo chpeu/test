@@ -250,7 +250,7 @@ def train_optimized_gb(X_train, y_train, X_val, y_val, X_test, y_test, selected_
         'n_iter_no_change': 20
     }
     
-    print(f"\n   📊 Entraînement...")
+    print("\n   📊 Entraînement...")
     model = GradientBoostingClassifier(**params)
     model.fit(X_train_bal, y_train_bal)
     
@@ -306,7 +306,7 @@ def train_optimized_xgb(X_train, y_train, X_val, y_val, X_test, y_test, selected
         'early_stopping_rounds': 30
     }
     
-    print(f"\n   📊 Entraînement...")
+    print("\n   📊 Entraînement...")
     model = xgb.XGBClassifier(**params)
     model.fit(
         X_train_bal, y_train_bal,
@@ -421,7 +421,7 @@ def train_high_precision(X_train, y_train, X_val, y_val, X_test, y_test, selecte
         'eval_metric': 'auc'
     }
     
-    print(f"\n   📊 Entraînement (mode conservateur)...")
+    print("\n   📊 Entraînement (mode conservateur)...")
     model = xgb.XGBClassifier(**params)
     model.fit(X_train_sel, y_train, verbose=False)
     
@@ -454,7 +454,7 @@ def train_high_precision(X_train, y_train, X_val, y_val, X_test, y_test, selecte
     n_trades = y_pred_test.sum()
     if n_trades > 0:
         win_rate = y_test[y_pred_test == 1].mean()
-        print(f"\n   💰 Stats Trading:")
+        print("\n   💰 Stats Trading:")
         print(f"      Trades signalés: {n_trades}/{len(y_test)} ({n_trades/len(y_test)*100:.1f}%)")
         print(f"      Win rate sur trades signalés: {win_rate:.1%}")
     

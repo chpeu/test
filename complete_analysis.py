@@ -222,7 +222,7 @@ def complete_analysis():
     # Meilleure configuration identifiée
     best_config = configs.loc[configs['avg_pnl'].idxmax()] if not configs.empty else None
     if best_config is not None:
-        print(f"\n   🎯 MEILLEURE CONFIGURATION IDENTIFIÉE:")
+        print("\n   🎯 MEILLEURE CONFIGURATION IDENTIFIÉE:")
         if best_config['tp_sl_mode'] == 'ATR':
             print(f"      Mode: ATR avec TP={best_config['atr_tp']}x, SL={best_config['atr_sl']}x")
         else:
@@ -232,31 +232,31 @@ def complete_analysis():
     # Pires paires
     worst_pairs = pairs[pairs['total_pnl'] < 0].sort_values('total_pnl').head(5)
     if not worst_pairs.empty:
-        print(f"\n   ❌ PAIRES À ÉVITER (pertes les plus importantes):")
+        print("\n   ❌ PAIRES À ÉVITER (pertes les plus importantes):")
         for _, row in worst_pairs.iterrows():
             print(f"      {row['symbol']:12s}: {row['total_pnl']:7.2f} USDT de perte")
     
     # Meilleures heures
     best_hours = hourly[hourly['avg_pct'] > 0].sort_values('avg_pct', ascending=False).head(3)
     if not best_hours.empty:
-        print(f"\n   ⏰ MEILLEURES HEURES DE TRADING:")
+        print("\n   ⏰ MEILLEURES HEURES DE TRADING:")
         for _, row in best_hours.iterrows():
             print(f"      {int(row['hour']):02d}h: PnL moyen {row['avg_pct']:+.3f}%")
     
     # Conclusion finale
-    print(f"\n🎯 CONCLUSION FINALE:")
+    print("\n🎯 CONCLUSION FINALE:")
     if stats['total_pnl_usdt'] < 0:
         print(f"   ❌ Le bot est globalement perdant de {abs(stats['total_pnl_usdt']):.2f} USDT")
         if profit_factor < 1:
             print(f"   ⚠️  Le Profit Factor ({profit_factor:.2f}) est critique : les gains ne compensent pas les pertes")
-        print(f"\n   🔧 ACTIONS IMMÉDIATES RECOMMANDÉES:")
-        print(f"      1. Réduire le trailing ou le désactiver")
-        print(f"      2. Augmenter le TP cible de 0.5% à 1.0%")
-        print(f"      3. Réduire le SL de 0.3% à 0.2%")
-        print(f"      4. Éviter les paires les plus perdantes")
+        print("\n   🔧 ACTIONS IMMÉDIATES RECOMMANDÉES:")
+        print("      1. Réduire le trailing ou le désactiver")
+        print("      2. Augmenter le TP cible de 0.5% à 1.0%")
+        print("      3. Réduire le SL de 0.3% à 0.2%")
+        print("      4. Éviter les paires les plus perdantes")
     else:
         print(f"   ✅ Le bot est globalement profitable de {stats['total_pnl_usdt']:.2f} USDT")
-        print(f"   💡 Continuer avec la configuration actuelle")
+        print("   💡 Continuer avec la configuration actuelle")
     
     conn.close()
 

@@ -248,7 +248,7 @@ print_comparison('precision', 'PRECISION', higher_better=True)
 print_comparison('recall', 'RECALL', higher_better=True)
 
 # Stabilité
-print(f"\n📊 STABILITÉ (écart-type plus bas = plus stable):")
+print("\n📊 STABILITÉ (écart-type plus bas = plus stable):")
 print(f"   Config A std(test_acc): {stats_A['test_acc']['std']:.4f}")
 print(f"   Config B std(test_acc): {stats_B['test_acc']['std']:.4f}")
 winner_stability = "A" if stats_A['test_acc']['std'] < stats_B['test_acc']['std'] else "B"

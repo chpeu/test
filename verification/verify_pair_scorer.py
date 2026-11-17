@@ -188,7 +188,7 @@ def test_pair_performance_calculation(conn):
         cursor.close()
         return False
     
-    print(f"\n  📊 Top 10 paires (30 derniers jours, min 10 trades):\n")
+    print("\n  📊 Top 10 paires (30 derniers jours, min 10 trades):\n")
     print(f"  {'Paire':<25} {'Trades':>8} {'Wins':>6} {'WR':>8} {'AvgPnL':>10}")
     print(f"  {'-'*25} {'-'*8} {'-'*6} {'-'*8} {'-'*10}")
     

@@ -147,7 +147,7 @@ def check_v1_behavior():
         rs._ema_value = None
         smoothed = rs.apply_smoothing(0.25)
         if smoothed == 0.25:
-            print(f"  [OK] Smoothing OFF: valeur brute retournee")
+            print("  [OK] Smoothing OFF: valeur brute retournee")
         else:
             print(f"  [ATTENTION] Smoothing actif: {smoothed}")
         
@@ -155,9 +155,9 @@ def check_v1_behavior():
         from core.market_regime_selector import MarketRegime
         change = rs.should_change_regime(MarketRegime.CALME, MarketRegime.NORMAL, 0.21)
         if change:
-            print(f"  [OK] Hysteresis OFF: changement autorise")
+            print("  [OK] Hysteresis OFF: changement autorise")
         else:
-            print(f"  [ATTENTION] Hysteresis bloque le changement")
+            print("  [ATTENTION] Hysteresis bloque le changement")
         
         return True
     except Exception as e:
@@ -193,7 +193,7 @@ def check_v2_behavior_simulation():
         print(f"  Difference: {abs(expected_mean - expected_median):.4f}%")
         
         # Test EMA simulation
-        print(f"\n  Simulation EMA (alpha=0.3):")
+        print("\n  Simulation EMA (alpha=0.3):")
         ema = 0.25
         new_values = [0.30, 0.28, 0.35]
         for v in new_values:
@@ -201,7 +201,7 @@ def check_v2_behavior_simulation():
             print(f"    Input: {v:.2f}% -> EMA: {ema:.4f}%")
         
         # Test Hysteresis simulation
-        print(f"\n  Simulation Hysteresis (buffer=10%):")
+        print("\n  Simulation Hysteresis (buffer=10%):")
         threshold = 0.20
         buffer = 0.10
         print(f"    Seuil CALME->NORMAL: {threshold}%")
@@ -266,7 +266,7 @@ def check_frontend_defaults():
     svelte_path = Path(__file__).parent.parent / "frontend" / "src" / "lib" / "components" / "VariablesPanel.svelte"
     
     if not svelte_path.exists():
-        print(f"  [ERREUR] Fichier non trouve")
+        print("  [ERREUR] Fichier non trouve")
         return False
     
     content = svelte_path.read_text(encoding='utf-8')

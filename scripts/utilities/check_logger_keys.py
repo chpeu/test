@@ -49,11 +49,11 @@ db_cols = [
 print(f'\n\nDatabase expects {len(db_cols)} values (+ instance_port auto-added = 114 total)')
 
 missing = [c for c in db_cols if c not in keys]
-print(f'\nMissing keys in analytics_logger (expected by database):')
+print('\nMissing keys in analytics_logger (expected by database):')
 for m in missing:
     print(f'  - {m}')
 
 extra = [k for k in keys if k not in db_cols]
-print(f'\nExtra keys in analytics_logger (not in database columns):')
+print('\nExtra keys in analytics_logger (not in database columns):')
 for e in extra:
     print(f'  - {e}')

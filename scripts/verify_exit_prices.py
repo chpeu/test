@@ -115,7 +115,7 @@ def analyze_exit_prices():
             print(f"Total trades: {stats['total']}")
             print(f"  - SL_EXCHANGE: {stats['sl_exchange']}")
             print(f"  - Autres clotures: {stats['normal_close']}")
-            print(f"\nPrix de sortie reel (exit_fill_price):")
+            print("\nPrix de sortie reel (exit_fill_price):")
             print(f"  - Disponible: {stats['exit_fill_available']}")
             print(f"  - Manquant: {stats['exit_fill_missing']}")
             

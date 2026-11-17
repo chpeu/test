@@ -386,14 +386,14 @@ def generate_recommendations(df, regime_stats, whatif_stats):
         elif tighter > actual:
             print(f"\n4. SL RECOMMANDE: RESSERRER (-25%) -> +{tighter-actual:.4f}%")
         else:
-            print(f"\n4. SL ACTUEL: Optimal ou proche")
+            print("\n4. SL ACTUEL: Optimal ou proche")
     
     # 5. Sessions les plus rentables
     if 'session_market' in df.columns:
         session_stats = df.groupby('session_market')['pnl_pct_computed'].agg(['mean', 'count'])
         session_stats = session_stats[session_stats['count'] >= 20].sort_values('mean', ascending=False)
         if len(session_stats) > 0:
-            print(f"\n5. MEILLEURES SESSIONS:")
+            print("\n5. MEILLEURES SESSIONS:")
             for sess, row in session_stats.head(3).iterrows():
                 print(f"   {sess}: {row['mean']:.4f}% avg (n={int(row['count'])})")
 

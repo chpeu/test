@@ -59,7 +59,7 @@ def run_migration():
         
         columns = cursor.fetchall()
         
-        print(f"\n[OK] Migration terminée. Colonnes ajoutées:")
+        print("\n[OK] Migration terminée. Colonnes ajoutées:")
         for col_name, col_type in columns:
             print(f"   - {col_name}: {col_type}")
         

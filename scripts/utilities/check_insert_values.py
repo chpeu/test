@@ -42,10 +42,10 @@ for i in range(start_idx, len(lines)):
 value_count += 1
 
 print(f"Valeurs dans VALUES tuple: {value_count}")
-print(f"\nPremières lignes de valeurs:")
+print("\nPremières lignes de valeurs:")
 for line_no, content in value_lines[:10]:
     print(f"Ligne {line_no}: {content}")
 
-print(f"\nDernières lignes de valeurs:")
+print("\nDernières lignes de valeurs:")
 for line_no, content in value_lines[-10:]:
     print(f"Ligne {line_no}: {content}")

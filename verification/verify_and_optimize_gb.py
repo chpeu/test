@@ -103,7 +103,7 @@ print(f"   - Dont temporelles: {len([f for f in temporal_added if f in feature_c
 X = df[feature_cols].fillna(0).values
 y = df['target_class'].values
 
-print(f"\n📊 Distribution:")
+print("\n📊 Distribution:")
 print(f"   WIN:  {(y==1).sum()} ({(y==1).sum()/len(y)*100:.1f}%)")
 print(f"   LOSS: {(y==0).sum()} ({(y==0).sum()/len(y)*100:.1f}%)")
 
@@ -193,7 +193,7 @@ print(f"   Precision: {results_with_temp['precision']:.3f}")
 print(f"   Gap:       {results_with_temp['gap']*100:.1f}%")
 
 # Impact
-print(f"\n📈 IMPACT des features temporelles:")
+print("\n📈 IMPACT des features temporelles:")
 acc_diff = (results_with_temp['accuracy'] - results_no_temp['accuracy']) * 100
 f1_diff = results_with_temp['f1'] - results_no_temp['f1']
 prec_diff = results_with_temp['precision'] - results_no_temp['precision']
@@ -384,6 +384,6 @@ print(f"📝 Seuil recommande: {best_thresh['threshold']}")
 if abs(current_conf - best_thresh['threshold']) > 0.05:
     print(f"\n⚠️  Conseil: Modifier gb_min_confidence de {current_conf} vers {best_thresh['threshold']}")
 else:
-    print(f"\n✅ Seuil actuel proche de l'optimal")
+    print("\n✅ Seuil actuel proche de l'optimal")
 
 print("\n" + "=" * 70)

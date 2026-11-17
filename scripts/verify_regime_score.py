@@ -109,7 +109,7 @@ def verify_base_config():
     
     base_min_score = TRADING_CONFIG.get('min_score_required', 'N/A')
     print(f"  TRADING_CONFIG['min_score_required'] = {base_min_score}")
-    print(f"  (Cette valeur est utilisée quand le régime est désactivé)")
+    print("  (Cette valeur est utilisée quand le régime est désactivé)")
     
     return True
 
@@ -119,7 +119,7 @@ def simulate_score_check():
     
     test_scores = [6.0, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.5]
     
-    print(f"\n  Test avec différents scores de setup:")
+    print("\n  Test avec différents scores de setup:")
     print(f"  {'Score':<8} | {'CALME':<10} | {'NORMAL':<10} | {'VOLATILE':<10} | {'CHOPPY':<10}")
     print(f"  {'-'*8} | {'-'*10} | {'-'*10} | {'-'*10} | {'-'*10}")
     

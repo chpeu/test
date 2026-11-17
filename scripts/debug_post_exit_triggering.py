@@ -44,7 +44,7 @@ def main():
             
             # Status du manager
             status = manager.get_tracker_status()
-            print(f"📊 Status manager:")
+            print("📊 Status manager:")
             print(f"   - Enabled: {status['enabled']}")
             print(f"   - Active trackers: {status['active_count']}")
             print(f"   - Completed trackers: {status['completed_count']}")

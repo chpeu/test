@@ -121,7 +121,7 @@ class MEXCTokenValidator:
         
         # 4. Vérifier l'expiration
         if expires_at:
-            print(f"\n🕒 Vérification expiration...")
+            print("\n🕒 Vérification expiration...")
             is_valid, expiry_msg = self.check_token_expiration(expires_at)
             if is_valid:
                 print(f"✅ Token valide - {expiry_msg}")

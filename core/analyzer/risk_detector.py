@@ -54,7 +54,9 @@ def detect_manipulation(
     if len(current_candle) >= 5:
         open_price, high, low, close = current_candle[1:5]
 
-        body = abs(close - open_price)
+        # Le corps de la bougie (abs(close-open)) n'était pas utilisé : un wick_ratio
+        # > 0.9 implique déjà un corps minuscule, c'est la mèche qui signe la
+        # manipulation.
         upper_wick = high - max(open_price, close)
         lower_wick = min(open_price, close) - low
         candle_range = high - low

@@ -82,7 +82,7 @@ cur.execute("""
 """)
 last_24h = cur.fetchone()
 
-print(f"\n📊 Dernières 24h:")
+print("\n📊 Dernières 24h:")
 print(f"   Trades: {last_24h['trades_24h']}")
 print(f"   PnL: {last_24h['pnl_24h']:+.3f}% ({last_24h['pnl_usdt_24h']:+.4f} USDT)")
 
@@ -98,12 +98,12 @@ cur.execute("""
 """)
 today = cur.fetchone()
 
-print(f"\n📊 Aujourd'hui (UTC):")
+print("\n📊 Aujourd'hui (UTC):")
 print(f"   Trades: {today['trades_today']}")
 print(f"   PnL: {today['pnl_today']:+.3f}% ({today['pnl_usdt_today']:+.4f} USDT)")
 
 # 5. PnL avec positions ouvertes simulées
-print(f"\n🔍 Simulation avec positions ouvertes:")
+print("\n🔍 Simulation avec positions ouvertes:")
 total_pnl = float(today['pnl_today'] or 0)
 total_usdt = float(today['pnl_usdt_today'] or 0)
 
@@ -129,7 +129,7 @@ for pos_id, pos in active_positions.items():
         
         print(f"   +{symbol}: {pnl_pct:+.3f}% ({pnl_usdt:+.4f} USDT)")
 
-print(f"\n📊 Total estimé avec positions ouvertes:")
+print("\n📊 Total estimé avec positions ouvertes:")
 print(f"   PnL: {total_pnl:+.3f}% ({total_usdt:+.4f} USDT)")
 
 cur.close()

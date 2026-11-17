@@ -80,7 +80,7 @@ async def test_ping_pong_sync():
                     # Normal - continue la boucle
                     continue
             
-            print(f"\n📊 RÉSULTATS du test ping/pong:")
+            print("\n📊 RÉSULTATS du test ping/pong:")
             print(f"   • Pings reçus: {ping_received}")
             print(f"   • Pongs envoyés: {pong_sent}")
             print(f"   • IDs de ping vus: {ping_ids_seen}")

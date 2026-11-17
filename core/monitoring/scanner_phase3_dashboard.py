@@ -446,14 +446,14 @@ class ScannerPhase3Dashboard:
                     level_icon = "🔥" if alert['level'] == 'CRITICAL' else "⚠️"
                     print(f"   {level_icon} {alert['level']}: {alert['message']}")
             else:
-                print(f"\n✅ No Active Alerts")
+                print("\n✅ No Active Alerts")
             
             if rollout_pct > 0:
                 # Scanner Metrics
                 scanner_metrics = metrics.get('scanner_metrics', {})
                 orchestrator_stats = scanner_metrics.get('orchestrator_stats', {}).get('orchestrator', {})
                 
-                print(f"\n📊 SCANNER PERFORMANCE:")
+                print("\n📊 SCANNER PERFORMANCE:")
                 print(f"   Total Scans: {orchestrator_stats.get('total_scans', 0)}")
                 print(f"   Success Rate: {orchestrator_stats.get('success_rate', 0):.1%}")
                 print(f"   Avg Scan Time: {orchestrator_stats.get('average_scan_time_ms', 0):.1f}ms")
@@ -472,14 +472,14 @@ class ScannerPhase3Dashboard:
                 cache_stats = scanner_metrics.get('component_metrics', {}).get('market_data_collector', {}).get('cache_stats', {})
                 if cache_stats:
                     hit_rate = cache_stats.get('hit_rate', 0) * 100
-                    print(f"\n💾 CACHE PERFORMANCE:")
+                    print("\n💾 CACHE PERFORMANCE:")
                     print(f"   Hit Rate: {hit_rate:.1f}%")
                     print(f"   Total Requests: {cache_stats.get('total_requests', 0)}")
                 
                 # Business Metrics
                 business_metrics = metrics.get('business_metrics', {})
                 if business_metrics and 'error' not in business_metrics:
-                    print(f"\n💼 BUSINESS IMPACT:")
+                    print("\n💼 BUSINESS IMPACT:")
                     print(f"   Scans Today: {business_metrics.get('scans_today', 0)}")
                     print(f"   Opportunities: {business_metrics.get('opportunities_found_today', 0)}")
                     print(f"   Opportunity Rate: {business_metrics.get('opportunity_rate_pct', 0):.1f}%")
@@ -487,7 +487,7 @@ class ScannerPhase3Dashboard:
             # System Health
             system_health = metrics.get('system_health', {})
             if system_health and 'error' not in system_health:
-                print(f"\n🖥️ SYSTEM HEALTH:")
+                print("\n🖥️ SYSTEM HEALTH:")
                 print(f"   CPU: {system_health.get('cpu_percent', 0):.1f}%")
                 print(f"   Memory: {system_health.get('memory_percent', 0):.1f}%")
                 print(f"   Available Memory: {system_health.get('memory_available_mb', 0):.0f}MB")

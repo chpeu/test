@@ -214,7 +214,7 @@ class PostExitManager:
             return
         
         tracker = self.active_trackers[symbol]
-        sample_added = tracker.add_sample(price)
+        tracker.add_sample(price)
         
         # Si tracking terminé
         if not tracker.is_active:
@@ -548,7 +548,7 @@ class PostExitManager:
             
             try:
                 with conn.cursor() as cur:
-                    for symbol, tracker in self.active_trackers.items():
+                    for tracker in self.active_trackers.values():
                         # Préparer les samples en JSON compact
                         samples_json = json.dumps([
                             {

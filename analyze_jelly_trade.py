@@ -60,7 +60,7 @@ def analyze_trade():
             print(f"Time: {ts_entry} | PnL: {pnl}% | Partial: {partial_exec} | MFE: {mfe}% | Net PnL: {trade['net_pnl_pct']}%")
             
             if partial_exec:
-                 print(f"   >>> PARTIAL EXECUTED <<<")
+                 print("   >>> PARTIAL EXECUTED <<<")
                  print(f"   Partial Profit: {trade['partial_tp_profit']}")
                  print(f"   Partial Percent: {trade['partial_tp_percent']}")
                 

@@ -205,11 +205,11 @@ def simulate_trading(model, X_test, y_test_win, features, threshold, target_pnl=
     
     # Trades rejetés
     rejected = ~keep_mask
-    print(f"\n   🚫 Trades REJETÉS par le filtre:")
+    print("\n   🚫 Trades REJETÉS par le filtre:")
     print(f"      Nombre: {rejected.sum()}")
     if rejected.sum() > 0:
         print(f"      Win Rate (si on les avait pris): {y_test_win[rejected].mean():.1%}")
-        print(f"      → Le filtre a raison de les rejeter!" if y_test_win[rejected].mean() < 0.5 else "      → Le filtre se trompe sur ceux-là")
+        print("      → Le filtre a raison de les rejeter!" if y_test_win[rejected].mean() < 0.5 else "      → Le filtre se trompe sur ceux-là")
 
 
 # =============================================================================

@@ -88,7 +88,7 @@ def test_force_full_tp_calculation():
     partial_qty_small = filled_amount_small * (partial_tp_percent / 100.0)
     force_full_small = partial_qty_small < min_contract
     
-    print(f"  Cas 1 (petite position):")
+    print("  Cas 1 (petite position):")
     print(f"    filled_amount={filled_amount_small}, min_contract={min_contract}")
     print(f"    partial_qty={partial_qty_small} ({partial_tp_percent}%)")
     print(f"    force_full_tp={force_full_small}")
@@ -99,7 +99,7 @@ def test_force_full_tp_calculation():
     partial_qty_normal = filled_amount_normal * (partial_tp_percent / 100.0)
     force_full_normal = partial_qty_normal < min_contract
     
-    print(f"  Cas 2 (position normale):")
+    print("  Cas 2 (position normale):")
     print(f"    filled_amount={filled_amount_normal}, min_contract={min_contract}")
     print(f"    partial_qty={partial_qty_normal} ({partial_tp_percent}%)")
     print(f"    force_full_tp={force_full_normal}")

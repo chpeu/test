@@ -319,7 +319,7 @@ class ScalabilityScanner:
             logger.info(f"🔍 [SCORE-DEBUG] {symbol}: spread={spread:.4f}%, vol5={vol5:.4f}%, vol_min={volume_min}, funding={funding_rate:.4f}%")
         
         if math.isnan(spread):
-            reject_reason = f"spread=NaN"
+            reject_reason = "spread=NaN"
         elif spread <= spread_min:
             reject_reason = f"spread={spread:.4f}% < min={spread_min}%"
         elif spread > spread_max:
@@ -530,7 +530,10 @@ class ScalabilityScanner:
             # Calculer volatilités
             vol5_recent = sum(volumes[-5:])
             vol5_volatility = self.calculate_volatility(closes, 5)
-            vol15_recent = sum(volumes[-15:]) if len(volumes) >= 15 else sum(volumes)
+            # vol15_recent (somme des volumes sur 15 bougies) n'était consommé nulle
+            # part : le scoring ne lit que recentVolume (5 bougies), vol5 et vol15 en
+            # volatilité. Une comparaison 5 vs 15 bougies reste à inventer si un jour
+            # le surge de volume doit être détecté.
             vol15_volatility = self.calculate_volatility(closes, min(15, len(closes)))
             
             # 🔥 OPT #4: Calculer ADX pour trend strength

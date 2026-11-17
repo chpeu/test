@@ -42,7 +42,7 @@ def analyze_label_quality(df: pd.DataFrame, target_col: str = 'target_win') -> D
         # Loss avec PNL positif
         false_losses = df[(df[target_col] == 0) & (df['target_pnl'] > 0)]
 
-        logger.info(f"\n⚠️ INCOHÉRENCES:")
+        logger.info("\n⚠️ INCOHÉRENCES:")
         logger.info(f"  - Wins avec PNL < 0: {len(false_wins)} ({len(false_wins)/len(df)*100:.1f}%)")
         logger.info(f"  - Loss avec PNL > 0: {len(false_losses)} ({len(false_losses)/len(df)*100:.1f}%)")
 
@@ -52,7 +52,7 @@ def analyze_label_quality(df: pd.DataFrame, target_col: str = 'target_win') -> D
 
         logger.info(f"\n📊 Trades marginaux (|PNL| < {marginal_threshold}%):")
         logger.info(f"  - Count: {len(marginal_trades)} ({len(marginal_trades)/len(df)*100:.1f}%)")
-        logger.info(f"  → Recommandation: Exclure du training (bruit aléatoire)")
+        logger.info("  → Recommandation: Exclure du training (bruit aléatoire)")
 
     # Déséquilibre
     if win_pct < 30 or win_pct > 70:
@@ -147,7 +147,7 @@ def analyze_feature_distributions(
     logger.info(f"{'Feature':<30} {'Mean Win':>10} {'Mean Loss':>10} {'Diff%':>8} {'KS Stat':>8}")
     logger.info("-" * 80)
 
-    for i, row in results_df.head(top_n).iterrows():
+    for _, row in results_df.head(top_n).iterrows():
         logger.info(
             f"{row['feature']:<30} {row['mean_win']:>10.4f} {row['mean_loss']:>10.4f} "
             f"{row['diff_pct']:>7.1f}% {row['ks_stat']:>8.4f}"
@@ -368,8 +368,12 @@ def run_full_eda(
 
     # Sauvegarder rapport
     if save_report:
-        report_path = "optimization/analysis/eda_report.txt"
-        # TODO: Sauvegarder rapport texte
+        # Le rapport texte n'a jamais été écrit : le chemin était calculé puis jeté,
+        # et l'appelant avec save_report=True croyait avoir un fichier. Depuis, on le
+        # dit — tout le contenu est déjà dans les logs de cette fonction.
+        logger.warning(
+            "⚠️ save_report=True non implémenté : le rapport EDA reste dans les seuls logs"
+        )
 
     return {
         'df': df,

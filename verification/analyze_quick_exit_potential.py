@@ -124,7 +124,7 @@ for t in trades:
         quick_exit_wins += 1
         quick_exit_pnl += QUICK_EXIT_THRESHOLD
     else:
-        quick_exit_result = f"❌ MFE insuffisant"
+        quick_exit_result = "❌ MFE insuffisant"
         quick_exit_losses += 1
         # Would still hit SL
         quick_exit_pnl += actual_pnl_pct

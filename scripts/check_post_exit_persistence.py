@@ -82,7 +82,7 @@ cur.execute('''
 row = cur.fetchone()
 if row:
     trade_id, symbol, exit_time, pnl, grade, trailing_dist = row
-    print(f"\n🔍 Dernier trade XRP:")
+    print("\n🔍 Dernier trade XRP:")
     print(f"  Trade ID: {trade_id}")
     print(f"  Symbol: {symbol}")
     print(f"  Exit: {exit_time}")

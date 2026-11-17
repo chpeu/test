@@ -70,13 +70,13 @@ try:
         gb_config = data.get('current_config', {})
         
         print(f"   ✅ Trades filtrés: {gb_count}")
-        print(f"   📋 Filtres appliqués:")
+        print("   📋 Filtres appliqués:")
         for category, params in data.get('filters_applied', {}).items():
             print(f"      - {category}: {len(params)} paramètres")
     else:
         print(f"   ❌ Erreur HTTP {resp.status_code}")
 except requests.exceptions.ConnectionError:
-    print(f"   ⚠️  Backend non accessible")
+    print("   ⚠️  Backend non accessible")
 except Exception as e:
     print(f"   ❌ Erreur: {e}")
 
@@ -98,7 +98,7 @@ try:
     print(f"   📋 Conditions de filtrage: {len(conditions)} conditions SQL")
     
     # Charger les données comme XGBoost/Optuna le font
-    print(f"   📥 Chargement données...")
+    print("   📥 Chargement données...")
     df = load_features_from_postgres(
         min_trades=1,
         timeframe_days=365,
@@ -135,9 +135,9 @@ if gb_count is not None and xgb_count is not None:
         print(f"\n   ✅ COHÉRENT: Tous utilisent les mêmes {gb_count} trades")
     else:
         print(f"\n   ❌ INCOHÉRENT: Différence de {abs(gb_count - xgb_count)} trades")
-        print(f"   💡 Vérifier que le backend a été redémarré après les modifications")
+        print("   💡 Vérifier que le backend a été redémarré après les modifications")
 else:
-    print(f"   ⚠️  Impossible de comparer - certains tests ont échoué")
+    print("   ⚠️  Impossible de comparer - certains tests ont échoué")
 
 # =============================================================================
 # 5. VÉRIFIER QUE LES CONFIGS SONT IDENTIQUES
@@ -165,9 +165,9 @@ if gb_config:
                 mismatches.append((key, expected, actual))
     
     if not mismatches:
-        print(f"   ✅ Config API identique à config_overrides.json")
+        print("   ✅ Config API identique à config_overrides.json")
     else:
-        print(f"   ❌ Différences détectées:")
+        print("   ❌ Différences détectées:")
         for key, expected, actual in mismatches:
             print(f"      - {key}: attendu={expected}, API={actual}")
 
@@ -183,13 +183,13 @@ try:
     from optimization.data.feature_engineering import calculate_derived_features
     from optimization.utils.temporal_split import temporal_train_test_split
     
-    print(f"   📥 Chargement données...")
+    print("   📥 Chargement données...")
     base_df = load_features_from_postgres(timeframe_days=365, min_trades=1)
     
-    print(f"   🔧 Feature engineering...")
+    print("   🔧 Feature engineering...")
     df = calculate_derived_features(base_df)
     
-    print(f"   📅 Split temporel (60/20/20)...")
+    print("   📅 Split temporel (60/20/20)...")
     train_df, val_df, test_df = temporal_train_test_split(
         df,
         target_col='target_win',
@@ -197,16 +197,16 @@ try:
         validation_size=0.2
     )
     
-    print(f"\n   Résultats split:")
+    print("\n   Résultats split:")
     print(f"      - Train: {len(train_df)} samples")
     print(f"      - Validation: {len(val_df)} samples")
     print(f"      - Test: {len(test_df)} samples")
     print(f"      - Total: {len(train_df) + len(val_df) + len(test_df)} samples")
     
     if len(train_df) + len(val_df) + len(test_df) == xgb_count:
-        print(f"\n   ✅ Split cohérent avec le compteur")
+        print("\n   ✅ Split cohérent avec le compteur")
     else:
-        print(f"\n   ⚠️  Différence après split (normal si filtrage supplémentaire)")
+        print("\n   ⚠️  Différence après split (normal si filtrage supplémentaire)")
         
 except Exception as e:
     print(f"   ❌ Erreur simulation: {e}")
@@ -222,23 +222,23 @@ all_ok = True
 
 if gb_count is not None and xgb_count is not None:
     if gb_count == xgb_count:
-        print(f"\n✅ COHÉRENCE VALIDÉE")
+        print("\n✅ COHÉRENCE VALIDÉE")
         print(f"   - Compteur GradientBoosting: {gb_count} trades")
         print(f"   - XGBoost/Optuna: {xgb_count} trades")
-        print(f"   - Tous les composants utilisent build_config_filter_conditions()")
-        print(f"   - Les 19+ paramètres de config sont appliqués partout")
+        print("   - Tous les composants utilisent build_config_filter_conditions()")
+        print("   - Les 19+ paramètres de config sont appliqués partout")
     else:
         all_ok = False
-        print(f"\n❌ INCOHÉRENCE DÉTECTÉE")
+        print("\n❌ INCOHÉRENCE DÉTECTÉE")
         print(f"   - Compteur: {gb_count} vs XGBoost: {xgb_count}")
-        print(f"   - Actions recommandées:")
-        print(f"      1. Redémarrer le backend")
-        print(f"      2. Vérifier config_overrides.json")
-        print(f"      3. Relancer ce script")
+        print("   - Actions recommandées:")
+        print("      1. Redémarrer le backend")
+        print("      2. Vérifier config_overrides.json")
+        print("      3. Relancer ce script")
 else:
     all_ok = False
-    print(f"\n⚠️  VÉRIFICATION INCOMPLÈTE")
-    print(f"   - Certains composants n'ont pas pu être testés")
+    print("\n⚠️  VÉRIFICATION INCOMPLÈTE")
+    print("   - Certains composants n'ont pas pu être testés")
 
 print(f"\n{'='*80}")
 print(f"  {'✅ SUCCÈS' if all_ok else '❌ ÉCHEC'} - Fin de la vérification")

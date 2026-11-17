@@ -388,7 +388,7 @@ class TestablePairFilter(IPairFilter):
                 self.filter_stats['whitelist']['passed'] += 1
             else:
                 result.filter_results['whitelist'] = False
-                result.rejection_reasons.append(f"Symbol not in whitelist")
+                result.rejection_reasons.append("Symbol not in whitelist")
                 result.filter_details['whitelist_status'] = 'not_whitelisted'
                 self.filter_stats['whitelist']['failed'] += 1
             
@@ -403,7 +403,7 @@ class TestablePairFilter(IPairFilter):
         try:
             if symbol in self.config.symbol_blacklist:
                 result.filter_results['blacklist'] = False
-                result.rejection_reasons.append(f"Symbol is blacklisted")
+                result.rejection_reasons.append("Symbol is blacklisted")
                 result.filter_details['blacklist_status'] = 'blacklisted'
                 self.filter_stats['blacklist']['failed'] += 1
             else:

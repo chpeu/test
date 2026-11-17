@@ -430,11 +430,15 @@ class AbstractTradingManager(ABC):
             f"Raison: {result.get('reason')}"
         )
     
-    def on_tick(self, timestamp: float, prices: Dict[str, float]):
+    def on_tick(self, timestamp: float, prices: Dict[str, float]):  # noqa: B027
         """
         Hook sur chaque tick (optionnel)
         
         Peut être overridé pour analytics temps réel
+
+        Volontairement non abstrait : aucune implémentation fille ne le fournit
+        aujourd'hui, et le rendre abstrait interdirait d'instancier les managers
+        existants.
         """
         pass
     

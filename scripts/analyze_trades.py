@@ -22,7 +22,7 @@ if r and len(r) == 6:
 else:
     # Pas de résultats, valeurs par défaut
     total, wins, pnl, avg_conf, min_ts, max_ts = 0, 0, 0, 0, None, None
-print(f'=== TOUS LES TRADES (8h) ===')
+print('=== TOUS LES TRADES (8h) ===')
 print(f'Total: {total} | Wins: {wins or 0}')
 if total and total > 0:
     print(f'Winrate: {(wins or 0)/total*100:.1f}%')
@@ -32,7 +32,7 @@ if total and total > 0:
 print(f'Range: {min_ts} -> {max_ts}')
 
 # Modes
-print(f'\n=== MODES ===')
+print('\n=== MODES ===')
 c.execute('''
 SELECT is_live_trade, is_dry_run, COUNT(*) 
 FROM trades 
@@ -43,7 +43,7 @@ for r in c.fetchall():
     print(f'  is_live={r[0]}, is_dry_run={r[1]}: {r[2]} trades')
 
 # Par raison
-print(f'\n=== PAR RAISON DE SORTIE ===')
+print('\n=== PAR RAISON DE SORTIE ===')
 c.execute('''
 SELECT 
     reason,
@@ -63,7 +63,7 @@ for row in c.fetchall():
     print(f'  {reason}: {cnt} trades, WR={wr:.0f}%, PnL={p or 0:.4f}, conf={conf_str}')
 
 # Derniers trades
-print(f'\n=== 25 DERNIERS TRADES ===')
+print('\n=== 25 DERNIERS TRADES ===')
 c.execute('''
 SELECT symbol, direction, reason, net_pnl_usdt, net_pnl_pct, ml_confidence, is_live_trade, timestamp
 FROM trades 
@@ -80,7 +80,7 @@ for row in c.fetchall():
     print(f'  {result} [{live_str}] {sym} {dir} -> {reason}: {pnl_val:.4f} ({pct_val:.2f}%) conf={conf_str}')
 
 # Statistiques par confidence
-print(f'\n=== WINRATE PAR TRANCHE DE CONFIDENCE ===')
+print('\n=== WINRATE PAR TRANCHE DE CONFIDENCE ===')
 c.execute('''
 SELECT 
     CASE 

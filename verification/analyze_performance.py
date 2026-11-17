@@ -250,7 +250,7 @@ def analyze():
         profit_lost = [(t, (t['max_pnl_reached'] or 0) - (t['net_pnl_pct'] or 0)) for t in mfe_trades]
         profit_lost.sort(key=lambda x: -x[1])
         
-        print(f"\n  TOP 5 trades avec le plus de profit perdu:")
+        print("\n  TOP 5 trades avec le plus de profit perdu:")
         for t, lost in profit_lost[:5]:
             print(f"    {t['symbol']:20} | MaxPnL: +{t['max_pnl_reached']:.2f}% -> Final: {t['net_pnl_pct']:+.2f}% | Perdu: {lost:.2f}%")
 

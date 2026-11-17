@@ -21,7 +21,7 @@ params_section = content[start:end]
 # Compter les paramètres en analysant chaque ligne
 param_count = 0
 lines = params_section.split('\n')
-for i, line in enumerate(lines):
+for line in lines:
     line = line.strip()
     if not line or line.startswith('#') or line.startswith('params'):
         continue

@@ -15,7 +15,7 @@ def apply_migration():
     # Paramètres de connexion PostgreSQL depuis .env
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -63,7 +63,7 @@ def apply_migration():
         
         new_columns = cursor.fetchall()
         if new_columns:
-            print(f"\n✅ Nouvelles colonnes ajoutées à la table 'trades':")
+            print("\n✅ Nouvelles colonnes ajoutées à la table 'trades':")
             for col_name, col_type in new_columns:
                 print(f"  - {col_name} ({col_type})")
         

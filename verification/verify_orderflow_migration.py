@@ -67,7 +67,7 @@ try:
     
     tests_total += 1
     if len(columns) == 6:
-        print(f"   [OK] 6 colonnes order flow presentes dans scan_logs:")
+        print("   [OK] 6 colonnes order flow presentes dans scan_logs:")
         for col_name, col_type in columns:
             print(f"      - {col_name}: {col_type}")
         tests_passed += 1
@@ -110,13 +110,13 @@ try:
         volumes=volumes
     )
     
-    print(f"   Donnees test:")
+    print("   Donnees test:")
     print(f"      bid_vol={bid_vol}, ask_vol={ask_vol}")
     print(f"      spread={spread}%")
     print(f"      closes={closes[-5:]}")
     print(f"      volumes={volumes[-5:]}")
     
-    print(f"\n   Metriques calculees:")
+    print("\n   Metriques calculees:")
     
     # Verifier chaque metrique
     all_ok = True
@@ -151,10 +151,10 @@ try:
     
     tests_total += 1
     if all_ok:
-        print(f"\n   [OK] Toutes les metriques sont correctement calculees")
+        print("\n   [OK] Toutes les metriques sont correctement calculees")
         tests_passed += 1
     else:
-        print(f"\n   [FAIL] Certaines metriques sont incorrectes")
+        print("\n   [FAIL] Certaines metriques sont incorrectes")
 
 except Exception as e:
     print(f"   [ERROR] Erreur calcul metriques: {e}")
@@ -180,13 +180,13 @@ try:
     
     tests_total += 1
     if has_spread_history and has_volume_history and has_method:
-        print(f"   [OK] Scanner a tous les attributs order flow:")
+        print("   [OK] Scanner a tous les attributs order flow:")
         print(f"      - _spread_history: {type(scanner._spread_history)}")
         print(f"      - _volume_history: {type(scanner._volume_history)}")
-        print(f"      - calculate_orderflow_metrics: methode presente")
+        print("      - calculate_orderflow_metrics: methode presente")
         tests_passed += 1
     else:
-        print(f"   [FAIL] Attributs manquants:")
+        print("   [FAIL] Attributs manquants:")
         print(f"      - _spread_history: {has_spread_history}")
         print(f"      - _volume_history: {has_volume_history}")
         print(f"      - calculate_orderflow_metrics: {has_method}")

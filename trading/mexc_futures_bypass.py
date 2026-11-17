@@ -132,8 +132,8 @@ class AdaptiveRateLimiter:
         self.total_403 += 1
         self.disabled = True
         logger.error(
-            f"❌ 403 détecté - Rate limiter DÉSACTIVÉ | "
-            f"Token expiré ou IP bannie | Arrêt trading requis"
+            "❌ 403 détecté - Rate limiter DÉSACTIVÉ | "
+            "Token expiré ou IP bannie | Arrêt trading requis"
         )
 
     def get_stats(self) -> dict:
@@ -1059,7 +1059,7 @@ class MexcFuturesBypass:
         response = await self._request("POST", ENDPOINTS["CANCEL_ORDER"], body=order_ids)
         
         if response.get("success"):
-            logger.info(f"✅ Orders cancelled")
+            logger.info("✅ Orders cancelled")
         else:
             logger.error(f"❌ Cancel failed: {response}")
         

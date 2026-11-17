@@ -107,7 +107,7 @@ def main():
         stats = get_fill_stats()
         total, dv, imb, sv5, bdr, va, pm5, has_bid = stats
         
-        print(f"\n  REMPLISSAGE (derniers 100 scans):")
+        print("\n  REMPLISSAGE (derniers 100 scans):")
         print(f"  {'Colonne':<25} {'Rempli':<10} {'%':<10}")
         print(f"  {'-'*45}")
         print(f"  {'delta_volume':<25} {dv:<10} {dv*100//total if total else 0}%")
@@ -128,7 +128,7 @@ def main():
                 print(f"  [ERREUR] {err}")
             success_count = 0
         else:
-            print(f"  [OK] Tous les calculs sont corrects!")
+            print("  [OK] Tous les calculs sont corrects!")
             success_count += 1
         
         # Calcul du taux global
@@ -138,7 +138,7 @@ def main():
         if fill_rate >= 80 and not errors:
             print(f"\n  *** SUCCES: Taux de remplissage >= 80% ({fill_rate}%) ***")
             if success_count >= 3:
-                print(f"\n  *** VALIDATION COMPLETE APRES 3 VERIFICATIONS ***")
+                print("\n  *** VALIDATION COMPLETE APRES 3 VERIFICATIONS ***")
                 break
         else:
             success_count = 0

@@ -168,7 +168,7 @@ def analyze_bas_trade():
         conn.close()
         return
     
-    print(f"\n📋 DÉTAILS DU TRADE:")
+    print("\n📋 DÉTAILS DU TRADE:")
     print(f"  Symbol: {trade['symbol']}")
     print(f"  Direction: {trade['direction']}")
     print(f"  Entry: {trade['entry_price']}")
@@ -180,14 +180,14 @@ def analyze_bas_trade():
     print(f"  Net PnL%: {trade.get('net_pnl_pct')}%")
     print(f"  Durée: {trade.get('duration_seconds')}s")
     
-    print(f"\n📊 MÉTRIQUES ATR:")
+    print("\n📊 MÉTRIQUES ATR:")
     print(f"  ATR 1m: {trade.get('atr_1m')}")
     print(f"  ATR 5m: {trade.get('atr_5m')}")
     print(f"  ATR 15m: {trade.get('atr_15m')}")
     print(f"  SL calculé%: {trade.get('calculated_sl_pct')}")
     print(f"  TP calculé%: {trade.get('calculated_tp_pct')}")
     
-    print(f"\n📈 EXCURSIONS:")
+    print("\n📈 EXCURSIONS:")
     print(f"  Max PnL atteint: {trade.get('max_pnl_reached')}%")
     print(f"  Min PnL atteint: {trade.get('min_pnl_reached')}%")
     print(f"  SL MEXC touched: {trade.get('sl_mexc_touched')}")
@@ -198,7 +198,7 @@ def analyze_bas_trade():
     
     if entry > 0 and sl > 0:
         sl_distance_pct = abs(entry - sl) / entry * 100
-        print(f"\n🎯 ANALYSE SL:")
+        print("\n🎯 ANALYSE SL:")
         print(f"  Distance SL calculée: {sl_distance_pct:.4f}%")
         
         # Vérifier si c'est lié à l'ATR

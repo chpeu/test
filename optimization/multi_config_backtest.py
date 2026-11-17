@@ -77,7 +77,8 @@ class MultiConfigTester:
         
         variants = []
         for i, combo in enumerate(combinations):
-            params = dict(zip(keys, combo))
+            # keys/combo viennent du même param_grid : même longueur par construction
+            params = dict(zip(keys, combo, strict=True))
             
             # Créer variant
             variant = ConfigVariant(

@@ -50,7 +50,7 @@ def load_trade_history() -> List[Dict]:
     history_file = PROJECT_ROOT / "trade_history.json"
     
     if not history_file.exists():
-        print_fail(f"Fichier trade_history.json non trouvé")
+        print_fail("Fichier trade_history.json non trouvé")
         return []
     
     try:

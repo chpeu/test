@@ -141,7 +141,7 @@ for trade in trades:
             regime_stats[regime]['manual_exits'] += 1
 
 # Calculer les statistiques
-for regime, stats in regime_stats.items():
+for _regime, stats in regime_stats.items():
     if stats['count'] > 0:
         stats['win_rate'] = (stats['wins'] / stats['count']) * 100
         stats['sl_rate'] = (stats['sl_hits'] / stats['count']) * 100
@@ -168,7 +168,7 @@ for regime in ['CALME', 'NORMAL', 'VOLATILE', 'UNKNOWN']:
     print(f'   ATR moyen: {stats["avg_atr"]:.4f}%')
     print()
     
-    print(f'   📊 Performances:')
+    print('   📊 Performances:')
     print(f'      Win Rate: {stats["win_rate"]:.1f}% ({stats["wins"]}W / {stats["losses"]}L)')
     print(f'      SL Hit Rate: {stats["sl_rate"]:.1f}% ({stats["sl_hits"]} trades)')
     print(f'      TP Hit Rate: {stats["tp_rate"]:.1f}% ({stats["tp_hits"]} trades)')
@@ -179,7 +179,7 @@ for regime in ['CALME', 'NORMAL', 'VOLATILE', 'UNKNOWN']:
     print()
     
     if config:
-        print(f'   ⚙️  Configuration actuelle:')
+        print('   ⚙️  Configuration actuelle:')
         print(f'      atr_mult_sl: {config.get("atr_mult_sl", "N/A")}')
         print(f'      atr_mult_tp: {config.get("atr_mult_tp", "N/A")}')
         print(f'      min_score_required: {config.get("min_score_required", "N/A")}')
@@ -205,16 +205,16 @@ for regime in ['CALME', 'NORMAL', 'VOLATILE', 'UNKNOWN']:
         
         # Problème: Durée moyenne trop longue
         if stats["avg_duration"] > config.get("max_position_time", 300):
-            recommendations.append(f'⚠️  Durée moyenne DÉPASSE max_position_time')
-            recommendations.append(f'    → Vérifier les exits de stagnation')
+            recommendations.append('⚠️  Durée moyenne DÉPASSE max_position_time')
+            recommendations.append('    → Vérifier les exits de stagnation')
         
         # Bon équilibre
         if 40 <= stats["win_rate"] <= 60 and 30 <= stats["sl_rate"] <= 45:
-            recommendations.append(f'✅ Bon équilibre win rate / SL rate')
-            recommendations.append(f'    → Paramètres actuels semblent adaptés')
+            recommendations.append('✅ Bon équilibre win rate / SL rate')
+            recommendations.append('    → Paramètres actuels semblent adaptés')
         
         if recommendations:
-            print(f'   💡 RECOMMANDATIONS:')
+            print('   💡 RECOMMANDATIONS:')
             for rec in recommendations:
                 print(f'      {rec}')
             print()
@@ -258,7 +258,7 @@ print()
 # Identifier le régime le plus problématique
 worst_regime = None
 worst_sl_rate = 0
-for regime, stats in regime_stats.items():
+for _regime, stats in regime_stats.items():
     if regime != 'UNKNOWN' and stats['count'] >= 5:  # Au moins 5 trades pour être significatif
         if stats['sl_rate'] > worst_sl_rate:
             worst_sl_rate = stats['sl_rate']
@@ -273,7 +273,7 @@ if worst_regime and worst_sl_rate > 50:
 # Identifier le meilleur régime
 best_regime = None
 best_win_rate = 0
-for regime, stats in regime_stats.items():
+for _regime, stats in regime_stats.items():
     if regime != 'UNKNOWN' and stats['count'] >= 5:
         if stats['win_rate'] > best_win_rate:
             best_win_rate = stats['win_rate']
@@ -282,7 +282,7 @@ for regime, stats in regime_stats.items():
 if best_regime:
     print(f'🟢 RÉGIME LE PLUS PERFORMANT: {best_regime}')
     print(f'   Win rate: {best_win_rate:.1f}%')
-    print(f'   → Paramètres de ce régime peuvent servir de référence')
+    print('   → Paramètres de ce régime peuvent servir de référence')
     print()
 
 print('📝 PROCHAINES ÉTAPES:')

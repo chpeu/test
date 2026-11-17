@@ -48,7 +48,7 @@ def check_column_exists():
         result = cursor.fetchone()
         
         if result:
-            print(f"[OK] Colonne trouvee:")
+            print("[OK] Colonne trouvee:")
             print(f"   - Nom: {result['column_name']}")
             print(f"   - Type: {result['data_type']}")
             print(f"   - Nullable: {result['is_nullable']}")
@@ -101,7 +101,7 @@ def check_recent_scans():
         
         stats = cursor.fetchone()
         
-        print(f"\nStatistiques des scans (derniere heure):")
+        print("\nStatistiques des scans (derniere heure):")
         print(f"   - Total scans: {stats['total']}")
         print(f"   - Avec ml_confidence: {stats['with_confidence']}")
         print(f"   - Sans ml_confidence: {stats['without_confidence']}")
@@ -122,7 +122,7 @@ def check_recent_scans():
         examples = cursor.fetchall()
         
         if examples:
-            print(f"\nExemples de scans recents:")
+            print("\nExemples de scans recents:")
             for ex in examples:
                 conf_str = f"{ex['ml_confidence']:.2f}%" if ex['ml_confidence'] else "NULL"
                 print(f"   - ID {ex['id']}: {ex['symbol']} | confidence={conf_str} | opportunity={ex['is_opportunity']}")

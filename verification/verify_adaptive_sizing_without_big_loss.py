@@ -22,7 +22,7 @@ from config import TRADING_CONFIG
 sl_percent = TRADING_CONFIG.get('sl_percent', 0.2)
 big_loss_threshold = TRADING_CONFIG.get('adaptive_sizing_big_loss_threshold', -2.0)
 
-print(f"\n   CONFIG ACTUELLE:")
+print("\n   CONFIG ACTUELLE:")
 print(f"   - SL: {sl_percent}%")
 print(f"   - Seuil grosse perte: {big_loss_threshold}%")
 
@@ -39,10 +39,10 @@ print(f"   Seuil grosse perte: {big_loss_threshold}%")
 
 if max_loss_per_trade > big_loss_threshold:
     print(f"\n   [CONFIRMATION] {max_loss_per_trade}% > {big_loss_threshold}%")
-    print(f"   -> Le seuil grosse perte ne sera JAMAIS atteint avec ce SL!")
-    print(f"   -> Cette fonctionnalite est INUTILE dans votre config.")
+    print("   -> Le seuil grosse perte ne sera JAMAIS atteint avec ce SL!")
+    print("   -> Cette fonctionnalite est INUTILE dans votre config.")
 else:
-    print(f"\n   [ATTENTION] Le seuil peut etre atteint (SL > seuil)")
+    print("\n   [ATTENTION] Le seuil peut etre atteint (SL > seuil)")
 
 # =============================================================================
 # 2. DEMONSTRATION: Protection progressive par WR/Mult
@@ -110,13 +110,13 @@ print("=" * 70)
 
 # Sans protection (mult=1.0 constant)
 loss_without_protection = 10 * BASE_SIZE * (-sl_percent / 100)
-print(f"\n   SANS protection (mult=1.0 constant):")
+print("\n   SANS protection (mult=1.0 constant):")
 print(f"   - 10 trades a {BASE_SIZE} USDT chacun")
 print(f"   - Perte totale: {loss_without_protection:.2f} USDT")
 
 # Avec protection (mult variable)
-print(f"\n   AVEC protection progressive (mult variable):")
-print(f"   - Multiplicateur diminue avec le WR")
+print("\n   AVEC protection progressive (mult variable):")
+print("   - Multiplicateur diminue avec le WR")
 print(f"   - Perte totale: {cumulative_loss:.2f} USDT")
 
 reduction = ((loss_without_protection - cumulative_loss) / abs(loss_without_protection)) * 100

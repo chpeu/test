@@ -101,7 +101,7 @@ def check_missing_columns():
             print(f"   - {col}")
         
         # Générer les ALTER TABLE pour les colonnes manquantes
-        print(f"\n🔧 Requêtes SQL pour ajouter les colonnes manquantes:")
+        print("\n🔧 Requêtes SQL pour ajouter les colonnes manquantes:")
         for col in missing_columns:
             if col.startswith('config_use_') or col.endswith('_enabled'):
                 sql = f"ALTER TABLE trades ADD COLUMN IF NOT EXISTS {col} BOOLEAN DEFAULT NULL;"

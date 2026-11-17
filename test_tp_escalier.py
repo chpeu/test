@@ -96,7 +96,7 @@ async def test_tp_escalier_long():
     profit3 = position.tp_escalier_profits[2]
     logger.info("✅ Niveau 3 atteint")
     logger.info(f"   Profit: +{profit3['profit_usdt']:.2f} USDT (+{profit3['profit_pct']:.2f}%)")
-    logger.info(f"   Trailing stop activé")
+    logger.info("   Trailing stop activé")
     logger.info(f"   Restant: {position.tp_escalier_size_remaining*100:.0f}%")
     
     # Test Niveau 4: +0.80% (25% @ 10080) - Dernier niveau
@@ -114,7 +114,7 @@ async def test_tp_escalier_long():
     
     # Calculer profit total
     total_profit = sum(p['profit_usdt'] for p in position.tp_escalier_profits)
-    logger.info(f"\n🎉 TOUS LES NIVEAUX ATTEINTS")
+    logger.info("\n🎉 TOUS LES NIVEAUX ATTEINTS")
     logger.info(f"   Profit total: +{total_profit:.2f} USDT")
     
     # Vérifier profit total attendu
@@ -201,7 +201,7 @@ async def test_tp_escalier_short():
     assert position.tp_escalier_current_level == 3, f"❌ Niveau actuel = {position.tp_escalier_current_level}, attendu 3"
     
     logger.info("✅ Niveau 3 atteint (SHORT)")
-    logger.info(f"   Trailing stop activé")
+    logger.info("   Trailing stop activé")
     
     # Test Niveau 4: -0.80% (25% @ 9920)
     logger.info("\n[5] Simulation Niveau 4: -0.80% (final)")
@@ -214,7 +214,7 @@ async def test_tp_escalier_short():
     
     # Calculer profit total
     total_profit = sum(p['profit_usdt'] for p in position.tp_escalier_profits)
-    logger.info(f"\n🎉 TOUS LES NIVEAUX ATTEINTS (SHORT)")
+    logger.info("\n🎉 TOUS LES NIVEAUX ATTEINTS (SHORT)")
     logger.info(f"   Profit total: +{total_profit:.2f} USDT")
     
     # Fermer position

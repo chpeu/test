@@ -49,7 +49,7 @@ if trade:
     trade = dict(trade)
     trade_id = trade['id']
     
-    print(f"\n📊 INFOS DE BASE")
+    print("\n📊 INFOS DE BASE")
     print(f"   ID: {trade_id}")
     print(f"   Symbol: {trade.get('symbol')}")
     print(f"   Direction: {trade.get('direction')}")
@@ -78,11 +78,11 @@ if trade:
     
     if metrics:
         metrics = dict(metrics)
-        print(f"\n📈 MÉTRIQUES ATR")
+        print("\n📈 MÉTRIQUES ATR")
         print(f"   ATR 1m: {metrics.get('entry_atr_pct_1m')}%")
         print(f"   ATR 5m: {metrics.get('entry_atr_pct_5m')}%")
         
-        print(f"\n🎯 MFE / MAE")
+        print("\n🎯 MFE / MAE")
         mfe = metrics.get('max_pnl_reached')
         mae = metrics.get('min_pnl_reached')
         print(f"   MFE: {mfe}")
@@ -92,23 +92,23 @@ if trade:
         print(f"   Time to Max: {metrics.get('time_to_max_pnl_seconds')}s")
         print(f"   Time to Min: {metrics.get('time_to_min_pnl_seconds')}s")
         
-        print(f"\n🛡️ BREAK-EVEN")
+        print("\n🛡️ BREAK-EVEN")
         print(f"   BE Triggered: {metrics.get('be_triggered')}")
         print(f"   BE At: {metrics.get('be_triggered_at')}")
         print(f"   BE PnL: {metrics.get('be_triggered_pnl_pct')}")
         
-        print(f"\n🎢 TRAILING")
+        print("\n🎢 TRAILING")
         print(f"   Trailing Activated: {metrics.get('trailing_activated')}")
         print(f"   Trailing At: {metrics.get('trailing_activated_at')}")
         print(f"   Final SL: {metrics.get('trailing_final_sl_price')}")
         print(f"   Final Distance: {metrics.get('trailing_final_distance_pct')}")
         
-        print(f"\n⏰ STAGNATION")
+        print("\n⏰ STAGNATION")
         print(f"   Detected: {metrics.get('stagnation_detected')}")
         print(f"   Duration: {metrics.get('stagnation_duration_seconds')}s")
         
         # Diagnostic
-        print(f"\n🔍 DIAGNOSTIC")
+        print("\n🔍 DIAGNOSTIC")
         print("-"*40)
         
         pnl = trade.get('pnl_pct', 0)

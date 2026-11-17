@@ -389,7 +389,7 @@ class WebSocketDiagnostic:
             logger.info(f"   Dernière déconnexion: {health.last_disconnect_reason or 'N/A'}")
             
             if health.health_issues:
-                logger.info(f"   🚨 Problèmes détectés:")
+                logger.info("   🚨 Problèmes détectés:")
                 for issue in health.health_issues[-5:]:  # Derniers 5 problèmes
                     logger.info(f"      - {issue}")
         

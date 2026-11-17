@@ -196,7 +196,7 @@ class MLValidator:
             
             return {
                 'status': 'PASS',
-                'message': f"Modèle entraîné",
+                'message': "Modèle entraîné",
                 'details': {
                     'test_accuracy': f"{results['metrics']['test']['accuracy']:.3f}",
                     'test_f1': f"{results['metrics']['test']['f1']:.3f}"
@@ -357,12 +357,12 @@ class MLValidator:
         logger.info(f"⏭️ SKIP: {skipped}")
         
         if self.results['errors']:
-            logger.info(f"\n❌ ERREURS:")
+            logger.info("\n❌ ERREURS:")
             for err in self.results['errors']:
                 logger.info(f"  - {err}")
         
         if self.results['warnings']:
-            logger.info(f"\n⚠️ WARNINGS:")
+            logger.info("\n⚠️ WARNINGS:")
             for warn in self.results['warnings']:
                 logger.info(f"  - {warn}")
         

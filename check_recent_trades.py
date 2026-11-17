@@ -69,7 +69,7 @@ def check_recent_trades():
             print(f"OK  {col:35s}: Tous remplis")
     
     # Examiner les 3 trades les plus recents en detail
-    print(f"\nDETAIL 3 TRADES PLUS RECENTS:")
+    print("\nDETAIL 3 TRADES PLUS RECENTS:")
     print("-" * 70)
     
     cursor.execute("""
@@ -97,7 +97,7 @@ def check_recent_trades():
         print(f"   opportunity_id: {opp_id}")
     
     # Vérifier si les nouveaux scans ont les colonnes contexte remplies
-    print(f"\nSCAN_LOGS RECENTS (colonnes contexte):")
+    print("\nSCAN_LOGS RECENTS (colonnes contexte):")
     print("-" * 70)
     
     cursor.execute("""

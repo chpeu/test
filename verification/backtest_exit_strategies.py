@@ -339,20 +339,20 @@ print(f"{'='*80}")
 
 print(f"\n📊 BASELINE: {baseline_pnl:+.2f}% (PnL moyen: {baseline_pnl/len(trades):+.4f}%)")
 
-print(f"\n1️⃣ TRAILING MFE:")
+print("\n1️⃣ TRAILING MFE:")
 if best_trailing['delta'] > 0:
     print(f"   ✅ Trigger: +{best_trailing['trigger']:.2f}% → PnL: {best_trailing['pnl']:+.2f}% ({best_trailing['delta']:+.2f}%)")
     print(f"      Trades protégés: {best_trailing.get('protected', 'N/A')}")
 else:
     print(f"   ❌ Aucune amélioration (meilleur delta: {best_trailing['delta']:+.2f}%)")
 
-print(f"\n2️⃣ REVERSAL EXIT:")
+print("\n2️⃣ REVERSAL EXIT:")
 if best_reversal['delta'] > 0:
     print(f"   ✅ Config: {best_reversal['config']} → PnL: {best_reversal['pnl']:+.2f}% ({best_reversal['delta']:+.2f}%)")
 else:
     print(f"   ❌ Aucune amélioration (meilleur delta: {best_reversal['delta']:+.2f}%)")
 
-print(f"\n3️⃣ DURATION EXIT:")
+print("\n3️⃣ DURATION EXIT:")
 if best_duration['delta'] > 0:
     print(f"   ✅ Config: {best_duration['config']} → PnL: {best_duration['pnl']:+.2f}% ({best_duration['delta']:+.2f}%)")
 else:

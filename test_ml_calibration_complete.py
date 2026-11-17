@@ -30,7 +30,7 @@ def test_calibration_buckets():
         if actual_buckets == expected_buckets:
             print('\n[OK] Calcul buckets correct')
         else:
-            print(f'\n[ERROR] Buckets incorrects!')
+            print('\n[ERROR] Buckets incorrects!')
             print(f'         Attendu: {expected_buckets}')
             print(f'         Obtenu: {actual_buckets}')
             
@@ -58,7 +58,7 @@ def test_winrate_rejection_logic():
         min_winrate = float(min_winrate) * 100.0 if float(min_winrate) <= 1.0 else float(min_winrate)
         min_winrate = min_winrate / 100.0
         
-        print(f'Seuil config:')
+        print('Seuil config:')
         print(f'   ml_calib_min_winrate: {min_winrate*100:.0f}%')
         
         # Simuler des données de calibration
@@ -170,7 +170,7 @@ def test_position_manager_integration():
         # Test d'import du module ML calibration depuis position_manager
         try:
             from ml.calibration import MLCalibrationManager
-            test_manager = MLCalibrationManager()
+            MLCalibrationManager()
             print('[OK] MLCalibrationManager importable depuis position_manager')
         except ImportError as e:
             print(f'[ERROR] Import MLCalibrationManager failed: {e}')

@@ -72,7 +72,7 @@ def test_stagnation_positive_logic():
     stagnation_positive_timeout = TRADING_CONFIG.get('stagnation_positive_timeout_seconds', 60)
     stagnation_mfe_pullback_pct = TRADING_CONFIG.get('stagnation_mfe_pullback_pct', 0.08)
     
-    print(f"\n[CONFIG] Configuration actuelle:")
+    print("\n[CONFIG] Configuration actuelle:")
     print(f"   - stagnation_positive_threshold: {stagnation_positive_threshold}%")
     print(f"   - stagnation_positive_timeout: {stagnation_positive_timeout}s")
     print(f"   - stagnation_mfe_pullback_pct: {stagnation_mfe_pullback_pct}%")

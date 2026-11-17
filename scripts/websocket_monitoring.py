@@ -250,7 +250,7 @@ class WebSocketMonitor:
         
         if self.stats['connection_durations']:
             avg_duration = sum(self.stats['connection_durations']) / len(self.stats['connection_durations'])
-            logger.info(f"📊 Statistiques durées:")
+            logger.info("📊 Statistiques durées:")
             logger.info(f"   Moyenne: {avg_duration:.1f}s")
             logger.info(f"   Maximum: {max(self.stats['connection_durations']):.1f}s")
             logger.info(f"   Minimum: {min(self.stats['connection_durations']):.1f}s")

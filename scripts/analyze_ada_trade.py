@@ -75,21 +75,21 @@ else:
 
 duration = (exit_time - entry_time).total_seconds() / 60 if exit_time and entry_time else 0
 
-print(f"\n[1] IDENTIFICATION")
+print("\n[1] IDENTIFICATION")
 print(f"    Trade ID: {trade_id}")
 print(f"    Symbol: {symbol}")
 print(f"    Direction: {direction}")
 print(f"    Score: {score:.1f}")
 print(f"    Status: {status}")
 
-print(f"\n[2] ENTREE")
+print("\n[2] ENTREE")
 print(f"    Date/Heure: {entry_time}")
 print(f"    Prix entree: {entry_price:.6f}")
 print(f"    Taille: {size_usdt:.2f} USDT")
 print(f"    Leverage: {leverage}x")
 print(f"    ATR: {atr_entry:.6f} ({atr_pct:.3f}%)")
 
-print(f"\n[3] NIVEAUX CALCULES")
+print("\n[3] NIVEAUX CALCULES")
 print(f"    SL: {sl_price:.6f} (distance: {sl_atr_mult:.2f}x ATR)")
 print(f"    TP: {tp_price:.6f} (distance: {tp_atr_mult:.2f}x ATR)")
 if direction == 'LONG':
@@ -101,19 +101,19 @@ else:
 print(f"    SL%: {sl_pct:.2f}%")
 print(f"    TP%: {tp_pct:.2f}%")
 
-print(f"\n[4] EVOLUTION DU TRADE")
+print("\n[4] EVOLUTION DU TRADE")
 print(f"    Max PnL atteint: {max_pnl:.2f}%")
 print(f"    Min PnL atteint: {min_pnl:.2f}%")
 print(f"    Duree: {duration:.1f} minutes")
 
-print(f"\n[5] SORTIE")
+print("\n[5] SORTIE")
 print(f"    Date/Heure: {exit_time}")
 print(f"    Prix sortie: {exit_price:.6f}")
 print(f"    Raison: {exit_reason}")
 print(f"    PnL: {pnl_usdt:.4f} USDT ({pnl_pct:.2f}%)")
 
 # Analyse du resultat
-print(f"\n[6] ANALYSE")
+print("\n[6] ANALYSE")
 if pnl_pct > 0:
     print(f"    Resultat: GAGNANT (+{pnl_pct:.2f}%)")
     if max_pnl > 0 and pnl_pct < max_pnl * 0.5:
@@ -135,7 +135,7 @@ cur.execute('''
 metrics = cur.fetchone()
 
 if metrics:
-    print(f"\n[7] METRIQUES ATR DETAILLEES")
+    print("\n[7] METRIQUES ATR DETAILLEES")
     print(f"    ATR mult SL utilise: {metrics[0]}")
     print(f"    ATR mult TP utilise: {metrics[1]}")
     print(f"    Regime volatilite: {metrics[2]}")
@@ -143,14 +143,14 @@ if metrics:
     print(f"    Max PnL pendant trade: {metrics[3]}")
     print(f"    Min PnL pendant trade: {metrics[4]}")
     
-    print(f"\n[8] SCENARIOS WHAT-IF")
+    print("\n[8] SCENARIOS WHAT-IF")
     print(f"    Si params CALME: {metrics[5]}")
     print(f"    Si params NORMAL: {metrics[6]}")
     print(f"    Si params VOLATILE: {metrics[7]}")
     print(f"    Regime optimal retrospectif: {metrics[8]}")
 
 # Timeline des evenements
-print(f"\n[9] TIMELINE DU TRADE")
+print("\n[9] TIMELINE DU TRADE")
 print(f"    {entry_time} - OUVERTURE {direction} @ {entry_price:.6f}")
 
 if direction == 'LONG':

@@ -204,7 +204,7 @@ def print_film(trade):
         capture = pnl / mfe * 100
         print(f"   Capture MFE: {capture:.1f}%")
         if capture < 50:
-            print(f"   ⚠️ Moins de 50% du MFE capturé!")
+            print("   ⚠️ Moins de 50% du MFE capturé!")
     
     print(f"\n   Break-Even: {'✅ Activé' if be_triggered else '❌ Non'}")
     print(f"   Trailing: {'✅ Activé' if trailing_activated else '❌ Non'}")

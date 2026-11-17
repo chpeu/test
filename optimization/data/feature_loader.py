@@ -9,7 +9,7 @@ import pandas as pd
 import logging
 from typing import Optional, Dict, List
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from sqlalchemy import create_engine
 
 logger = logging.getLogger(__name__)
@@ -29,42 +29,15 @@ def build_config_filter_conditions(for_trades_table: bool = True, use_alias: boo
         Liste de conditions SQL WHERE
     """
     try:
-        # Importer la config actuelle
-        from config import TRADING_CONFIG
-        
-        # Paramètres de base (validation setup)
-        min_score = float(TRADING_CONFIG.get('min_score_required', 6.5))
-        snr_threshold = float(TRADING_CONFIG.get('snr_threshold', 0.15))
-        volume_mult = float(TRADING_CONFIG.get('volume_multiplier', 0.95))
-        use_confluence = bool(TRADING_CONFIG.get('use_confluence', False))
-        
-        # ATR optimal
-        atr_min_1m = float(TRADING_CONFIG.get('optimal_atr_min_1m', 0.12))
-        atr_max_1m = float(TRADING_CONFIG.get('optimal_atr_max_1m', 0.75))
-        atr_min_5m = float(TRADING_CONFIG.get('optimal_atr_min_5m', 0.22))
-        atr_max_5m = float(TRADING_CONFIG.get('optimal_atr_max_5m', 1.4))
-        
-        # Filtres additionnels
-        use_anti_whipsaw = bool(TRADING_CONFIG.get('use_anti_whipsaw', False))
-        use_candle_close = bool(TRADING_CONFIG.get('use_candle_close', False))
-        use_cooldown = bool(TRADING_CONFIG.get('use_cooldown', False))
-        use_momentum_continuity = bool(TRADING_CONFIG.get('use_momentum_continuity', False))
-        use_retest_confirmation = bool(TRADING_CONFIG.get('use_retest_confirmation', False))
-        
-        # 🔥 TP/SL EXCLUS - n'affectent pas la prédiction ML (gestion post-entrée uniquement)
-        
-        # Patterns techniques (flags + seuils)
-        use_breakout = bool(TRADING_CONFIG.get('use_breakout', True))
-        breakout_threshold = float(TRADING_CONFIG.get('breakout_threshold', 0.25))
-        use_snr = bool(TRADING_CONFIG.get('use_snr', True))
-        snr_threshold_pat = float(TRADING_CONFIG.get('snr_threshold', 0.15))
-        use_wick = bool(TRADING_CONFIG.get('use_wick', False))
-        wick_ratio_max = float(TRADING_CONFIG.get('wick_ratio_max', 4.5))
-        use_divergence = bool(TRADING_CONFIG.get('use_divergence', True))
-        di_gap_min = float(TRADING_CONFIG.get('di_gap_min', 4.0))
-        di_gap_adx_threshold = float(TRADING_CONFIG.get('di_gap_adx_threshold', 25.0))
-        
-        # Construire les conditions
+        # Les valeurs de TRADING_CONFIG (min_score, snr_threshold, volume_multiplier,
+        # ATR optimaux, flags de filtres et de patterns…) ne sont PLUS relues ici :
+        # depuis la décision « FILTRES ML STRICTS » du 11/12/2025, l'entraînement prend
+        # tous les trades LIVE en mode ATR, quelle que soit la config d'entrée du trade
+        # (une commande par config fitait perdre trop de données). Elles étaient
+        # chargées en 22 variables locales jamais consommées — d'où de faux soupçons
+        # de filtre ignoré à chaque audit. Les conditions réellement appliquées sont
+        # uniquement celles ci-dessous.
+        from config import TRADING_CONFIG  # noqa: F401  — garde l'échec explicite si config indisponible
         conditions = []
         
         # Préfixe pour les colonnes (pour jointures)
@@ -100,7 +73,7 @@ def get_postgres_connection():
     try:
         conn = psycopg2.connect(
             host=os.getenv('POSTGRES_HOST', 'localhost'),
-            port=int(os.getenv('POSTGRES_PORT', 5432)),
+            port=int(os.getenv('POSTGRES_PORT') or 5432),
             database=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', ''),
@@ -118,7 +91,7 @@ def get_sqlalchemy_engine():
         from urllib.parse import quote_plus
         
         host = os.getenv('POSTGRES_HOST', 'localhost')
-        port = int(os.getenv('POSTGRES_PORT', 5432))
+        port = int(os.getenv('POSTGRES_PORT') or 5432)
         database = os.getenv('POSTGRES_DB', 'trade_cursor_ml')
         user = os.getenv('POSTGRES_USER', 'postgres')
         password = os.getenv('POSTGRES_PASSWORD', '')
@@ -336,11 +309,28 @@ def load_features_from_postgres(
         if 'target_win' in df.columns:
             # Diagnostic
             logger.info(f"🔍 target_win avant conversion: type={df['target_win'].dtype}, non-null={df['target_win'].notna().sum()}/{len(df)}, unique values={df['target_win'].unique()[:10]}")
-            # Convertir PostgreSQL boolean strings ('t'/'f') en int (1/0)
-            df['target_win'] = df['target_win'].map({'t': 1, 'f': 0, True: 1, False: 0, 1: 1, 0: 0})
+            # Convertir PostgreSQL boolean strings ('t'/'f') en int (1/0).
+            # Un dictionnaire {'t':1,'f':0,True:1,False:0,1:1,0:0} était trompeur :
+            # True/1 et False/0 ont le même hash, les deux dernières clés écrasaient
+            # silencieusement les deux premières. Toute valeur inconnue (NaN inclus)
+            # reste NaN, comme avec l'ancien map().
+            def _target_win_to_int(value):
+                if value is True or value == 1:
+                    return 1
+                if value is False or value == 0:
+                    return 0
+                if isinstance(value, str):
+                    key = value.strip().lower()
+                    if key in ('t', 'true', '1', 'win'):
+                        return 1
+                    if key in ('f', 'false', '0', 'loss'):
+                        return 0
+                return value  # NaN et inconnu -> non converti
+
+            df['target_win'] = df['target_win'].map(_target_win_to_int)
             logger.info(f"🔍 target_win après conversion: unique={df['target_win'].unique()}, dtype={df['target_win'].dtype}")
         
-        logger.info(f"🔄 Conversion des types numériques effectuée")
+        logger.info("🔄 Conversion des types numériques effectuée")
         
         # Validation minimum (warning au lieu de bloquer)
         if len(df) < min_trades:

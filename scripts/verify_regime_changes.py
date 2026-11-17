@@ -89,7 +89,7 @@ def main():
         
         adjustments = get_active_adjustments()
         if adjustments:
-            print(f"\n  Ajustements actifs:")
+            print("\n  Ajustements actifs:")
             for key, val in adjustments.items():
                 print(f"    {key}: {val}")
         else:
@@ -105,7 +105,7 @@ def main():
         
         # Config par défaut
         default_config = PositionManagerConfig()
-        print(f"  Config par défaut:")
+        print("  Config par défaut:")
         print(f"    atr_mult_sl: {default_config.atr_mult_sl}")
         print(f"    atr_mult_tp: {default_config.atr_mult_tp}")
         
@@ -133,14 +133,14 @@ def main():
             
             # Les multiplicateurs locaux appliqués dans position_manager
             if local == 'MEDIUM':
-                print(f"    → TP mult ajusté: base × 0.7")
-                print(f"    → SL mult ajusté: base × 1.3")
+                print("    → TP mult ajusté: base × 0.7")
+                print("    → SL mult ajusté: base × 1.3")
             elif local == 'HIGH':
-                print(f"    → TP mult: base (pas de changement)")
-                print(f"    → SL mult ajusté: base × 1.2")
+                print("    → TP mult: base (pas de changement)")
+                print("    → SL mult ajusté: base × 1.2")
             else:  # LOW
-                print(f"    → TP mult: base (pas de changement)")
-                print(f"    → SL mult: base (pas de changement)")
+                print("    → TP mult: base (pas de changement)")
+                print("    → SL mult: base (pas de changement)")
                 
     except Exception as e:
         print(f"  ❌ Erreur: {e}")

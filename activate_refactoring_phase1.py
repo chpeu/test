@@ -164,7 +164,7 @@ class RefactoringPhase1Activator:
                     'error_rate': error_rate
                 }
                 
-                logger.info(f"📈 Baseline établie:")
+                logger.info("📈 Baseline établie:")
                 logger.info(f"  • Temps réponse moyen: {avg_time:.3f}s")
                 logger.info(f"  • Temps réponse max: {max_time:.3f}s") 
                 logger.info(f"  • Taux de succès: {(successful_trades/10)*100:.1f}%")
@@ -226,11 +226,11 @@ class RefactoringPhase1Activator:
                         comparison = result['comparison_data']
                         if 'legacy_calculation' in comparison:
                             self.activation_metrics['tests_passed'] += 1
-                            logger.info(f"    ✅ Comparaison générée")
+                            logger.info("    ✅ Comparaison générée")
                         else:
-                            logger.warning(f"    ⚠️ Pas de données legacy")
+                            logger.warning("    ⚠️ Pas de données legacy")
                     else:
-                        logger.warning(f"    ⚠️ Pas de données comparaison")
+                        logger.warning("    ⚠️ Pas de données comparaison")
                 else:
                     self.activation_metrics['tests_failed'] += 1
                     logger.error(f"    ❌ Échec: {result.get('error_message')}")
@@ -352,8 +352,8 @@ class RefactoringPhase1Activator:
     def _check_core_infrastructure(self) -> bool:
         """Vérifie infrastructure core"""
         try:
-            from core.interfaces.position_interfaces import IPositionCalculator
-            from core.factories.position_factory import PositionFactory
+            from core.interfaces.position_interfaces import IPositionCalculator  # noqa: F401  (sonde de disponibilite)
+            from core.factories.position_factory import PositionFactory  # noqa: F401  (sonde de disponibilite)
             return True
         except ImportError as e:
             logger.error(f"Import error: {e}")
@@ -371,8 +371,8 @@ class RefactoringPhase1Activator:
     def _check_testable_components(self) -> bool:
         """Vérifie composants testables"""
         try:
-            from core.implementations.testable_position_calculator import TestablePositionCalculator
-            from core.implementations.testable_position_validator import TestablePositionValidator
+            from core.implementations.testable_position_calculator import TestablePositionCalculator  # noqa: F401  (sonde de disponibilite)
+            from core.implementations.testable_position_validator import TestablePositionValidator  # noqa: F401  (sonde de disponibilite)
             return True
         except ImportError:
             return False
@@ -388,7 +388,7 @@ class RefactoringPhase1Activator:
     def _check_mock_components(self) -> bool:
         """Vérifie composants mock"""
         try:
-            from core.implementations.mock_position_components import MockPositionExecutor, MockPositionRepository
+            from core.implementations.mock_position_components import MockPositionExecutor, MockPositionRepository  # noqa: F401  (sonde de disponibilite)
             return True
         except ImportError:
             return False
@@ -405,9 +405,9 @@ def main():
         print("━" * 50)
         print(f"✅ Tests passés: {activator.activation_metrics['tests_passed']}")
         print(f"❌ Tests échoués: {activator.activation_metrics['tests_failed']}")
-        print(f"📊 Rollout final: 25% des utilisateurs")
-        print(f"🎛️ Mode comparaison: ACTIF")
-        print(f"👁️ Monitoring: ACTIF")
+        print("📊 Rollout final: 25% des utilisateurs")
+        print("🎛️ Mode comparaison: ACTIF")
+        print("👁️ Monitoring: ACTIF")
         print("━" * 50)
         print("\n📋 PROCHAINES ÉTAPES:")
         print("1. Surveiller dashboard monitoring (port 5001)")

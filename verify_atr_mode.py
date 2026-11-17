@@ -74,7 +74,7 @@ def test_config_py() -> Tuple[int, int]:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from config import TRADING_CONFIG
         
-        for key, (expected_type, default) in ATR_PARAMS.items():
+        for key, (_expected_type, default) in ATR_PARAMS.items():
             value = TRADING_CONFIG.get(key)
             
             # Vérifier si clé existe (peut être dans nested dict)
@@ -124,7 +124,7 @@ def test_config_overrides() -> Tuple[int, int]:
         with open(overrides_path, 'r') as f:
             overrides = json.load(f)
         
-        for key, (expected_type, default) in ATR_PARAMS.items():
+        for key, (_expected_type, _default) in ATR_PARAMS.items():
             if key in overrides:
                 ok(f"{key}: {overrides[key]}")
                 passed += 1

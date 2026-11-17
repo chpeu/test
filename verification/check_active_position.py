@@ -56,36 +56,36 @@ def main():
         print(f"   Size: {size:.2f} USDT")
         print(f"   Mode: {tp_sl_mode}")
         
-        print(f"\n📊 Performance:")
+        print("\n📊 Performance:")
         print(f"   PnL actuel: {pnl_pct:.3f}%")
         print(f"   Max PnL (MFE): {max_pnl_reached:.3f}%")
         
-        print(f"\n🔧 État Trailing:")
+        print("\n🔧 État Trailing:")
         print(f"   Trailing activé: {'✅ OUI' if trailing_activated else '❌ NON'}")
         print(f"   Break-even: {'✅ OUI' if break_even_triggered else '❌ NON'}")
         
         # Analyse trailing
-        print(f"\n" + "=" * 70)
+        print("\n" + "=" * 70)
         print("🔍 DIAGNOSTIC TRAILING")
         print("=" * 70)
         
         if not trailing_activated:
-            print(f"\n⚠️ TRAILING NON ACTIVÉ")
+            print("\n⚠️ TRAILING NON ACTIVÉ")
             
             # Vérifier les conditions
             if pnl_pct < 0:
                 print(f"   ❌ Position en perte ({pnl_pct:.3f}%), trailing impossible")
             else:
                 print(f"   ⚠️ PnL positif ({pnl_pct:.3f}%) mais trailing pas encore activé")
-                print(f"   ℹ️ Le seuil trigger n'est peut-être pas atteint")
+                print("   ℹ️ Le seuil trigger n'est peut-être pas atteint")
                 
                 # Estimer le trigger selon le mode
                 if tp_sl_mode == 'FIXE':
-                    print(f"   ℹ️ Mode FIXE: trigger par défaut ~0.20%")
+                    print("   ℹ️ Mode FIXE: trigger par défaut ~0.20%")
                 elif tp_sl_mode == 'ATR':
-                    print(f"   ℹ️ Mode ATR: trigger basé sur ATR (1.5× ATR)")
+                    print("   ℹ️ Mode ATR: trigger basé sur ATR (1.5× ATR)")
         else:
-            print(f"\n✅ TRAILING ACTIVÉ")
+            print("\n✅ TRAILING ACTIVÉ")
             
             # Vérifier si le SL a bougé
             sl_distance = abs((sl - entry) / entry * 100)
@@ -96,16 +96,16 @@ def main():
                     print(f"   ✅ SL ({sl:.8f}) au-dessus entry ({entry:.8f}) = BE atteint")
                 else:
                     print(f"   ⚠️ SL ({sl:.8f}) encore sous entry ({entry:.8f})")
-                    print(f"   ℹ️ Le prix doit monter plus pour que trailing remonte le SL")
+                    print("   ℹ️ Le prix doit monter plus pour que trailing remonte le SL")
             else:  # SHORT
                 if sl <= entry:
                     print(f"   ✅ SL ({sl:.8f}) sous entry ({entry:.8f}) = BE atteint")
                 else:
                     print(f"   ⚠️ SL ({sl:.8f}) encore au-dessus entry ({entry:.8f})")
-                    print(f"   ℹ️ Le prix doit descendre plus pour que trailing descende le SL")
+                    print("   ℹ️ Le prix doit descendre plus pour que trailing descende le SL")
         
         # Vérification inversion
-        print(f"\n" + "=" * 70)
+        print("\n" + "=" * 70)
         print("🔄 VÉRIFICATION INVERSION")
         print("=" * 70)
         
@@ -122,7 +122,7 @@ def main():
                 
                 for line in recent_lines:
                     if 'INVERSION DE SIGNAL' in line and symbol in line:
-                        print(f"\n✅ INVERSION DÉTECTÉE dans les logs:")
+                        print("\n✅ INVERSION DÉTECTÉE dans les logs:")
                         # Extraire la ligne pertinente
                         if 'Signal original:' in line:
                             print(f"   {line.strip()}")
@@ -132,29 +132,29 @@ def main():
                 if not inversion_found:
                     print(f"\n⚠️ AUCUN MESSAGE D'INVERSION trouvé pour {symbol}")
                     print(f"   Direction actuelle: {direction}")
-                    print(f"   ℹ️ Vérifiez si le backend a été redémarré avec invert_signals=True")
+                    print("   ℹ️ Vérifiez si le backend a été redémarré avec invert_signals=True")
                     
             except Exception as e:
                 print(f"   ⚠️ Impossible de lire les logs: {e}")
         
         # Recommandations
-        print(f"\n" + "=" * 70)
+        print("\n" + "=" * 70)
         print("💡 RECOMMANDATIONS")
         print("=" * 70)
         
         if not trailing_activated and pnl_pct > 0:
-            print(f"\n1. PnL positif mais trailing inactif:")
-            print(f"   → Attendre que le PnL dépasse le seuil trigger")
-            print(f"   → Vérifier config: trailing_trigger_pnl ou break_even_atr_mult")
+            print("\n1. PnL positif mais trailing inactif:")
+            print("   → Attendre que le PnL dépasse le seuil trigger")
+            print("   → Vérifier config: trailing_trigger_pnl ou break_even_atr_mult")
         
         if trailing_activated and sl == entry:
-            print(f"\n2. Trailing activé mais SL = entry:")
-            print(f"   → Le prix doit continuer dans la bonne direction")
-            print(f"   → Le trailing ne peut remonter que si prix monte (LONG) ou descend (SHORT)")
+            print("\n2. Trailing activé mais SL = entry:")
+            print("   → Le prix doit continuer dans la bonne direction")
+            print("   → Le trailing ne peut remonter que si prix monte (LONG) ou descend (SHORT)")
         
-        print(f"\n3. Pour vérifier l'inversion:")
-        print(f"   → Recherchez '🔄 INVERSION' dans les logs au moment de l'ouverture")
-        print(f"   → Comparez la direction avec le signal original du scanner")
+        print("\n3. Pour vérifier l'inversion:")
+        print("   → Recherchez '🔄 INVERSION' dans les logs au moment de l'ouverture")
+        print("   → Comparez la direction avec le signal original du scanner")
         
     except json.JSONDecodeError:
         print("❌ Erreur: state.json invalide (JSON mal formé)")

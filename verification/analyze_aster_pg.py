@@ -91,7 +91,7 @@ def main():
             print(f"Durée: {duration_min:.1f} min")
             print(f"Timestamp: {ts_exit}")
             
-            print(f"\n💰 Performance:")
+            print("\n💰 Performance:")
             print(f"   PnL final: {pnl_pct:.3f}%" if pnl_pct else "   PnL: N/A")
             print(f"   Max PnL (MFE): {max_pnl:.3f}%" if max_pnl else "   MFE: N/A")
             print(f"   Min PnL: {min_pnl:.3f}%" if min_pnl else "   Min: N/A")
@@ -103,7 +103,7 @@ def main():
                     capture = (pnl_pct / max_pnl * 100)
                     print(f"   📊 Capture MFE: {capture:.1f}%")
             
-            print(f"\n🎢 Trailing:")
+            print("\n🎢 Trailing:")
             print(f"   Activé: {'✅' if trailing_activated else '❌'}")
             print(f"   BE: {'✅' if be_triggered else '❌'}")
             print(f"   SL: {sl_price}")
@@ -112,18 +112,18 @@ def main():
             print(f"\n🚪 Sortie: {exit_reason}")
             
             # Diagnostic
-            print(f"\n🔧 Diagnostic:")
+            print("\n🔧 Diagnostic:")
             if max_pnl and max_pnl > 0.15 and not trailing_activated:
                 print(f"   ❌ PROBLÈME: MFE {max_pnl:.3f}% > 0.15% mais trailing NON activé")
             
             if trailing_activated and pnl_pct and max_pnl:
                 if (max_pnl - pnl_pct) > 0.2:
                     print(f"   ⚠️ Trailing activé mais pullback important: {max_pnl - pnl_pct:.3f}%")
-                    print(f"   💡 Distance trailing trop large ou mise à jour trop lente")
+                    print("   💡 Distance trailing trop large ou mise à jour trop lente")
             
             if max_pnl and max_pnl > 0.3 and pnl_pct and pnl_pct < 0.1:
                 print(f"   🚨 PERTE MAJEURE: +{max_pnl:.3f}% → +{pnl_pct:.3f}%")
-                print(f"   💡 Trailing distance (0.1%) insuffisante pour cette volatilité")
+                print("   💡 Trailing distance (0.1%) insuffisante pour cette volatilité")
             
             print()
         

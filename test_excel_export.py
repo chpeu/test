@@ -14,7 +14,7 @@ def test_excel_export():
     
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -55,7 +55,7 @@ def test_excel_export():
             print(f"  ❌ Colonnes AG manquantes: {ag_missing}")
         
         # Test 2: Export réel des 5 derniers trades
-        print(f"\n📁 Test 2: Export Excel des derniers trades...")
+        print("\n📁 Test 2: Export Excel des derniers trades...")
         
         # Construire la requête d'export (comme dans main.py)
         columns_str = ', '.join(all_columns)
@@ -68,7 +68,7 @@ def test_excel_export():
         print(f"  🔢 {len(all_columns)} colonnes par trade")
         
         # Test 3: Créer un fichier Excel temporaire
-        print(f"\n📄 Test 3: Création fichier Excel...")
+        print("\n📄 Test 3: Création fichier Excel...")
         
         with NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp_file:
             excel_path = tmp_file.name
@@ -103,7 +103,7 @@ def test_excel_export():
         print(f"  ✅ Fichier Excel créé: {excel_path}")
         
         # Test 4: Vérifier contenu du fichier Excel
-        print(f"\n🔍 Test 4: Vérification contenu Excel...")
+        print("\n🔍 Test 4: Vérification contenu Excel...")
         
         # Recharger le fichier pour vérification
         wb_check = openpyxl.load_workbook(excel_path)
@@ -129,7 +129,7 @@ def test_excel_export():
         
         # Vérifier quelques valeurs
         if len(trades_data) > 0:
-            print(f"\n📊 Exemple de données (premier trade):")
+            print("\n📊 Exemple de données (premier trade):")
             for ag_col in antigiveback_columns[:3]:  # 3 premiers pour l'exemple
                 if ag_col in excel_headers:
                     col_idx = excel_headers.index(ag_col) + 1
@@ -139,7 +139,7 @@ def test_excel_export():
         # Nettoyage
         wb_check.close()
         os.unlink(excel_path)
-        print(f"  🧹 Fichier temporaire supprimé")
+        print("  🧹 Fichier temporaire supprimé")
         
         cursor.close()
         conn.close()
@@ -153,6 +153,6 @@ def test_excel_export():
 if __name__ == "__main__":
     success = test_excel_export()
     if success:
-        print(f"\n🎉 Export Excel compatible avec toutes les colonnes anti-giveback!")
+        print("\n🎉 Export Excel compatible avec toutes les colonnes anti-giveback!")
     else:
-        print(f"\n⚠️ Export Excel incomplet ou problématique")
+        print("\n⚠️ Export Excel incomplet ou problématique")

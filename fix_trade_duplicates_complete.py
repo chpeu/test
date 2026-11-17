@@ -57,7 +57,7 @@ def analyze_duplicate_trades():
                 print(f'   Groupes dupliqués trouvés: {len(duplicate_groups)}')
                 
                 duplicates_to_clean = []
-                for i, (symbol, entry, minute, count, ids, reasons, pnls, timestamps) in enumerate(duplicate_groups):
+                for i, (symbol, entry, _minute, count, ids, reasons, pnls, timestamps) in enumerate(duplicate_groups):
                     print(f'\n   Groupe {i+1}: {symbol} entry={entry} ({count} trades)')
                     print(f'     Timestamps: {[t.strftime("%H:%M:%S") for t in timestamps]}')
                     print(f'     Exit reasons: {reasons}')
@@ -284,7 +284,7 @@ def test_verification_loop():
         # Importer et exécuter le script de vérification
         import subprocess
         result = subprocess.run([sys.executable, 'verify_trade_duplicates.py'], 
-                              capture_output=True, text=True, timeout=30)
+                              capture_output=True, text=True, timeout=30, check=False)  # returncode lu juste apres
         
         if result.returncode == 0:
             print('   ✅ Test vérification: SUCCESS')

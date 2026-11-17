@@ -47,20 +47,20 @@ def main():
     print(f"Direction: {row.get('direction')}")
     print(f"Entry Time: {row.get('timestamp_entry')}")
     print(f"Exit Time: {row.get('timestamp_exit')}")
-    print(f"\nPrix:")
+    print("\nPrix:")
     print(f"  Entry: {row.get('entry_price')}")
     print(f"  Exit: {row.get('exit_price')}")
     print(f"  TP: {row.get('tp_price')}")
     print(f"  SL: {row.get('sl_price')}")
     print(f"\nSize: {row.get('size_usdt')} USDT")
-    print(f"\nPnL:")
+    print("\nPnL:")
     print(f"  Gross: {row.get('gross_pnl_usdt')} USDT")
     print(f"  Net: {row.get('net_pnl_usdt')} USDT ({row.get('net_pnl_pct')}%)")
     print(f"\nExit Reason: {row.get('exit_reason')}")
     print(f"Duration: {row.get('duration_seconds')}s")
     
     # Show all columns for debugging
-    print(f"\n--- TOUTES LES COLONNES ---")
+    print("\n--- TOUTES LES COLONNES ---")
     for k, v in row.items():
         if v is not None:
             print(f"  {k}: {v}")
@@ -78,7 +78,7 @@ def main():
             pnl_pct = (exit - entry) / entry * 100
             pnl_usdt = (exit - entry) / entry * size
         
-        print(f"\n--- CALCUL MANUEL ---")
+        print("\n--- CALCUL MANUEL ---")
         print(f"Entry: {entry}")
         print(f"Exit: {exit}")
         print(f"Direction: {row['direction']}")
@@ -91,7 +91,7 @@ def main():
         if row['direction'] == 'SHORT':
             pnl_pct_sl = (entry - sl_mexc) / entry * 100
             pnl_usdt_sl = (entry - sl_mexc) / entry * size
-        print(f"\n--- AVEC SL MEXC REEL (0.2784) ---")
+        print("\n--- AVEC SL MEXC REEL (0.2784) ---")
         print(f"PnL % avec SL MEXC: {pnl_pct_sl:.4f}%")
         print(f"PnL USDT avec SL MEXC: {pnl_usdt_sl:.4f} USDT")
     

@@ -52,7 +52,7 @@ class TestableAnalyzerV2(IAnalyzer):
         self._indicator_cache = {}
         self._cache_max_age_seconds = 30
         
-        logger.info(f"✅ TestableAnalyzerV2 initialisé avec composants injectés")
+        logger.info("✅ TestableAnalyzerV2 initialisé avec composants injectés")
     
     def analyze_pair(self, symbol: str, market_data: Dict[str, Any]) -> AnalysisResult:
         """Analyse complète d'une paire"""

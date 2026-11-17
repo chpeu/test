@@ -121,7 +121,7 @@ def main():
     original_routes = count_routes("main.py")
     refactored_routes = count_routes("main_refactored.py")
 
-    print(f"📏 Lignes de code:")
+    print("📏 Lignes de code:")
     print(f"   Original:     {original_lines} lignes")
     print(f"   Refactorisé:  {refactored_lines} lignes")
     if original_lines > 0:
@@ -129,7 +129,7 @@ def main():
         percent = (reduction / original_lines) * 100
         print(f"   Réduction:    {reduction} lignes (-{percent:.1f}%)")
 
-    print(f"\n🛣️  Routes @app:")
+    print("\n🛣️  Routes @app:")
     print(f"   Original:     {original_routes} routes")
     print(f"   Refactorisé:  {refactored_routes} routes")
     if original_routes > 0:
@@ -145,7 +145,7 @@ def main():
 
     total_module_lines = scanner_lines + dashboard_lines + scanner_cb_lines + position_cb_lines + scalability_cb_lines
 
-    print(f"\n📦 Modules créés:")
+    print("\n📦 Modules créés:")
     print(f"   scanner.py:                  {scanner_lines} lignes")
     print(f"   dashboard.py:                {dashboard_lines} lignes")
     print(f"   scanner_loop.py:             {scanner_cb_lines} lignes")

@@ -75,7 +75,7 @@ def main():
             print(f"Exit reason: {exit_reason}")
             print(f"Slippage: {slippage_pct:.3f}%" if slippage_pct else "Slippage: N/A")
             
-            print(f"\n💰 Performance:")
+            print("\n💰 Performance:")
             print(f"   PnL final: {pnl_pct:.3f}%")
             
             # Calculer les distances SL/TP
@@ -93,20 +93,20 @@ def main():
             print(f"   Prix move: {price_move_pct:.3f}%")
             
             # Analyse de la sortie
-            print(f"\n🚪 Analyse de la sortie:")
+            print("\n🚪 Analyse de la sortie:")
             
             if exit_reason == 'SL':
                 print(f"   ❌ SL touché en {'perte' if pnl_pct < 0 else 'profit'} ({pnl_pct:.3f}%)")
                 if pnl_pct < 0:
                     if abs(pnl_pct) < sl_distance_pct * 0.8:
                         print(f"   ⚠️ SL touché avant distance prévue ({abs(pnl_pct):.3f}% < {sl_distance_pct:.3f}%)")
-                        print(f"   💡 Possible: slippage ou SL échange trop serré")
+                        print("   💡 Possible: slippage ou SL échange trop serré")
                 else:
-                    print(f"   ℹ️ Pourrait être un Trailing Stop non marqué comme 'TS'")
+                    print("   ℹ️ Pourrait être un Trailing Stop non marqué comme 'TS'")
                     
             elif exit_reason == 'TS':
                 print(f"   ✅ Trailing Stop (profits protégés: {pnl_pct:.3f}%)")
-                print(f"   ✅ Le trailing a bien fonctionné")
+                print("   ✅ Le trailing a bien fonctionné")
                     
             elif exit_reason == 'TP':
                 print(f"   ✅ Take Profit atteint ({pnl_pct:.3f}%)")
@@ -123,37 +123,37 @@ def main():
                 print(f"   ℹ️ Autre raison: {exit_reason} ({pnl_pct:.3f}%)")
             
             # Vérifier si le SL a bougé (indication de trailing ou BE)
-            print(f"\n🔧 Analyse du SL final:")
+            print("\n🔧 Analyse du SL final:")
             
             if direction == 'LONG':
                 if sl >= entry_price:
                     print(f"   ✅ SL ({sl:.8f}) >= Entry ({entry_price:.8f})")
-                    print(f"   → Break-Even atteint (SL moved up)")
+                    print("   → Break-Even atteint (SL moved up)")
                     if exit_reason == 'SL':
-                        print(f"   → SL touché APRÈS BE = Trailing protégeait les profits")
+                        print("   → SL touché APRÈS BE = Trailing protégeait les profits")
                 else:
                     expected_sl = entry_price * (1 - sl_distance_pct / 100)
                     if abs(sl - expected_sl) < entry_price * 0.0001:
                         print(f"   ℹ️ SL ({sl:.8f}) = SL initial calculé")
-                        print(f"   → Pas de mouvement de SL détecté")
+                        print("   → Pas de mouvement de SL détecté")
                     else:
                         print(f"   ⚠️ SL ({sl:.8f}) != SL initial attendu ({expected_sl:.8f})")
             else:  # SHORT
                 if sl <= entry_price:
                     print(f"   ✅ SL ({sl:.8f}) <= Entry ({entry_price:.8f})")
-                    print(f"   → Break-Even atteint (SL moved down)")
+                    print("   → Break-Even atteint (SL moved down)")
                     if exit_reason == 'SL':
-                        print(f"   → SL touché APRÈS BE = Trailing protégeait les profits")
+                        print("   → SL touché APRÈS BE = Trailing protégeait les profits")
                 else:
                     expected_sl = entry_price * (1 + sl_distance_pct / 100)
                     if abs(sl - expected_sl) < entry_price * 0.0001:
                         print(f"   ℹ️ SL ({sl:.8f}) = SL initial calculé")
-                        print(f"   → Pas de mouvement de SL détecté")
+                        print("   → Pas de mouvement de SL détecté")
                     else:
                         print(f"   ⚠️ SL ({sl:.8f}) != SL initial attendu ({expected_sl:.8f})")
             
             # Recommandations
-            print(f"\n💡 Recommandation pour ce trade:")
+            print("\n💡 Recommandation pour ce trade:")
             
             if exit_reason == 'SL' and pnl_pct < 0 and duration_min < 1.0:
                 print(f"   → SL touché très rapidement ({duration_min:.1f}min)")
@@ -163,7 +163,7 @@ def main():
                 print(f"   → Trailing a bien fonctionné, protégé {pnl_pct:.3f}% de profits")
                 
             if exit_reason == 'STAGNATION' and pnl_pct > 0:
-                print(f"   → Sortie anticipée profitable, bon comportement")
+                print("   → Sortie anticipée profitable, bon comportement")
             
             print()
         
@@ -185,7 +185,7 @@ def main():
         print(f"\nPnL moyen: {avg_pnl:.3f}%")
         print(f"Durée moyenne: {avg_duration:.1f} min")
         
-        print(f"\nRaisons de sortie:")
+        print("\nRaisons de sortie:")
         for reason, count in exit_reasons.items():
             print(f"   • {reason}: {count} trade{'s' if count > 1 else ''}")
         
@@ -193,43 +193,43 @@ def main():
         ts_count = exit_reasons.get('TS', 0)
         sl_count = exit_reasons.get('SL', 0)
         
-        print(f"\n" + "=" * 80)
+        print("\n" + "=" * 80)
         print("🎯 ANALYSE TRAILING STOP")
         print("=" * 80)
         
         if ts_count > 0:
             print(f"\n✅ {ts_count} trade{'s' if ts_count > 1 else ''} fermé{'s' if ts_count > 1 else ''} par Trailing Stop")
-            print(f"   → Le trailing fonctionne et protège les profits")
+            print("   → Le trailing fonctionne et protège les profits")
         else:
-            print(f"\n⚠️ AUCUN trade fermé par Trailing Stop (TS)")
-            print(f"   → Soit le trailing ne s'active pas, soit les trades ne durent pas assez")
+            print("\n⚠️ AUCUN trade fermé par Trailing Stop (TS)")
+            print("   → Soit le trailing ne s'active pas, soit les trades ne durent pas assez")
         
         if sl_count > 0:
             # Vérifier si certains SL sont en profit (donc potentiellement du trailing non marqué)
             sl_in_profit = sum(1 for r in rows if r[8] == 'SL' and r[7] and r[7] > 0)
             if sl_in_profit > 0:
                 print(f"\n⚠️ {sl_in_profit} SL touché{'s' if sl_in_profit > 1 else ''} EN PROFIT")
-                print(f"   → Possible trailing non marqué comme 'TS'")
-                print(f"   → Vérifier la logique exit_reason dans position_manager.py")
+                print("   → Possible trailing non marqué comme 'TS'")
+                print("   → Vérifier la logique exit_reason dans position_manager.py")
         
-        print(f"\n" + "=" * 80)
+        print("\n" + "=" * 80)
         print("🎯 CONCLUSION")
         print("=" * 80)
         
         if avg_pnl < -0.2:
             print(f"\n❌ PROBLÈME MAJEUR: PnL moyen très négatif ({avg_pnl:.3f}%)")
-            print(f"   1. SL trop serré (vérifier sl_percent ou atr_mult_sl)")
-            print(f"   2. Ou mauvais sens de position (vérifier inversion)")
+            print("   1. SL trop serré (vérifier sl_percent ou atr_mult_sl)")
+            print("   2. Ou mauvais sens de position (vérifier inversion)")
         elif avg_pnl < 0:
             print(f"\n⚠️ PnL moyen négatif ({avg_pnl:.3f}%)")
-            print(f"   → Ajuster SL ou vérifier qualité des signaux")
+            print("   → Ajuster SL ou vérifier qualité des signaux")
         else:
             print(f"\n✅ PnL moyen positif ({avg_pnl:.3f}%)")
         
         if ts_count == 0 and avg_duration < 2.0:
             print(f"\n⚠️ Trades très courts ({avg_duration:.1f}min) et pas de trailing")
-            print(f"   → Trades fermés avant que trailing puisse s'activer")
-            print(f"   → Réduire trailing_trigger_atr_mult ou augmenter SL initial")
+            print("   → Trades fermés avant que trailing puisse s'activer")
+            print("   → Réduire trailing_trigger_atr_mult ou augmenter SL initial")
         
         cursor.close()
         conn.close()

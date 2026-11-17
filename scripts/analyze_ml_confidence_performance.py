@@ -274,11 +274,11 @@ def print_analysis(analysis: Dict[str, Any]) -> None:
         print(f"\n💡 Suggestion : Le seuil actuel de {current_threshold}% semble approprié.")
         print(f"   Les trades au-dessus du seuil performent mieux ({above_wr:.1f}% vs {below_wr:.1f}%).")
     elif below_wr > above_wr:
-        print(f"\n⚠️ Attention : Les trades en-dessous du seuil performent mieux !")
-        print(f"   Considérez baisser le seuil ou recalibrer le modèle ML.")
+        print("\n⚠️ Attention : Les trades en-dessous du seuil performent mieux !")
+        print("   Considérez baisser le seuil ou recalibrer le modèle ML.")
     else:
-        print(f"\n🔍 Le seuil actuel ne semble pas discriminant.")
-        print(f"   Considérez une recalibration du modèle ML.")
+        print("\n🔍 Le seuil actuel ne semble pas discriminant.")
+        print("   Considérez une recalibration du modèle ML.")
 
 
 def main() -> int:

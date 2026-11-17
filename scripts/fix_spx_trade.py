@@ -98,7 +98,7 @@ else:
     # Verifier
     cur.execute("SELECT exit_price, exit_reason, net_pnl_pct FROM trades WHERE id = %s", (trade_id,))
     updated = cur.fetchone()
-    print(f"\n  Verification:")
+    print("\n  Verification:")
     print(f"    Exit: {updated['exit_price']}")
     print(f"    Reason: {updated['exit_reason']}")
     print(f"    PnL: {float(updated['net_pnl_pct'])*100:.4f}%")

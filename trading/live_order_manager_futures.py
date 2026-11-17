@@ -58,8 +58,10 @@ try:
         OrderSide,
         OrderType,
         OpenType,
-        OrderResult as BypassOrderResult,
-        Position as BypassPosition,
+        # Aliases non consommées ailleurs : l'import sert aussi de contrôle que le
+        # client bypass expose bien ces classes (sinon BYPASS_AVAILABLE = False).
+        OrderResult as BypassOrderResult,  # noqa: F401
+        Position as BypassPosition,  # noqa: F401
     )
 
     BYPASS_AVAILABLE = True
@@ -152,7 +154,7 @@ class CircuitBreaker:
 
         if self.state == CircuitState.HALF_OPEN:
             # Échec en test → réouvrir immédiatement
-            logger.warning(f"❌ Circuit Breaker RÉOUVERT - Test échoué")
+            logger.warning("❌ Circuit Breaker RÉOUVERT - Test échoué")
             self.state = CircuitState.OPEN
             self.opened_at = time.time()
 
@@ -180,7 +182,7 @@ class CircuitBreaker:
         if is_closing_order:
             if self.state == CircuitState.OPEN:
                 logger.warning(
-                    f"⚠️ Circuit Breaker OUVERT mais ordre de fermeture AUTORISÉ (protection capital)"
+                    "⚠️ Circuit Breaker OUVERT mais ordre de fermeture AUTORISÉ (protection capital)"
                 )
             return (True, "Ordre de fermeture (prioritaire)")
 
@@ -381,7 +383,7 @@ class LiveOrderManagerFutures:
             )
 
         # 🔥 DEBUG: Tracer les valeurs pour diagnostiquer le mode bypass
-        print(f"🔍 DEBUG LiveOrderManagerFutures.__init__:")
+        print("🔍 DEBUG LiveOrderManagerFutures.__init__:")
         print(f"   use_bypass param: {use_bypass}")
         print(f"   BYPASS_AVAILABLE: {BYPASS_AVAILABLE}")
         print(f"   browser_token: {browser_token[:20] if browser_token else 'None'}...")
@@ -499,8 +501,11 @@ class LiveOrderManagerFutures:
 
             # Appeler l'API pour configurer le levier
             # MEXC utilise setLeverage ou setMarginMode
-            result = self.exchange.set_leverage(leverage, symbol)
+            leverage_result = self.exchange.set_leverage(leverage, symbol)
             self._leverage_cache[symbol] = leverage
+            # La réponse de l'exchange était jetée : en cas de levier refusé/arrondi par
+            # MEXC sans exception, rien ne permettait de le savoir après coup.
+            logger.debug(f"Réponse set_leverage({symbol}, {leverage}x): {leverage_result}")
 
             logger.info(f"✅ Levier {symbol} configuré à {leverage}x")
             return True
@@ -1385,7 +1390,7 @@ class LiveOrderManagerFutures:
                             )
                         else:
                             actual_slippage = 0.0
-                            logger.warning(f"⚠️ entry_price=0, slippage non calculable")
+                            logger.warning("⚠️ entry_price=0, slippage non calculable")
 
                         logger.info(
                             f"📊 Prix rempli RÉEL: {actual_filled_price} (théorique: {entry_price}) | "
@@ -1398,7 +1403,7 @@ class LiveOrderManagerFutures:
                     else:
                         # Fallback: prix théorique si prix réel non disponible
                         logger.warning(
-                            f"⚠️ Prix réel non disponible dans order_data, utilisation prix théorique"
+                            "⚠️ Prix réel non disponible dans order_data, utilisation prix théorique"
                         )
                         final_filled_price = entry_price
                         final_slippage_pct = 0.0
@@ -1557,7 +1562,9 @@ class LiveOrderManagerFutures:
                         )
                         _sleep_non_blocking(wait_time)
                     else:
-                        raise last_error
+                        # Relance de l'erreur réseau déjà capturée : « from » explicite
+                        # le lien (B904) au lieu de laisser Python deviner le contexte.
+                        raise last_error from retry_error
 
             # DEBUG: Désactiver verbose après ordre
             self.exchange.verbose = False
@@ -2133,7 +2140,7 @@ class LiveOrderManagerFutures:
                             )
                             if check_pos is not None and len(check_pos) == 0:
                                 logger.warning(
-                                    f"🛑 Position disparue (Rejet explicite): Fermée par SL Exchange ?"
+                                    "🛑 Position disparue (Rejet explicite): Fermée par SL Exchange ?"
                                 )
                                 return FuturesOrderResult(
                                     success=True,
@@ -2186,7 +2193,7 @@ class LiveOrderManagerFutures:
                         else:
                             exit_slippage = 0.0
                             logger.warning(
-                                f"⚠️ current_price=0, slippage exit non calculable"
+                                "⚠️ current_price=0, slippage exit non calculable"
                             )
 
                         logger.info(
@@ -2198,7 +2205,7 @@ class LiveOrderManagerFutures:
                         final_exit_slippage = exit_slippage
                     else:
                         logger.warning(
-                            f"⚠️ Prix sortie réel non disponible, utilisation prix théorique"
+                            "⚠️ Prix sortie réel non disponible, utilisation prix théorique"
                         )
                         final_exit_price = current_price
                         final_exit_slippage = 0.0
@@ -2278,7 +2285,7 @@ class LiveOrderManagerFutures:
                         or "2009" in str(bypass_result.error_message)
                     ):
                         logger.warning(
-                            f"⚠️ Position déjà fermée (code 2009): Probablement fermée par SL Exchange ou manuellement"
+                            "⚠️ Position déjà fermée (code 2009): Probablement fermée par SL Exchange ou manuellement"
                         )
                         try:
                             check_pos = run_async_safely(
@@ -2286,7 +2293,7 @@ class LiveOrderManagerFutures:
                             )
                             if check_pos is not None and len(check_pos) == 0:
                                 logger.info(
-                                    f"✅ Confirmation: Position n'existe plus sur MEXC"
+                                    "✅ Confirmation: Position n'existe plus sur MEXC"
                                 )
                                 return FuturesOrderResult(
                                     success=True,
@@ -2358,7 +2365,7 @@ class LiveOrderManagerFutures:
                         )
                         _sleep_non_blocking(wait_time)
                     else:
-                        raise last_error
+                        raise last_error from retry_error
 
             latency_ms = (time.time() - start_time) * 1000
 

@@ -1,0 +1,102 @@
+# Portique statique Ruff — dépôt Trade Cursor (branche claude2)
+#
+# But : bloquer les classes de bugs déjà corrigées « à la main » dans le code
+# applicatif, pas appliquer un style. La sélection ci-dessous ne retient que des
+# règles signalant un comportement faux, pas une préférence d'écriture.
+#
+#   F          pyflakes — noms inexistants (F821/F823), clés de dictionnaire
+#              écrites deux fois (F601 : la seconde écrase la première en silence),
+#              import mort, comparaison `x == float('nan')` toujours fausse, etc.
+#   B          bugbear  — zip() tronquant sans le dire (B905), fermeture sur
+#              variable de boucle (B023), `raise` sans `from` dans un except (B904),
+#              `assert False` qui disparaît en -O (B011), `callable(obj.__call__)`…
+#   PLW0177    comparaison à NaN → math.isnan()
+#   PLW1508    défaut non-chaîne dans os.getenv() (mélange str/int selon l'env)
+#   PLW1510    subprocess.run() sans check explicite (code de sortie ignoré)
+#
+# Les règles de mise en forme (E/W/I/UP…) sont volontairement absentes : elles
+# produiraient des milliers de diffs sans rapport avec un comportement.
+#
+# Vérification locale :  ruff check .        (depuis la racine, sans --isolated)
+# Version utilisée à la rédaction : ruff 0.15.11 (cf. .github/workflows/test.yml)
+
+target-version = "py311"
+line-length = 120
+respect-gitignore = true
+
+# Généré, des données, ou hors périmètre Python du produit.
+extend-exclude = [
+    ".venv",
+    "venv",
+    "frontend",            # Svelte/TS : vérifié par `npm run build` + svelte-check
+    "historical_data",
+    "data",
+    "logs",
+    "static",
+    "templates",
+    "optimization_studies",
+    "test_models",
+    "path",
+    "custom",
+    "__pycache__",
+]
+
+[lint]
+select = [
+    "F",
+    "B",
+    "PLW0177",
+    "PLW1508",
+    "PLW1510",
+]
+ignore = [
+    # B008 traite les `Security(...)`/`Depends(...)` de FastAPI comme des appels
+    # instables dans les défauts d'arguments ; la liste blanche ci-dessous règle le
+    # cas de FastAPI, et les rares autres usages restent des choix assumés.
+    "B008",
+    # F841 (« variable assignée et jamais relue ») est ACTIVE sur le code applicatif :
+    # les 61 sites relevés au 10/10/2026 ont été soldés un par un — soit la valeur
+    # était à consommer (résultat de reconnexion WebSocket, résultat d'optimisation,
+    # réponse set_leverage), soit l'assignation était un reste mort. Les zones de
+    # diagnostic et de tests gardent leur dette, listée plus bas.
+]
+
+[lint.flake8-bugbear]
+# Défauts d'arguments FastAPI : instanciés une fois à l'import, comme il se doit.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.Security",
+]
+
+[lint.per-file-ignores]
+# ─────────────────────────────────────────────────────────────────────────────
+# Dette constatée le 10/10/2026, zone par zone. Chaque liste est un périmètre
+# oÙ la règle est désactivée POUR LES SITES EXISTANTS : une nouvelle violation
+# d'une règle NON listée, n'importe où, fait échouer la CI. À solder en vidant
+# ces listes, jamais en en ajoutant.
+# ─────────────────────────────────────────────────────────────────────────────
+# Scripts d'un jour à la racine du dépôt : ils sont passés à zero en ce commit, ils
+# restent donc DANS le portique, sans exemption.
+#
+# ⚠️ Piège mesuré ici : un motif d'extension seul (« /*.py », « ./*.py », « *.py »)
+# n'est PAS ancré sur la racine par ruff — il finit par matcher toute profondeur et
+# désactive les règles dans TOUT le dépôt, portique compris (vérifié avec un fichier
+# volontairement cassé dans api/). Les motifs ci-dessous commencent donc tous par un
+# nom de répertoire ; une nouvelle exemption sans répertoire doit être prouvée.
+"tests/**" = [
+    "F401",  # imports de fixtures/patch utilisés par effet de bord
+    "F811",
+    "F841",  # 89 sites : variables de test préparées puis lues via l'objet testé
+    "B004", "B007", "B009", "B010", "B011", "B017", "B018",
+]
+"scripts/**" = ["F401", "F841", "B007", "B905", "PLW1508"]
+"verification/**" = ["F401", "F601", "F841", "B007", "B023", "B905", "PLW1508", "PLW1510"]
+"examples/**" = ["F401", "F841"]
+"tools/**" = ["F841", "PLW1510"]

@@ -355,13 +355,9 @@ class WebSocketLogHandler(logging.Handler):
                 except Exception as e:
                     print(f"⚠️ Erreur sauvegarde erreur: {e}", file=sys.stderr)
             
-            # 🔥 FIX: Formater le message avec le ColoredFormatter pour préserver les couleurs ANSI et emojis
-            # Utiliser le formatter pour obtenir les couleurs ANSI
-            formatter = ColoredFormatter(
-                '[%(asctime)s] %(levelname)s - %(message)s',
-                datefmt='%H:%M:%S'
-            )
-            formatted_message = formatter.format(record)
+            # Le message brut est coloré ci-dessous par color_codes : construire un
+            # ColoredFormatter ici coûtait une allocation par record pour un résultat
+            # jamais lu (formatted_message était jeté).
             
             # Extraire le message avec couleurs (tout après le timestamp et level)
             # Format: [HH:MM:SS] LEVEL - message
@@ -441,8 +437,10 @@ class WebSocketLogHandler(logging.Handler):
                 pass
         except Exception as e:
             # 🔥 FIX: Ne pas bloquer le logging si l'envoi échoue, mais logger l'erreur
-            # Utiliser print() au lieu de logger pour éviter les boucles infinies
-            import sys
+            # Utiliser print() au lieu de logger pour éviter les boucles infinies.
+            # Pas d'« import sys » local : il faisait de `sys` un nom LOCAL de la
+            # méthode, et le print() du bloc d'erreur ci-dessus levait alors un
+            # UnboundLocalError à la place du message attendu.
             print(f"⚠️ Erreur envoi log WebSocket: {e}", file=sys.stderr)
 
 

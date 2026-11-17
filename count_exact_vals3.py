@@ -31,9 +31,9 @@ for line in values_lines:
             values_list.append(val_name)
 
 print(f"Total values found: {value_count}")
-print(f"\nFirst 20 values:")
+print("\nFirst 20 values:")
 for i, v in enumerate(values_list[:20], 1):
     print(f"  {i}. {v}")
-print(f"\nLast 20 values:")
+print("\nLast 20 values:")
 for i, v in enumerate(values_list[-20:], len(values_list)-19):
     print(f"  {i}. {v}")

@@ -329,12 +329,12 @@ async def fetch_with_retry(func: Callable, *args, **kwargs) -> Any:
 
         if not is_rate_limit and _is_ccxt_network_exception(e):
             if DEBUG_ENABLED:
-                logger.warning(f"⚠️ Erreur réseau Exchange (timeout/connexion) - conversion en NetworkError")
+                logger.warning("⚠️ Erreur réseau Exchange (timeout/connexion) - conversion en NetworkError")
             raise NetworkError(f"Exchange Network Error: {e}") from e
         
         if is_rate_limit:
             if DEBUG_ENABLED:
-                logger.warning(f"⚠️ MEXC rate limit (code 510/429) - conversion en RateLimitError")
+                logger.warning("⚠️ MEXC rate limit (code 510/429) - conversion en RateLimitError")
             # Lever RateLimitError pour que le circuit breaker et le retry le traitent correctement
             raise RateLimitError(f"Exchange Rate Limit: {e}") from e
         else:
@@ -391,16 +391,16 @@ def with_circuit_breaker(func: Callable) -> Callable:
         try:
             return await _adaptive_circuit_breaker.call_async(func, *args, **kwargs)
         # 🔥 SPRINT 1.1: Décorateur circuit breaker - Logging structuré
-        except RateLimitError as e:
+        except RateLimitError:
             # Rate limit - déjà loggé dans call_async
             raise
-        except NetworkError as e:
+        except NetworkError:
             # Erreur réseau - déjà loggé dans call_async
             raise
-        except APIError as e:
+        except APIError:
             # Erreur API - déjà loggé dans call_async
             raise
-        except TradeCursorError as e:
+        except TradeCursorError:
             # Erreur application - déjà loggé dans call_async
             raise
         except Exception as e:
@@ -631,9 +631,8 @@ class WebSocketManager:
         max_delay = 30  # Maximum 30 secondes
         attempt = 0
 
-        # Stocker les tâches pour éviter garbage collection
-        receive_task = None
-        watchdog_task = None
+        # Les tâches de réception/watchdog vivent sur self (_receive_task,
+        # _watchdog_task) : créées en local elles pouvaient être ramassées par le GC.
 
         try:
             while self._running:
@@ -643,8 +642,13 @@ class WebSocketManager:
                     await asyncio.sleep(reconnect_delay)
                     await self.connect()
 
-                    # Relancer réception et stocker la tâche
-                    receive_task = asyncio.create_task(self._receive_loop())
+                    # Relancer réception et stocker la tâche sur self : asyncio ne garde
+                    # qu'une référence faible sur les tâches, une create_task() non
+                    # référencée peut être ramassée en vol et la boucle de réception
+                    # meurt sans erreur après la reconnexion.
+                    if self._receive_task and not self._receive_task.done():
+                        self._receive_task.cancel()
+                    self._receive_task = asyncio.create_task(self._receive_loop())
 
                     # Relancer watchdog et stocker la tâche
                     if self._watchdog_task:

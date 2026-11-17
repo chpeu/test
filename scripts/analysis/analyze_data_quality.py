@@ -82,14 +82,14 @@ if 'created_at' in trades_df.columns or 'timestamp' in trades_df.columns:
     date_col = 'created_at' if 'created_at' in trades_df.columns else 'timestamp'
     trades_df[date_col] = pd.to_datetime(trades_df[date_col])
     
-    print(f"\n--- Distribution temporelle ---")
+    print("\n--- Distribution temporelle ---")
     print(f"Premier trade: {trades_df[date_col].min()}")
     print(f"Dernier trade: {trades_df[date_col].max()}")
     
     # Trades par semaine
     trades_df['week'] = trades_df[date_col].dt.isocalendar().week
     weekly = trades_df.groupby('week').size()
-    print(f"\nTrades par semaine (dernieres 5):")
+    print("\nTrades par semaine (dernieres 5):")
     print(weekly.tail())
 
 # Charger ml_features
@@ -99,7 +99,7 @@ print(f"Total samples ML: {len(ml_df)}")
 
 # Distribution target
 if 'target_pnl' in ml_df.columns:
-    print(f"\n--- Distribution target_pnl ---")
+    print("\n--- Distribution target_pnl ---")
     print(f"Min: {ml_df['target_pnl'].min():.2f}%")
     print(f"Max: {ml_df['target_pnl'].max():.2f}%")
     print(f"Mean: {ml_df['target_pnl'].mean():.2f}%")
@@ -109,7 +109,7 @@ if 'target_pnl' in ml_df.columns:
 # Verifier config_* colonnes
 config_cols = [c for c in ml_df.columns if c.startswith('config_')]
 if config_cols:
-    print(f"\n--- Colonnes config detectees ---")
+    print("\n--- Colonnes config detectees ---")
     for col in config_cols[:10]:
         if ml_df[col].dtype in ['float64', 'int64']:
             unique = ml_df[col].nunique()

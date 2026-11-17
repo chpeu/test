@@ -142,12 +142,12 @@ def check_fixed_mode_variables():
         
         print("\n🎯 RÉCAPITULATIF DE VOTRE CONFIG ACTUELLE:")
         print("-" * 50)
-        print(f"   Mode: FIXE")
+        print("   Mode: FIXE")
         print(f"   TP: {tp:.2f}% | SL: {sl:.2f}% | Ratio: {tp/sl:.1f}")
         if trailing_enabled:
             print(f"   Trailing: ON (trigger: {trail_trigger:.1f}%, distance: {trail_dist:.1f}%)")
         else:
-            print(f"   Trailing: OFF")
+            print("   Trailing: OFF")
         
     except Exception as e:
         print(f"Erreur: {e}")

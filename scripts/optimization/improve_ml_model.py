@@ -46,7 +46,7 @@ def analyze_class_distribution():
                 losers = (df['pnl_usdt'] <= 0).sum()
                 total = len(df)
                 
-                print(f"\nDistribution trades:")
+                print("\nDistribution trades:")
                 print(f"  - Gagnants (PnL > 0): {winners} ({winners/total*100:.1f}%)")
                 print(f"  - Perdants (PnL <= 0): {losers} ({losers/total*100:.1f}%)")
                 print(f"  - Ratio: 1:{losers/max(winners,1):.1f}")
@@ -90,7 +90,7 @@ def analyze_features():
     time_features = [f for f in features if any(x in f for x in ['hour', 'day', 'session', 'weekend'])]
     quality_features = [f for f in features if 'quality' in f.lower() or 'confluence' in f.lower()]
     
-    print(f"\n  Repartition par type:")
+    print("\n  Repartition par type:")
     print(f"    - RSI: {len(rsi_features)}")
     print(f"    - MACD: {len(macd_features)}")
     print(f"    - Trend/ADX: {len(trend_features)}")
@@ -117,11 +117,11 @@ def suggest_improvements():
     current_params = metadata.get('params', {})
     metrics = metadata.get('metrics', {})
     
-    print(f"\n  Parametres actuels:")
+    print("\n  Parametres actuels:")
     for k, v in current_params.items():
         print(f"    - {k}: {v}")
     
-    print(f"\n  Metriques actuelles:")
+    print("\n  Metriques actuelles:")
     print(f"    - Train accuracy: {metrics.get('train_acc', 0)*100:.1f}%")
     print(f"    - Test accuracy: {metrics.get('test_acc', 0)*100:.1f}%")
     print(f"    - F1 Score: {metrics.get('test_f1', 0):.3f}")
@@ -210,12 +210,12 @@ def calculate_optimal_threshold():
     precision = metadata.get('metrics', {}).get('test_precision', 0.564)
     
     print(f"\n  Precision actuelle: {precision*100:.1f}%")
-    print(f"\n  Pour ameliorer la precision sans reentrainer:")
-    print(f"    - Seuil actuel: gb_min_confidence = 0.70 (70%)")
-    print(f"    - Recommande: augmenter a 0.75-0.80")
-    print(f"    - Effet: moins de trades mais plus precis")
+    print("\n  Pour ameliorer la precision sans reentrainer:")
+    print("    - Seuil actuel: gb_min_confidence = 0.70 (70%)")
+    print("    - Recommande: augmenter a 0.75-0.80")
+    print("    - Effet: moins de trades mais plus precis")
     
-    print(f"\n  Impact estime:")
+    print("\n  Impact estime:")
     print(f"    - Seuil 0.70: ~{precision*100:.0f}% precision")
     print(f"    - Seuil 0.75: ~{min(precision*1.1, 0.95)*100:.0f}% precision (estimation)")
     print(f"    - Seuil 0.80: ~{min(precision*1.2, 0.95)*100:.0f}% precision (estimation)")

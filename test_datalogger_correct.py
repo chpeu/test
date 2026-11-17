@@ -12,7 +12,7 @@ def test_datalogger_correct():
     
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -40,7 +40,7 @@ def test_datalogger_correct():
         if recent_trades:
             print(f"✅ {len(recent_trades)} trades récents analysés:")
             for i, trade in enumerate(recent_trades, 1):
-                trade_id, symbol, direction = trade[0], trade[1], trade[2]
+                _trade_id, symbol, direction = trade[0], trade[1], trade[2]
                 ag_cols = trade[3:12]  # Les 9 colonnes anti-giveback
                 
                 print(f"  [{i}] {symbol} ({direction}):")
@@ -62,7 +62,7 @@ def test_datalogger_correct():
             print("⚠️ Aucun trade trouvé dans la table")
         
         # Test 2: Vérifier que le code datalogger existant peut lire les colonnes
-        print(f"\n🧪 Test 2: Import du module datalogger...")
+        print("\n🧪 Test 2: Import du module datalogger...")
         try:
             # Tester l'import du datalogger PostgreSQL
             import sys
@@ -96,7 +96,7 @@ def test_datalogger_correct():
             print(f"❌ Impossible d'importer le datalogger: {e}")
         
         # Test 3: Statistiques globales des colonnes anti-giveback
-        print(f"\n🧪 Test 3: Statistiques des colonnes anti-giveback sur tous les trades...")
+        print("\n🧪 Test 3: Statistiques des colonnes anti-giveback sur tous les trades...")
         cursor.execute("""
             SELECT 
                 COUNT(*) as total_trades,
@@ -110,7 +110,7 @@ def test_datalogger_correct():
         stats = cursor.fetchone()
         if stats:
             total, config_enabled, config_lock, tracking_triggered, actual_triggered = stats
-            print(f"  📊 Statistiques globales:")
+            print("  📊 Statistiques globales:")
             print(f"      - Total trades: {total}")
             print(f"      - Config enabled remplie: {config_enabled}/{total} ({config_enabled/total*100:.1f}%)")
             print(f"      - Config lock-in remplie: {config_lock}/{total} ({config_lock/total*100:.1f}%)")
@@ -120,7 +120,7 @@ def test_datalogger_correct():
         cursor.close()
         conn.close()
         
-        print(f"\n🎉 Tests datalogger terminés avec succès!")
+        print("\n🎉 Tests datalogger terminés avec succès!")
         return True
         
     except Exception as e:

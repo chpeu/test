@@ -36,11 +36,11 @@ async def verify_zec_contract_specs():
             print("[WARN] Pas de browser_token, utilisation de valeurs par defaut")
             # Valeurs typiques pour ZEC
             print("\nSpecs ZEC (valeurs typiques MEXC):")
-            print(f"  contract_size: 1.0 (1 contrat = 1 ZEC)")
-            print(f"  min_vol: 0.1")
-            print(f"  vol_unit: 0.1")
-            print(f"  vol_precision: 1")
-            print(f"  price_precision: 2")
+            print("  contract_size: 1.0 (1 contrat = 1 ZEC)")
+            print("  min_vol: 0.1")
+            print("  vol_unit: 0.1")
+            print("  vol_precision: 1")
+            print("  price_precision: 2")
             
             # Calcul pour 1 contrat a ~460 USDT
             entry_price = 460.0
@@ -59,7 +59,7 @@ async def verify_zec_contract_specs():
             
             # Minimum pour 6 USDT
             min_contracts = 6.0 / (entry_price * contract_size)
-            print(f"\n  Pour atteindre 6 USDT minimum:")
+            print("\n  Pour atteindre 6 USDT minimum:")
             print(f"    min_contracts = 6 / ({entry_price} * {contract_size}) = {min_contracts:.4f}")
             
             # Arrondi au vol_unit
@@ -76,7 +76,7 @@ async def verify_zec_contract_specs():
         specs = await client.get_contract_spec("ZEC_USDT")
         
         if specs:
-            print(f"\nSpecs ZEC_USDT:")
+            print("\nSpecs ZEC_USDT:")
             print(f"  contract_size: {specs.contract_size}")
             print(f"  min_vol: {specs.min_vol}")
             print(f"  max_vol: {specs.max_vol}")
@@ -99,7 +99,7 @@ async def verify_zec_contract_specs():
             
             # Minimum pour 6 USDT
             min_contracts = 6.0 / (entry_price * specs.contract_size)
-            print(f"\n  Pour atteindre 6 USDT minimum:")
+            print("\n  Pour atteindre 6 USDT minimum:")
             print(f"    min_contracts = 6 / ({entry_price} * {specs.contract_size}) = {min_contracts:.4f}")
             
             # Arrondi au vol_unit
@@ -114,8 +114,8 @@ async def verify_zec_contract_specs():
             # DIAGNOSTIC: Est-ce que la valeur min est < 5 USDT?
             if value_min < 5:
                 print(f"\n  [PROBLEME] La valeur minimum ({value_min:.2f} USDT) est < 5 USDT!")
-                print(f"    MEXC refuse les ordres < 5 USDT")
-                print(f"    Il faut augmenter le nombre de contrats")
+                print("    MEXC refuse les ordres < 5 USDT")
+                print("    Il faut augmenter le nombre de contrats")
             
             return True
         else:
@@ -140,7 +140,7 @@ def simulate_order_calculation():
     vol_unit = 0.1
     MIN_ORDER_USDT = 6.0
     
-    print(f"\nParametres initiaux:")
+    print("\nParametres initiaux:")
     print(f"  entry_price: {entry_price}")
     print(f"  size_usdt: {size_usdt}")
     print(f"  contract_size: {contract_size}")
@@ -158,7 +158,7 @@ def simulate_order_calculation():
         amount = amount / contract_size
         print(f"Etape 2: amount = {original_amount} / {contract_size} = {amount} contrats")
     else:
-        print(f"Etape 2: contract_size = 1, pas de conversion")
+        print("Etape 2: contract_size = 1, pas de conversion")
     
     # Etape 3: Arrondi
     import math
@@ -172,7 +172,7 @@ def simulate_order_calculation():
     # Etape 5: Verification minimum
     if actual_size_usdt < MIN_ORDER_USDT:
         print(f"\nEtape 5: actual_size_usdt ({actual_size_usdt:.2f}) < MIN_ORDER_USDT ({MIN_ORDER_USDT})")
-        print(f"  -> Augmentation automatique necessaire")
+        print("  -> Augmentation automatique necessaire")
         
         # Calcul minimum
         min_amount_needed = MIN_ORDER_USDT / (entry_price * contract_size)
@@ -189,20 +189,20 @@ def simulate_order_calculation():
         amount = min_amount_needed
         actual_size_usdt = recalc_usdt
     
-    print(f"\n=== RESULTAT FINAL ===")
+    print("\n=== RESULTAT FINAL ===")
     print(f"  amount: {amount} contrats")
     print(f"  valeur: {actual_size_usdt:.2f} USDT")
     print(f"  > 5 USDT minimum MEXC: {'OUI' if actual_size_usdt >= 5 else 'NON'}")
     
     # DIAGNOSTIC: Pourquoi l'ordre echoue?
-    print(f"\n=== DIAGNOSTIC ===")
+    print("\n=== DIAGNOSTIC ===")
     if amount == 1.0:
-        print(f"  Le log montre '1.000000 contrats (460.73 USDT)'")
-        print(f"  C'est correct: 1 * 460.73 * 1 = 460.73 USDT > 5 USDT")
-        print(f"\n  [HYPOTHESE] Le probleme pourrait etre:")
-        print(f"    1. Le format du parametre 'vol' envoye a MEXC")
-        print(f"    2. Un arrondi qui donne 0 au lieu de 1")
-        print(f"    3. Une confusion entre tokens et contrats")
+        print("  Le log montre '1.000000 contrats (460.73 USDT)'")
+        print("  C'est correct: 1 * 460.73 * 1 = 460.73 USDT > 5 USDT")
+        print("\n  [HYPOTHESE] Le probleme pourrait etre:")
+        print("    1. Le format du parametre 'vol' envoye a MEXC")
+        print("    2. Un arrondi qui donne 0 au lieu de 1")
+        print("    3. Une confusion entre tokens et contrats")
     
     return True
 

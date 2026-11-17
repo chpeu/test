@@ -52,7 +52,7 @@ async def test_scanner():
                 print(f"      {key}: {value} {status}")
             
             # Afficher toutes les clés pour debug
-            print(f"\n   Toutes les clés retournées:")
+            print("\n   Toutes les clés retournées:")
             for key in sorted(result.keys()):
                 print(f"      - {key}: {result[key]}")
         else:

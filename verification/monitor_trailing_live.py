@@ -132,7 +132,7 @@ def analyze_trailing_performance(trades):
             issues.append({
                 'type': 'MFE_NOT_TRACKED',
                 'symbol': symbol,
-                'detail': f"Exit reason = TS mais MFE non enregistré"
+                'detail': "Exit reason = TS mais MFE non enregistré"
             })
     
     return stats, issues

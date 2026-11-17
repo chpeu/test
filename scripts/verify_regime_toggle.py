@@ -40,7 +40,7 @@ def test_regime_enabled():
     base_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
     base_score = TRADING_CONFIG.get('min_score_required', 7.0)
     
-    print(f"\n📊 Valeurs BASE (sliders):")
+    print("\n📊 Valeurs BASE (sliders):")
     print(f"   SL Mult: {base_sl}x")
     print(f"   TP Mult: {base_tp}x")
     print(f"   Score Min: {base_score}")
@@ -62,7 +62,7 @@ def test_regime_enabled():
     eff_tp = get_effective_value('atr_mult_tp')
     eff_score = get_effective_value('min_score_required')
     
-    print(f"\n🌡️ Valeurs EFFECTIVES (régime CALME):")
+    print("\n🌡️ Valeurs EFFECTIVES (régime CALME):")
     print(f"   SL Mult: {eff_sl}x (attendu: {config.atr_mult_sl}x)")
     print(f"   TP Mult: {eff_tp}x (attendu: {config.atr_mult_tp}x)")
     print(f"   Score Min: {eff_score} (attendu: {config.min_score_required})")
@@ -83,14 +83,14 @@ def test_regime_enabled():
         errors.append(f"ERREUR: Slider TP modifié! ({base_tp} -> {TRADING_CONFIG.get('atr_mult_tp')})")
     
     if errors:
-        print(f"\n❌ ÉCHEC:")
+        print("\n❌ ÉCHEC:")
         for e in errors:
             print(f"   - {e}")
         return False
     else:
-        print(f"\n✅ Test ACTIVÉ réussi:")
-        print(f"   - Valeurs effectives = régime CALME")
-        print(f"   - Sliders non modifiés")
+        print("\n✅ Test ACTIVÉ réussi:")
+        print("   - Valeurs effectives = régime CALME")
+        print("   - Sliders non modifiés")
         return True
 
 def test_regime_disabled():
@@ -116,7 +116,7 @@ def test_regime_disabled():
     base_tp = TRADING_CONFIG.get('atr_mult_tp', 1.5)
     base_score = TRADING_CONFIG.get('min_score_required', 7.0)
     
-    print(f"\n📊 Valeurs BASE (sliders):")
+    print("\n📊 Valeurs BASE (sliders):")
     print(f"   SL Mult: {base_sl}x")
     print(f"   TP Mult: {base_tp}x")
     print(f"   Score Min: {base_score}")
@@ -126,7 +126,7 @@ def test_regime_disabled():
     eff_tp = get_effective_value('atr_mult_tp')
     eff_score = get_effective_value('min_score_required')
     
-    print(f"\n📋 Valeurs EFFECTIVES (régime DÉSACTIVÉ):")
+    print("\n📋 Valeurs EFFECTIVES (régime DÉSACTIVÉ):")
     print(f"   SL Mult: {eff_sl}x (attendu: {base_sl}x = base)")
     print(f"   TP Mult: {eff_tp}x (attendu: {base_tp}x = base)")
     print(f"   Score Min: {eff_score} (attendu: {base_score} = base)")
@@ -141,14 +141,14 @@ def test_regime_disabled():
         errors.append(f"Score: attendu {base_score} (base), reçu {eff_score}")
     
     if errors:
-        print(f"\n❌ ÉCHEC:")
+        print("\n❌ ÉCHEC:")
         for e in errors:
             print(f"   - {e}")
         return False
     else:
-        print(f"\n✅ Test DÉSACTIVÉ réussi:")
-        print(f"   - Valeurs effectives = valeurs BASE (sliders)")
-        print(f"   - Ajustements régime ignorés")
+        print("\n✅ Test DÉSACTIVÉ réussi:")
+        print("   - Valeurs effectives = valeurs BASE (sliders)")
+        print("   - Ajustements régime ignorés")
         return True
 
 def test_summary_differences():
@@ -170,7 +170,7 @@ def test_summary_differences():
     summary = get_config_summary()
     differences = summary.get('differences', {})
     
-    print(f"\n🔄 Différences détectées:")
+    print("\n🔄 Différences détectées:")
     for key, diff in differences.items():
         print(f"   {key}: {diff['base']} → {diff['effective']}", end="")
         if diff.get('delta') is not None:
@@ -187,7 +187,7 @@ def test_summary_differences():
         print(f"\n⚠️ Clés manquantes dans differences: {missing}")
         print("   (Normal si base = effective pour ces clés)")
     
-    print(f"\n✅ Résumé généré correctement")
+    print("\n✅ Résumé généré correctement")
     return True
 
 def main():

@@ -104,7 +104,7 @@ def main():
         print("   ✅ Index UNIQUE créé/vérifié")
     except psycopg2.errors.UniqueViolation as e:
         conn.rollback()
-        print(f"   ❌ Erreur: doublons restants empêchent la création de l'index")
+        print("   ❌ Erreur: doublons restants empêchent la création de l'index")
         print(f"      {e}")
         return
     

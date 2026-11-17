@@ -198,7 +198,7 @@ class XGBoostTrainerV2:
 
             selected_features = mi_df.head(max_features)['feature'].tolist()
 
-            logger.info(f"✅ Top 10 features:")
+            logger.info("✅ Top 10 features:")
             for i, row in mi_df.head(10).iterrows():
                 logger.info(f"  {i+1}. {row['feature']}: {row['mi_score']:.4f}")
 
@@ -227,7 +227,7 @@ class XGBoostTrainerV2:
         logger.info(f"⚖️ Class weights: {class_weights} | scale_pos_weight={scale_pos_weight:.2f}")
 
         # 7. Entraîner modèle
-        logger.info(f"\n🎯 Entraînement XGBoost...")
+        logger.info("\n🎯 Entraînement XGBoost...")
 
         model_params = {
             "n_estimators": n_estimators,
@@ -325,7 +325,7 @@ class XGBoostTrainerV2:
             preprocessor=preprocessor
         )
 
-        logger.info(f"\n💾 Modèle et metadata sauvegardés")
+        logger.info("\n💾 Modèle et metadata sauvegardés")
         
         # 11. Logger dans PostgreSQL
         try:
@@ -421,7 +421,7 @@ class XGBoostTrainerV2:
         logger.info(f"📈 VALIDATION: Accuracy={val_metrics['accuracy']:.3f} | ROC-AUC={val_metrics['roc_auc']:.3f}")
         logger.info(f"📈 TEST:       Accuracy={test_metrics['accuracy']:.3f} | ROC-AUC={test_metrics['roc_auc']:.3f}")
 
-        logger.info(f"\n📊 GAPS:")
+        logger.info("\n📊 GAPS:")
         logger.info(f"  - Accuracy Gap (train-test): {accuracy_gap:.3f}")
         logger.info(f"  - ROC-AUC Gap (train-test):  {roc_gap:.3f}")
 
@@ -439,7 +439,7 @@ class XGBoostTrainerV2:
 
         # Confusion matrix
         cm = confusion_matrix(y_test, y_test_pred)
-        logger.info(f"\n📋 Confusion Matrix (Test):")
+        logger.info("\n📋 Confusion Matrix (Test):")
         logger.info(f"  TN={cm[0][0]}, FP={cm[0][1]}")
         logger.info(f"  FN={cm[1][0]}, TP={cm[1][1]}")
 
@@ -460,10 +460,16 @@ class XGBoostTrainerV2:
         """Feature importance triée"""
 
         importance = self.model.feature_importances_
+        if len(feature_names) != len(importance):
+            logger.warning(
+                f"⚠️ Feature importance: {len(importance)} valeurs pour "
+                f"{len(feature_names)} noms — troncature, vérifier le modèle chargé"
+            )
 
         feature_importance = [
             {"feature": name, "importance": float(imp)}
-            for name, imp in zip(feature_names, importance)
+            # strict=False assumé : écart de longueur déjà signalé ci-dessus.
+            for name, imp in zip(feature_names, importance, strict=False)
         ]
 
         feature_importance.sort(key=lambda x: x["importance"], reverse=True)
@@ -603,8 +609,9 @@ class XGBoostTrainerV2:
         initial_train_ratio = 0.60
         test_ratio = 0.10
         increment = (1.0 - initial_train_ratio - test_ratio) / max(n_splits - 1, 1)
-        
-        exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity']
+
+        # Pas de liste de colonnes à exclure ici : feature_cols vient de l'appelant,
+        # déjà construit sans les colonnes non features (voir exclude_cols dans train()).
         
         for i in range(n_splits):
             train_end_ratio = initial_train_ratio + i * increment

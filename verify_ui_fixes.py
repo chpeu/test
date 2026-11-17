@@ -367,13 +367,13 @@ def test_atr_calculation_logic():
         ok(f"Mode ATR TP ({expected_tp_trigger:.2f}%) != Mode FIXE ({fixe_tp}%)")
         passed_total += 1
     else:
-        warn(f"Mode ATR TP proche du mode FIXE")
+        warn("Mode ATR TP proche du mode FIXE")
     
     if abs(expected_sl - fixe_sl) > 0.1:
         ok(f"Mode ATR SL ({expected_sl:.2f}%) != Mode FIXE ({fixe_sl}%)")
         passed_total += 1
     else:
-        warn(f"Mode ATR SL proche du mode FIXE")
+        warn("Mode ATR SL proche du mode FIXE")
 
 
 def test_heuristic_logic():

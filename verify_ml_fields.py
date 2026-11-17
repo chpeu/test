@@ -48,7 +48,7 @@ cursor.execute('''
 ''')
 stats = cursor.fetchone()
 print("\n" + "=" * 120)
-print(f"Stats ML fields:")
+print("Stats ML fields:")
 print(f"  - Total trades: {stats[0]}")
 print(f"  - Avec ml_prediction: {stats[1]} ({stats[1]/stats[0]*100:.1f}%)")
 print(f"  - Avec ml_features: {stats[2]} ({stats[2]/stats[0]*100:.1f}%)")
@@ -66,7 +66,7 @@ cursor.execute('''
 perf = cursor.fetchone()
 win_rate = perf[1] / perf[0] * 100 if perf[0] > 0 else 0
 print("\n" + "=" * 120)
-print(f"Performance des 43 derniers trades:")
+print("Performance des 43 derniers trades:")
 print(f"  - Win rate: {perf[1]}/{perf[0]} = {win_rate:.1f}%")
 print(f"  - PnL moyen: {perf[2]:.4f} USDT")
 print(f"  - PnL total: {perf[3]:.4f} USDT")

@@ -82,7 +82,7 @@ def analyze_sl_slippage():
                 else:
                     sl_theoretical = None
                 
-                print(f"📊 ANALYSE SLIPPAGE:")
+                print("📊 ANALYSE SLIPPAGE:")
                 print(f"   Entry Price: {entry}")
                 print(f"   Exit Price (réel): {exit_actual}")
                 print(f"   SL Price (loggé): {sl_param}")
@@ -105,7 +105,7 @@ def analyze_sl_slippage():
                     print(f"   SLIPPAGE: {slippage_pct:+.4f}% ({slippage_pct/sl_exchange_pct*100:+.1f}% du SL paramétré)")
                     
                     if abs(slippage_pct) > 0.05:  # > 0.05%
-                        print(f"   🚨 SLIPPAGE SIGNIFICATIF DÉTECTÉ!")
+                        print("   🚨 SLIPPAGE SIGNIFICATIF DÉTECTÉ!")
                 
                 # Infos contextuelles
                 print(f"   PnL: {trade['pnl_pct']:+.4f}% ({trade['pnl_usdt']:+.4f} USDT)")

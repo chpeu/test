@@ -75,10 +75,10 @@ from core.position.adaptive_sizing import (
 config = load_adaptive_sizing_config()
 tests_total += 1
 if config.enabled == TRADING_CONFIG.get('adaptive_sizing_enabled', True):
-    print(f"   [OK] load_adaptive_sizing_config() charge depuis TRADING_CONFIG")
+    print("   [OK] load_adaptive_sizing_config() charge depuis TRADING_CONFIG")
     tests_passed += 1
 else:
-    print(f"   [FAIL] load_adaptive_sizing_config() ne charge pas depuis TRADING_CONFIG")
+    print("   [FAIL] load_adaptive_sizing_config() ne charge pas depuis TRADING_CONFIG")
 
 # =============================================================================
 # 3. TEST PAR PAIRE (ISOLATION)
@@ -120,7 +120,7 @@ print(f"   {PAIR_C}: 1W/1L = 50% WR (< min_trades) -> mult={mult_c:.2f}")
 # Test: Les multiplicateurs doivent etre differents
 tests_total += 1
 if mult_a > mult_b:
-    print(f"   [OK] Paire A (80% WR) a un mult plus eleve que Paire B (40% WR)")
+    print("   [OK] Paire A (80% WR) a un mult plus eleve que Paire B (40% WR)")
     tests_passed += 1
 else:
     print(f"   [FAIL] mult_a ({mult_a}) devrait etre > mult_b ({mult_b})")
@@ -128,7 +128,7 @@ else:
 # Test: Paire C doit rester a 1.0 (pas assez de trades)
 tests_total += 1
 if mult_c == 1.0:
-    print(f"   [OK] Paire C reste a mult=1.0 (trades < min_trades)")
+    print("   [OK] Paire C reste a mult=1.0 (trades < min_trades)")
     tests_passed += 1
 else:
     print(f"   [FAIL] Paire C devrait avoir mult=1.0, a {mult_c}")
@@ -154,12 +154,12 @@ print(f"   Apres grosse perte ({big_loss-0.5}%): trades={total_after}, mult={mul
 tests_total += 1
 if TRADING_CONFIG.get('adaptive_sizing_reset_big_loss', True):
     if total_after == 0:
-        print(f"   [OK] Stats reset apres grosse perte (reset_big_loss=True)")
+        print("   [OK] Stats reset apres grosse perte (reset_big_loss=True)")
         tests_passed += 1
     else:
         print(f"   [FAIL] Stats non reset (trades={total_after})")
 else:
-    print(f"   [INFO] reset_big_loss=False, pas de reset attendu")
+    print("   [INFO] reset_big_loss=False, pas de reset attendu")
     tests_passed += 1
 
 # =============================================================================
@@ -181,7 +181,7 @@ print(f"   Apres reset (simule redemarrage): {PAIR_B} trades={trades_after_reset
 
 tests_total += 1
 if trades_after_reset == 0:
-    print(f"   [OK] Stats remises a zero apres reset (comme redemarrage backend)")
+    print("   [OK] Stats remises a zero apres reset (comme redemarrage backend)")
     tests_passed += 1
 else:
     print(f"   [FAIL] Stats non reset (trades={trades_after_reset})")
@@ -197,20 +197,20 @@ try:
     # Verifier que record_trade_for_adaptive_sizing existe
     tests_total += 1
     if hasattr(PositionManager, 'record_trade_for_adaptive_sizing'):
-        print(f"   [OK] PositionManager.record_trade_for_adaptive_sizing existe")
+        print("   [OK] PositionManager.record_trade_for_adaptive_sizing existe")
         tests_passed += 1
     else:
-        print(f"   [FAIL] PositionManager.record_trade_for_adaptive_sizing n'existe pas")
+        print("   [FAIL] PositionManager.record_trade_for_adaptive_sizing n'existe pas")
     
     # Verifier que calculate_position_size utilise adaptive_sizing
     import inspect
     source = inspect.getsource(PositionManager.calculate_position_size)
     tests_total += 1
     if 'adaptive_sizing' in source.lower() or 'get_size_multiplier' in source:
-        print(f"   [OK] calculate_position_size integre le sizing adaptatif")
+        print("   [OK] calculate_position_size integre le sizing adaptatif")
         tests_passed += 1
     else:
-        print(f"   [FAIL] calculate_position_size n'integre pas le sizing adaptatif")
+        print("   [FAIL] calculate_position_size n'integre pas le sizing adaptatif")
         
 except Exception as e:
     print(f"   [WARN] Erreur test integration: {e}")

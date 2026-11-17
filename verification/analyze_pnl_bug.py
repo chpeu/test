@@ -25,20 +25,20 @@ else:
 print("="*70)
 print("ANALYSE DU BUG PnL - SHIBUSDT SHORT")
 print("="*70)
-print(f"\nParamètres:")
+print("\nParamètres:")
 print(f"  Entry price: {entry_price:.10f}")
 print(f"  Exit price:  {exit_price:.10f}")
 print(f"  Direction:   {direction}")
 print(f"  Filled amount (contrats): {filled_amount}")
 
-print(f"\nCalcul ACTUEL (buggy):")
-print(f"  PnL = (entry - exit) * filled_amount")
+print("\nCalcul ACTUEL (buggy):")
+print("  PnL = (entry - exit) * filled_amount")
 print(f"  PnL = ({entry_price:.10f} - {exit_price:.10f}) * {filled_amount}")
 print(f"  PnL = {entry_price - exit_price:.10f} * {filled_amount}")
 print(f"  PnL = {pnl_usdt_bug:.4f} USDT")
 
-print(f"\nAttendu pour SHORT quand prix monte:")
-print(f"  Le PnL devrait être NEGATIF (perte)")
+print("\nAttendu pour SHORT quand prix monte:")
+print("  Le PnL devrait être NEGATIF (perte)")
 print(f"  Mais le calcul donne: {pnl_usdt_bug:.4f}")
 
 # Maintenant avec contract_size
@@ -46,15 +46,15 @@ contract_size = 100  # SHIB a 100 tokens par contrat sur MEXC
 real_tokens = filled_amount * contract_size
 pnl_correct = (entry_price - exit_price) * real_tokens
 
-print(f"\nCalcul CORRECT (avec contract_size):")
+print("\nCalcul CORRECT (avec contract_size):")
 print(f"  Contract size: {contract_size} tokens/contrat")
 print(f"  Real tokens: {filled_amount} * {contract_size} = {real_tokens}")
-print(f"  PnL = (entry - exit) * real_tokens")
+print("  PnL = (entry - exit) * real_tokens")
 print(f"  PnL = ({entry_price:.10f} - {exit_price:.10f}) * {real_tokens}")
 print(f"  PnL = {entry_price - exit_price:.10f} * {real_tokens}")
 print(f"  PnL = {pnl_correct:.4f} USDT")
 
-print(f"\n" + "="*70)
+print("\n" + "="*70)
 print("PROBLÈME IDENTIFIÉ:")
 print("="*70)
 print("""
@@ -77,6 +77,6 @@ print("\nVérification du signe:")
 print(f"  Entry → Exit: {entry_price:.10f} → {exit_price:.10f}")
 print(f"  Prix est monté: {exit_price > entry_price}")
 print(f"  Direction: {direction}")
-print(f"  Pour SHORT, si prix monte → Perte (PnL négatif)")
+print("  Pour SHORT, si prix monte → Perte (PnL négatif)")
 print(f"  PnL calculé: {pnl_usdt_bug:.4f}")
 print(f"  Signe correct? {'OUI' if pnl_usdt_bug < 0 else 'NON - C EST LE BUG!'}")

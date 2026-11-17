@@ -354,8 +354,9 @@ class PostExitTracker:
         if not self.samples:
             return None
         
-        # État du trailing simulé
-        trailing_active = True  # On simule que le trailing était déjà actif à la sortie
+        # État du trailing simulé : on part du principe que le trailing était déjà
+        # actif à la sortie (un drapeau trailing_active était assigné sans jamais être
+        # relu — la simulation ne connaît pas de phase d'activation).
         highest_price = self.exit_price  # Pour LONG
         lowest_price = self.exit_price   # Pour SHORT
         

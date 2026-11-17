@@ -88,7 +88,7 @@ try:
     if result:
         print(f"   ✅ Insertion réussie! metric_id={result}")
     else:
-        print(f"   ❌ Insertion échouée (result=None)")
+        print("   ❌ Insertion échouée (result=None)")
         
 except Exception as e:
     print(f"   ❌ Exception: {e}")
@@ -100,11 +100,11 @@ cur.execute("SELECT * FROM trade_atr_metrics WHERE trade_id = %s", (trade_id,))
 metric = cur.fetchone()
 
 if metric:
-    print(f"\n✅ Métrique trouvée dans DB!")
+    print("\n✅ Métrique trouvée dans DB!")
     print(f"   max_pnl_reached: {metric['max_pnl_reached']}")
     print(f"   trailing_activated: {metric['trailing_activated']}")
 else:
-    print(f"\n❌ Métrique NON trouvée dans DB")
+    print("\n❌ Métrique NON trouvée dans DB")
 
 cur.close()
 conn.close()

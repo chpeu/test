@@ -69,7 +69,7 @@ def check_rsi_condition(
         # 🟢 Mode PERMISSIVE (Régime NORMAL/VOLATILE): Accepter aussi les rebonds profonds (<30)
         if rsi_mode == 'PERMISSIVE':
             if rsi < 30 and rsi > rsi_prev:  # Deep oversold bounce
-                return True, f"Deep RSI Rebound↑ (Oversold <30)"
+                return True, "Deep RSI Rebound↑ (Oversold <30)"
 
         if rsi_rebound:
             return True, f"RSI Rebound↑ (ADX<{adx['adx']:.1f})"
@@ -85,7 +85,7 @@ def check_rsi_condition(
         # 🟢 Mode PERMISSIVE: Accepter aussi les rejets extrêmes (>70)
         if rsi_mode == 'PERMISSIVE':
             if rsi > 70 and rsi < rsi_prev:  # Deep overbought rejection
-                return True, f"Deep RSI Rejection↓ (Overbought >70)"
+                return True, "Deep RSI Rejection↓ (Overbought >70)"
 
         if rsi_overbought:
             return True, f"RSI Overbought↓ (ADX<{adx['adx']:.1f})"

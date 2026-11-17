@@ -95,7 +95,7 @@ def analyze_tp_escalier_impact():
         except Exception:
             pass
     
-    print(f"\n📊 GAIN MOYEN GLOBAL ESTIMÉ:")
+    print("\n📊 GAIN MOYEN GLOBAL ESTIMÉ:")
     print(f"   Sans TP Escalier: {total_gain_normal:+.3f}% par trade")
     print(f"   Avec TP Escalier:  {total_gain_escalier:+.3f}% par trade")
     

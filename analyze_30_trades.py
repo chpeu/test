@@ -63,7 +63,7 @@ def analyze_recent_trades():
     avg_win = df[df['net_pnl_pct'] > 0]['net_pnl_pct'].mean() if winning_trades > 0 else 0
     avg_loss = df[df['net_pnl_pct'] < 0]['net_pnl_pct'].mean() if losing_trades > 0 else 0
     
-    print(f"\n📈 STATISTIQUES GLOBALES:")
+    print("\n📈 STATISTIQUES GLOBALES:")
     print(f"   Total trades: {total_trades}")
     print(f"   Winrate: {winrate:.1f}% ({winning_trades} wins / {losing_trades} losses)")
     print(f"   PnL total: {total_pnl:.2f} USDT")
@@ -72,7 +72,7 @@ def analyze_recent_trades():
     print(f"   Ratio Profit Factor: {(avg_win * winning_trades) / (abs(avg_loss) * losing_trades):.2f}" if avg_loss != 0 else "N/A")
     
     # Analyse par inversion de signaux
-    print(f"\n🔄 ANALYSE PAR INVERSION DE SIGNAUX:")
+    print("\n🔄 ANALYSE PAR INVERSION DE SIGNAUX:")
     
     # Séparer les trades avec et sans inversion
     df['config_invert_signals'] = df['config_invert_signals'].fillna(False)
@@ -106,21 +106,21 @@ def analyze_recent_trades():
         print(f"      Perte moyenne: {inv_avg_loss:.2f}%")
     
     # Analyse des plus grosses pertes
-    print(f"\n💰 TOP 10 DES PLUS GROSSES PERTES:")
+    print("\n💰 TOP 10 DES PLUS GROSSES PERTES:")
     worst_trades = df.nsmallest(10, 'net_pnl_pct')[['symbol', 'direction', 'net_pnl_pct', 'net_pnl_usdt', 'exit_reason', 'config_invert_signals']]
-    for idx, row in worst_trades.iterrows():
+    for _idx, row in worst_trades.iterrows():
         inv_mark = "🔄" if row['config_invert_signals'] else "📌"
         print(f"   {inv_mark} {row['symbol']:12s} {row['direction']:5s}: {row['net_pnl_pct']:6.2f}% ({row['net_pnl_usdt']:7.2f} USDT) - {row['exit_reason']}")
     
     # Analyse des plus gros gains
-    print(f"\n🎯 TOP 10 DES PLUS GROS GAINS:")
+    print("\n🎯 TOP 10 DES PLUS GROS GAINS:")
     best_trades = df.nlargest(10, 'net_pnl_pct')[['symbol', 'direction', 'net_pnl_pct', 'net_pnl_usdt', 'exit_reason', 'config_invert_signals']]
-    for idx, row in best_trades.iterrows():
+    for _idx, row in best_trades.iterrows():
         inv_mark = "🔄" if row['config_invert_signals'] else "📌"
         print(f"   {inv_mark} {row['symbol']:12s} {row['direction']:5s}: {row['net_pnl_pct']:6.2f}% ({row['net_pnl_usdt']:7.2f} USDT) - {row['exit_reason']}")
     
     # Analyse des raisons de sortie
-    print(f"\n📋 ANALYSE PAR RAISON DE SORTIE:")
+    print("\n📋 ANALYSE PAR RAISON DE SORTIE:")
     exit_reasons = df['exit_reason'].value_counts()
     for reason, count in exit_reasons.items():
         subset = df[df['exit_reason'] == reason]
@@ -128,13 +128,13 @@ def analyze_recent_trades():
         print(f"   {reason:20s}: {count:2d} trades (PnL moyen: {avg_pnl:+.2f}%)")
     
     # Analyse du Risk/Reward
-    print(f"\n⚖️  ANALYSE RISK/REWARD:")
+    print("\n⚖️  ANALYSE RISK/REWARD:")
     risk_reward_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else 0
     print(f"   Ratio Gain/Perte moyen: {risk_reward_ratio:.2f}")
-    print(f"   Recommandé: > 2.0 pour être rentable")
+    print("   Recommandé: > 2.0 pour être rentable")
     
     # Distribution des PnL
-    print(f"\n📊 DISTRIBUTION DES PnL:")
+    print("\n📊 DISTRIBUTION DES PnL:")
     bins = [-100, -2, -1, -0.5, 0, 0.5, 1, 2, 100]
     labels = ['<-2%', '-2% à -1%', '-1% à -0.5%', '-0.5% à 0%', '0% à 0.5%', '0.5% à 1%', '1% à 2%', '>2%']
     
@@ -146,7 +146,7 @@ def analyze_recent_trades():
         print(f"   {cat:15s}: {count:2d} trades ({pct:5.1f}%)")
     
     # Conclusions
-    print(f"\n🎯 CONCLUSIONS:")
+    print("\n🎯 CONCLUSIONS:")
     if total_pnl < 0:
         print(f"   ❌ PnL négatif: {total_pnl:.2f} USDT")
         if avg_loss < -1.0:
@@ -160,9 +160,9 @@ def analyze_recent_trades():
         print(f"   ✅ PnL positif: {total_pnl:.2f} USDT")
     
     # Détail des derniers trades
-    print(f"\n📋 DÉTAIL DES 10 DERNIERS TRADES:")
+    print("\n📋 DÉTAIL DES 10 DERNIERS TRADES:")
     recent = df.head(10)[['symbol', 'direction', 'net_pnl_pct', 'net_pnl_usdt', 'exit_reason', 'config_invert_signals']]
-    for idx, row in recent.iterrows():
+    for _idx, row in recent.iterrows():
         inv_mark = "🔄" if row['config_invert_signals'] else "📌"
         pnl_sign = "+" if row['net_pnl_pct'] >= 0 else ""
         print(f"   {inv_mark} {row['symbol']:12s} {row['direction']:5s}: {pnl_sign}{row['net_pnl_pct']:6.2f}% ({row['net_pnl_usdt']:+7.2f} USDT) - {row['exit_reason']}")

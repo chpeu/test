@@ -255,7 +255,7 @@ def add_advanced_quality_features(df: pd.DataFrame) -> pd.DataFrame:
     if 'trend_force_1m' in df.columns and 'atr_pct_1m' in df.columns:
         df['risk_reward_proxy'] = df['trend_force_1m'] / (df['atr_pct_1m'] + 1e-8)
 
-    logger.info(f"  ✅ ~10 features qualité signal ajoutées")
+    logger.info("  ✅ ~10 features qualité signal ajoutées")
 
     return df
 
@@ -300,7 +300,7 @@ def calculate_all_advanced_features(df: pd.DataFrame) -> pd.DataFrame:
     added_cols = final_cols - initial_cols
 
     logger.info("=" * 80)
-    logger.info(f"✅ Feature Engineering terminé:")
+    logger.info("✅ Feature Engineering terminé:")
     logger.info(f"  - Colonnes initiales: {initial_cols}")
     logger.info(f"  - Colonnes finales: {final_cols}")
     logger.info(f"  - Nouvelles features: {added_cols}")

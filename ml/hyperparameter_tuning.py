@@ -307,7 +307,7 @@ class HyperparameterTuner:
         Returns:
             Dict contenant best_params, best_score, study
         """
-        logger.info(f"🚀 Démarrage optimisation hyperparamètres...")
+        logger.info("🚀 Démarrage optimisation hyperparamètres...")
         logger.info(f"📊 Dataset: {X.shape[0]} samples, {X.shape[1]} features")
         logger.info(f"📊 Distribution: {(y==1).sum()} wins, {(y==0).sum()} losses")
         
@@ -344,7 +344,7 @@ class HyperparameterTuner:
         logger.info(f"{'='*80}")
         logger.info(f"📊 Trials completés: {len([t for t in self.study.trials if t.state == optuna.trial.TrialState.COMPLETE])}")
         logger.info(f"✂️ Trials pruned: {len([t for t in self.study.trials if t.state == optuna.trial.TrialState.PRUNED])}")
-        logger.info(f"\n🏆 MEILLEURS HYPERPARAMÈTRES:")
+        logger.info("\n🏆 MEILLEURS HYPERPARAMÈTRES:")
         for param, value in best_params.items():
             logger.info(f"  - {param}: {value}")
         logger.info(f"\n📈 Best {self.metric}: {best_score:.4f}")

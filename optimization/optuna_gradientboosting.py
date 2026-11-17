@@ -266,7 +266,7 @@ class GradientBoostingOptimizer:
             'n_features': len(self.feature_names)
         }
         
-        logger.info(f"📊 Métriques finales (holdout):")
+        logger.info("📊 Métriques finales (holdout):")
         logger.info(f"   Train accuracy: {train_acc*100:.2f}%")
         logger.info(f"   Test accuracy:  {test_acc*100:.2f}%")
         logger.info(f"   Overfitting gap: {overfitting_gap*100:.2f}%")

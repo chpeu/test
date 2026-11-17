@@ -85,10 +85,10 @@ if trades_without_metrics:
         if similar:
             print(f"   → Entrées similaires trouvées: {[s['trade_id'] for s in similar]}")
         else:
-            print(f"   → Aucune entrée similaire")
+            print("   → Aucune entrée similaire")
 
 # Statistiques globales
-print(f"\n📈 STATISTIQUES")
+print("\n📈 STATISTIQUES")
 print("-"*70)
 
 cur.execute("SELECT COUNT(*) as cnt FROM trades WHERE exit_price IS NOT NULL")
@@ -111,7 +111,7 @@ print(f"   Trades sans métriques: {missing}")
 print(f"   Couverture: {(total_trades - missing) / total_trades * 100:.1f}%")
 
 # Vérifier le format des IDs
-print(f"\n🔍 FORMAT DES IDs")
+print("\n🔍 FORMAT DES IDs")
 print("-"*70)
 
 cur.execute("SELECT id FROM trades ORDER BY timestamp_exit DESC LIMIT 3")

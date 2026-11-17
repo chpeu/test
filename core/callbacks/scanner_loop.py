@@ -5,6 +5,7 @@ Exécuté toutes les 30 secondes pour scanner les setups (🔥 OPT #14)
 
 import asyncio
 import logging
+import math
 from core.postgresql_datalogger import PostgreSQLDataLogger  # noqa: F401 — re-export testé par tests/test_scanner_loop.py
 from typing import Optional, Dict, Any
 from utils.effective_config import get_effective_value
@@ -467,8 +468,8 @@ async def _scan_top_pairs():
                             logger.info(f"💹 DEBUG: Données brutes depuis top_pairs: spread={spread_value}, bookDepth={book_depth}, balanceScore={balance_score}, bidVol={bid_vol}, askVol={ask_vol}")
                             
                             # Vérifier si spread est NaN ou invalide
-                            if isinstance(spread_value, float) and (spread_value != spread_value or spread_value == float('nan')):
-                                logger.warning(f"💹 DEBUG: spread est NaN, remplacement par 0")
+                            if isinstance(spread_value, float) and math.isnan(spread_value):
+                                logger.warning("💹 DEBUG: spread est NaN, remplacement par 0")
                                 spread_value = 0
                             
                             # 🔥 FIX: Si spread ou depth sont à 0, essayer de récupérer depuis best_setup
@@ -477,7 +478,7 @@ async def _scan_top_pairs():
                                     spread_value = best_setup.get('spread_pct', 0)
                                     logger.info(f"💹 Utilisation spread depuis best_setup: {spread_value}%")
                                 else:
-                                    logger.warning(f"💹 DEBUG: spread=0 et best_setup.spread_pct non disponible")
+                                    logger.warning("💹 DEBUG: spread=0 et best_setup.spread_pct non disponible")
                             
                             # 🔥 FIX: Si depth est à 0, calculer depuis bid_vol + ask_vol
                             if book_depth == 0:
@@ -485,7 +486,7 @@ async def _scan_top_pairs():
                                     book_depth = bid_vol + ask_vol
                                     logger.info(f"💹 Calcul depth depuis volumes: {book_depth}")
                                 else:
-                                    logger.warning(f"💹 DEBUG: depth=0 et volumes bid/ask aussi à 0")
+                                    logger.warning("💹 DEBUG: depth=0 et volumes bid/ask aussi à 0")
                             
                             scalability_data = {
                                 'spread_pct': spread_value,
@@ -539,7 +540,7 @@ async def _scan_top_pairs():
                                 logger.info(f"💹 DEBUG: Depth calculé depuis orderbook_bid/ask_value: {orderbook_depth}")
                             elif 'orderbook_ratio' in best_setup:
                                 # Si on a le ratio mais pas les valeurs, essayer de récupérer depuis l'orderbook directement
-                                logger.warning(f"💹 DEBUG: orderbook_check non disponible mais orderbook_ratio présent")
+                                logger.warning("💹 DEBUG: orderbook_check non disponible mais orderbook_ratio présent")
                             
                             scalability_data = {
                                 'spread_pct': best_setup.get('spread_pct', 0),
@@ -622,13 +623,13 @@ async def _scan_top_pairs():
                                 else:
                                     logger.info(f"✅ GradientBoosting APPROUVE le trade (confiance: {confidence*100:.1f}%)")
                             else:
-                                logger.warning(f"⚠️ Modèle GradientBoosting non chargé, trade autorisé par défaut")
+                                logger.warning("⚠️ Modèle GradientBoosting non chargé, trade autorisé par défaut")
                         else:
-                            logger.warning(f"⚠️ Pas de features pour GradientBoosting, trade autorisé par défaut")
+                            logger.warning("⚠️ Pas de features pour GradientBoosting, trade autorisé par défaut")
                             
                     except Exception as gb_error:
                         logger.error(f"❌ Erreur filtre GradientBoosting: {gb_error}", exc_info=True)
-                        logger.warning(f"⚠️ Trade autorisé malgré erreur GB (failsafe)")
+                        logger.warning("⚠️ Trade autorisé malgré erreur GB (failsafe)")
                 
                 # 🤖 FILTRE ML XGBoost V1 (ancien système)
                 logger.info(f"🔍 ML_CONFIG state: enabled={ML_CONFIG.get('enabled', False)}, min_confidence={ML_CONFIG.get('min_confidence', 0.6)}, mode={ML_CONFIG.get('mode', 'STRICT')}")
@@ -727,7 +728,7 @@ async def _scan_top_pairs():
                                                 should_reject = True
                                                 reject_reason = f"Filtre Négatif: P(loss)={p_loss*100:.1f}% >= seuil {loss_threshold*100:.0f}%"
                                         else:
-                                            logger.warning(f"⚠️ Pas de features pour filtre négatif, trade autorisé")
+                                            logger.warning("⚠️ Pas de features pour filtre négatif, trade autorisé")
                                             
                                     except Exception as neg_err:
                                         logger.error(f"❌ Erreur filtre négatif: {neg_err}")
@@ -787,7 +788,7 @@ async def _scan_top_pairs():
 
                     except Exception as ml_error:
                         logger.error(f"❌ Erreur filtre ML: {ml_error}", exc_info=True)
-                        logger.warning(f"⚠️ Trade autorisé malgré erreur ML (failsafe)")
+                        logger.warning("⚠️ Trade autorisé malgré erreur ML (failsafe)")
 
                 # ✅ Stocker scan_uuid, opportunity_id et setup complet pour Point C
                 _position_manager._last_setup_scan_uuid = best_setup.get('_scan_uuid')

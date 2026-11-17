@@ -95,7 +95,7 @@ def analyze_17_last_trades():
     
     # === ANALYSE PAR EXIT REASON ===
     exit_reasons = [t['exit_reason'] for t in trades if t['exit_reason']]
-    reason_counts = Counter(exit_reasons)
+    Counter(exit_reasons)
     reason_analysis = defaultdict(lambda: {'count': 0, 'total_pnl': 0, 'wins': 0, 'losses': 0})
     
     for trade in trades:
@@ -195,12 +195,12 @@ def analyze_17_last_trades():
     # Calcul du ratio risque/récompense
     risk_reward_ratio = abs(avg_win / avg_loss) if avg_loss != 0 else 0
     
-    print(f"1️⃣  WINRATE vs RENTABILITÉ:")
+    print("1️⃣  WINRATE vs RENTABILITÉ:")
     print(f"   ✅ Winrate acceptable: {winrate:.1f}% (> 50%)")
     print(f"   ❌ Ratio R:R défavorable: {risk_reward_ratio:.2f}:1 (gains trop faibles vs pertes)")
     print()
     
-    print(f"2️⃣  ANALYSE DES SORTIES:")
+    print("2️⃣  ANALYSE DES SORTIES:")
     sl_trades = [t for t in trades if t['exit_reason'] in ['SL', 'SL_EXCHANGE']]
     sl_pnl = sum(t['net_pnl_usdt'] or 0 for t in sl_trades)
     print(f"   ❌ Stops Loss coûtent cher: {len(sl_trades)} trades SL = {sl_pnl:.4f} USDT")
@@ -211,23 +211,23 @@ def analyze_17_last_trades():
         print(f"   ⚠️  Sorties stagnation: {len(stagnation_trades)} trades = {stag_pnl:.4f} USDT")
     print()
     
-    print(f"3️⃣  RECOMMANDATIONS:")
+    print("3️⃣  RECOMMANDATIONS:")
     if risk_reward_ratio < 1.2:
         print(f"   🎯 PRIORITÉ: Améliorer le ratio R:R (actuellement {risk_reward_ratio:.2f}:1)")
-        print(f"      → Réduire les pertes moyennes OU augmenter les gains moyens")
+        print("      → Réduire les pertes moyennes OU augmenter les gains moyens")
     
     if len(sl_trades) > len(trades) * 0.3:
         print(f"   🛑 Trop de stops loss ({len(sl_trades)}/{len(trades)} = {len(sl_trades)/len(trades)*100:.0f}%)")
-        print(f"      → Réviser les niveaux de SL ou améliorer les entrées")
+        print("      → Réviser les niveaux de SL ou améliorer les entrées")
     
     if total_fees > abs(total_pnl) * 0.1:
         print(f"   💸 Frais significatifs: {total_fees:.4f} USDT ({total_fees/abs(total_pnl)*100 if total_pnl != 0 else 0:.0f}% du PnL)")
-        print(f"      → Optimiser la fréquence de trading ou négocier les frais")
+        print("      → Optimiser la fréquence de trading ou négocier les frais")
     
-    print(f"   💡 Solutions possibles:")
-    print(f"      - Augmenter le TP partiel (actuellement visible dans certains trades)")
-    print(f"      - Réduire le SL ou améliorer le break-even")
-    print(f"      - Filtrer les setups avec ML (si disponible)")
+    print("   💡 Solutions possibles:")
+    print("      - Augmenter le TP partiel (actuellement visible dans certains trades)")
+    print("      - Réduire le SL ou améliorer le break-even")
+    print("      - Filtrer les setups avec ML (si disponible)")
     
     cursor.close()
     conn.close()

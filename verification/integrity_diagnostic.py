@@ -87,7 +87,7 @@ async def run_diagnostic():
         print(f"Scalability Refresh Task: {'✅' if sched.scalability_refresh_task else '❌'}")
         
         from core.callbacks.scalability_refresh import _app_state, _scanner, _last_refresh_time, _current_interval
-        print(f"Scalability Refresh Context (Globals):")
+        print("Scalability Refresh Context (Globals):")
         print(f"  - _app_state (proxy): {'✅ OK' if _app_state else '❌ MISSING'}")
         if _app_state:
             print(f"  - _app_state['is_scanning']: {_app_state.get('is_scanning')}")

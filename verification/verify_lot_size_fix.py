@@ -121,14 +121,14 @@ def test_calculation_logic():
     new_filled_amount = contracts * contract_size  # 7 * 10 = 70
     new_filled_size_usdt = new_filled_amount * entry_price  # 70 * 0.25369 = 17.7583
     
-    print(f"\n  Exemple XLM/USDT:")
+    print("\n  Exemple XLM/USDT:")
     print(f"  - Prix: {entry_price}")
     print(f"  - Contrats: {contracts}")
     print(f"  - Contract size: {contract_size}")
-    print(f"\n  ANCIEN calcul (FAUX):")
+    print("\n  ANCIEN calcul (FAUX):")
     print(f"  - filled_amount: {old_filled_amount} (affiche 7)")
     print(f"  - filled_size_usdt: {old_filled_size_usdt:.4f} USDT (affiche ~1.78)")
-    print(f"\n  NOUVEAU calcul (CORRECT):")
+    print("\n  NOUVEAU calcul (CORRECT):")
     print(f"  - filled_amount: {new_filled_amount} (affiche 70)")
     print(f"  - filled_size_usdt: {new_filled_size_usdt:.4f} USDT (affiche ~17.76)")
     
@@ -171,7 +171,7 @@ def test_bypass_client_available():
         print_status(
             "Position.hold_vol",
             has_hold_vol,
-            f"OK - Champ present" if has_hold_vol else "MANQUANT"
+            "OK - Champ present" if has_hold_vol else "MANQUANT"
         )
         
         print(f"\n  Champs Position: {fields}")

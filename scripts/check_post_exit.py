@@ -72,7 +72,7 @@ def check_post_exit_analysis(trade_ids):
     cur = conn.cursor()
     
     print(f"\n{'='*80}")
-    print(f"POST-EXIT ANALYSIS")
+    print("POST-EXIT ANALYSIS")
     print(f"{'='*80}")
     
     # D'abord vérifier si la table existe

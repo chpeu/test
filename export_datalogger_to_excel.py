@@ -20,7 +20,7 @@ except ImportError:
 
 try:
     import psycopg2
-    from psycopg2.extras import RealDictCursor
+    from psycopg2.extras import RealDictCursor  # noqa: F401  (sonde de disponibilite)
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     PSYCOPG2_AVAILABLE = False
@@ -36,7 +36,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    import openpyxl
+    import openpyxl  # noqa: F401  (sonde de disponibilite)
     OPENPYXL_AVAILABLE = True
 except ImportError:
     OPENPYXL_AVAILABLE = False
@@ -310,7 +310,7 @@ def main():
             tables=args.tables
         )
 
-        logger.info(f"\n✅ Export terminé avec succès!")
+        logger.info("\n✅ Export terminé avec succès!")
         logger.info(f"📄 Fichier: {output_file}")
 
         return 0

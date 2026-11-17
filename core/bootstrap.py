@@ -15,6 +15,35 @@ from core.state_manager import get_state_manager
 
 logger = logging.getLogger(__name__)
 
+# Drapeau d'initialisation : posé à la fin du bootstrap critique. Sert aux routes
+# qui voulaient « réinitialiser si rien n'est prêt » : relancer init_instances()
+# n'est PAS idempotent (reset de l'historique d'erreurs + create_task
+# d'init_background_services à chaque appel), donc on ne le refait qu'une fois.
+_instances_ready = False
+_ensure_lock: "asyncio.Lock | None" = None
+
+
+def instances_ready() -> bool:
+    """True une fois le bootstrap critique terminé."""
+    return _instances_ready
+
+
+async def ensure_instances() -> None:
+    """Bootstrap à la demande, une seule fois, pour les routes appelées trop tôt.
+
+    Remplace les anciens « init_instances() » non awaités (le coroutine était créé
+    puis jeté : RuntimeWarning « was never awaited », aucune initialisation).
+    """
+    global _ensure_lock
+    if _instances_ready:
+        return
+    if _ensure_lock is None:
+        _ensure_lock = asyncio.Lock()
+    async with _ensure_lock:
+        if not _instances_ready:  # double vérification : une seule vraie init
+            await init_instances()
+
+
 async def init_instances() -> None:
     """
     Initialize all global instances required for the bot to function.
@@ -202,7 +231,7 @@ async def init_instances() -> None:
         from api.routes import (
             set_analytics_db, set_notification_manager, set_instance_port,
             set_app_state, set_websocket_manager, set_position_manager,
-            set_price_provider, set_scheduler, set_live_order_manager
+            set_price_provider, set_live_order_manager
         )
         
         port = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else 5000
@@ -246,7 +275,6 @@ async def init_instances() -> None:
                 set_price_provider as set_inst_price,
                 set_app_state as set_inst_state,
                 set_notification_manager as set_inst_notif,
-                set_pg_datalogger as set_inst_pg,
                 set_scanner_lock as set_lock_scanner_inst
             )
             from core.callbacks.position_check_loop import (
@@ -299,7 +327,21 @@ async def init_instances() -> None:
         sched.start()
         state.set_is_scanning(True)
         logger.info(f"✅ Scheduler started automatically ({time.time()-start:.3f}s)")
-            
+
+    # 7 bis. Injection du scheduler dans les routes API.
+    # Elle ne pouvait pas se faire à l'étape 6 : le scheduler n'existe pas encore.
+    # Sans elle, dashboard.py garde son _scheduler à None et /api/start comme
+    # /api/stop répondent invariablement « Scheduler not available ».
+    _sched = state.get_scheduler()
+    if _sched:
+        try:
+            from api.routes import set_scheduler as _set_scheduler_routes
+            _set_scheduler_routes(_sched)
+        except (ImportError, AttributeError) as e:
+            logger.warning(f"⚠️ Error injecting scheduler into API routes: {e}")
+
+    global _instances_ready
+    _instances_ready = True
     logger.info(f"🏁 init_instances (critical) terminé en {time.time()-start_total:.3f}s")
     
     # Lancer l'initialisation des services lourds en arrière-plan

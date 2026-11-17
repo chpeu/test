@@ -500,8 +500,8 @@ class MockScannerOrchestrator(IScannerOrchestrator):
             results[symbol] = await self.scan_single_pair(symbol, config)
         
         # Calculer stats
-        successful_count = sum(1 for r in results.values() if r.status == ScanStatus.SUCCESS)
-        failed_count = len(results) - successful_count
+        # Le lot ne porte que les résultats par symbole : un comptage succès/échec
+        # calculé ici n'était transmis ni à ScanBatchResult, ni à un log.
         
         return ScanBatchResult(
             symbols=symbols,

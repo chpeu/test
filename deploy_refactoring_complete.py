@@ -24,7 +24,8 @@ def run_command(cmd, description, ignore_errors=False):
     print(f"💻 Commande: {cmd}")
     
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        # check=False assume : le code de sortie est traite juste apres (ignore_errors)
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=False)
         
         if result.returncode == 0 or ignore_errors:
             print("✅ Succès")
@@ -313,7 +314,7 @@ def generate_deployment_summary():
     
     for directory in directories:
         if os.path.exists(directory):
-            for root, dirs, files in os.walk(directory):
+            for root, _dirs, files in os.walk(directory):
                 for file in files:
                     if any(file.endswith(ext) for ext in extensions):
                         filepath = os.path.join(root, file)
@@ -324,14 +325,14 @@ def generate_deployment_summary():
                         except Exception:
                             pass
     
-    print(f"📊 Statistiques:")
+    print("📊 Statistiques:")
     print(f"   📁 Fichiers créés: {file_count}")
     print(f"   📝 Lignes de code: {total_lines}")
-    print(f"   🏗️ Infrastructure: Complète")
-    print(f"   🛡️ Tests régression: Implémentés")
-    print(f"   🚀 Feature flags: Opérationnels")
+    print("   🏗️ Infrastructure: Complète")
+    print("   🛡️ Tests régression: Implémentés")
+    print("   🚀 Feature flags: Opérationnels")
     
-    print(f"\n🎯 Composants déployés:")
+    print("\n🎯 Composants déployés:")
     
     components = [
         "✅ Interface IPositionManager (ZÉRO RISQUE)",
@@ -349,8 +350,8 @@ def generate_deployment_summary():
     for component in components:
         print(f"   {component}")
     
-    print(f"\n🚀 STATUS: REFACTORISATION SÉCURISÉE DEPLOYÉE")
-    print(f"🛡️ GARANTIE: ZÉRO MODIFICATION CODE EXISTANT")
+    print("\n🚀 STATUS: REFACTORISATION SÉCURISÉE DEPLOYÉE")
+    print("🛡️ GARANTIE: ZÉRO MODIFICATION CODE EXISTANT")
 
 def main():
     """Point d'entrée principal"""

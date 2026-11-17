@@ -69,7 +69,7 @@ class GradientBoostingOptunaOptimizer:
         
         # 🔥 FIX: Calculer les poids des classes pour gérer le déséquilibre
         class_weights = compute_class_weight('balanced', classes=np.unique(y), y=y)
-        class_weight_dict = dict(zip(np.unique(y), class_weights))
+        class_weight_dict = dict(zip(np.unique(y), class_weights, strict=True))
         sample_weights = np.array([class_weight_dict[label] for label in y])
         
         # 🔥 FIX: Sélection de features AGGRESSIVE pour réduire dimensionalité et overfitting
@@ -122,12 +122,10 @@ class GradientBoostingOptunaOptimizer:
                     n_iter_no_change=30
                 )
             
-            # Créer le pipeline
-            pipeline = Pipeline([
-                ('scaler', RobustScaler()),
-                ('classifier', model)
-            ])
-            
+            # Pas de Pipeline ici : la cross-validation est menée à la main plus bas
+            # (le scaling est refait fold par fold, ligne scaler_cv) — un pipeline
+            # construit puis abandonné faisait croire à un scoring normalisé.
+
             # Cross-validation stratifiée
             cv = StratifiedKFold(n_splits=self.cv_folds, shuffle=True, random_state=self.random_state)
             
@@ -168,6 +166,10 @@ class GradientBoostingOptunaOptimizer:
                         precision_scores.append(prec)
                     except Exception as fold_e:
                         fold_errors += 1
+                        # Le fold raté est compté et remplacé par 0.3 : sans ce log, un
+                        # tuneur dont tous les folds plantent ne rend que 0.1 sans rien
+                        # dire de la cause.
+                        logger.debug(f"Fold CV en échec (trial {trial.number}): {fold_e}")
                         # Utiliser des valeurs par défaut pour ce fold
                         f1_scores.append(0.3)
                         precision_scores.append(0.3)
@@ -182,8 +184,7 @@ class GradientBoostingOptunaOptimizer:
                 # Score composite: 60% precision + 40% f1 (trading = precision plus importante)
                 combined_scores = 0.6 * precision_scores + 0.4 * f1_scores
                 mean_score = np.mean(combined_scores)
-                std_score = np.std(combined_scores)
-                
+                std_score = np.std(combined_scores)                
                 # Mettre à jour l'état
                 self.current_trial = trial.number + 1
                 
@@ -192,7 +193,8 @@ class GradientBoostingOptunaOptimizer:
                     avg_f1 = np.mean(f1_scores)
                     avg_prec = np.mean(precision_scores)
                     logger.info(
-                        f"Trial {trial.number}: Score={mean_score:.4f} (F1={avg_f1:.3f}, Prec={avg_prec:.3f}) | "
+                        f"Trial {trial.number}: Score={mean_score:.4f} ± {std_score:.4f} "
+                        f"(F1={avg_f1:.3f}, Prec={avg_prec:.3f}) | "
                         f"depth={max_depth}, lr={learning_rate:.4f}, "
                         f"n_est={n_estimators}"
                     )
@@ -231,7 +233,7 @@ class GradientBoostingOptunaOptimizer:
         self.start_time = time.time()
         self.current_trial = 0
         
-        logger.info(f"🚀 Démarrage optimisation Optuna GradientBoosting")
+        logger.info("🚀 Démarrage optimisation Optuna GradientBoosting")
         logger.info(f"   - Trials: {self.n_trials}")
         logger.info(f"   - Timeout: {self.timeout_seconds // 60} minutes")
         logger.info(f"   - CV Folds: {self.cv_folds}")
@@ -347,7 +349,7 @@ class GradientBoostingOptunaOptimizer:
         if not self.best_params:
             raise ValueError("Aucun paramètre optimal trouvé. Lancer optimize() d'abord.")
         
-        logger.info(f"🎯 Entraînement avec les meilleurs paramètres...")
+        logger.info("🎯 Entraînement avec les meilleurs paramètres...")
         
         # Créer le pipeline final
         pipeline = Pipeline([
@@ -375,7 +377,7 @@ class GradientBoostingOptunaOptimizer:
             'overfitting_gap': accuracy_score(y_train, y_pred_train) - accuracy_score(y_test, y_pred_test)
         }
         
-        logger.info(f"✅ Métriques finales:")
+        logger.info("✅ Métriques finales:")
         logger.info(f"   - Train Accuracy: {metrics['train_accuracy']*100:.1f}%")
         logger.info(f"   - Test Accuracy: {metrics['test_accuracy']*100:.1f}%")
         logger.info(f"   - Test F1: {metrics['test_f1']:.3f}")

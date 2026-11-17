@@ -45,7 +45,7 @@ async def test_price_provider():
         fallback_price = await provider.get_price("BTC_USDT")
         if fallback_price:
             print(f"   ✅ Fallback BTC_USDT: {fallback_price.get('lastPrice', 'N/A')}")
-            print(f"   📊 Source: REST")
+            print("   📊 Source: REST")
         else:
             print("   ❌ Fallback: Prix non disponible")
         

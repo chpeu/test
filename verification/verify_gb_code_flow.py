@@ -241,7 +241,7 @@ try:
     gb_conf = TRADING_CONFIG.get('gb_min_confidence', 'N/A')
     gb_enabled = TRADING_CONFIG.get('gb_filter_enabled', 'N/A')
     
-    print(f"   ✅ TRADING_CONFIG accessible")
+    print("   ✅ TRADING_CONFIG accessible")
     print(f"      gb_filter_enabled: {gb_enabled}")
     print(f"      gb_min_confidence: {gb_conf}")
     

@@ -18,7 +18,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    # Portique statique : il bloque les classes de bugs déjà corrigées (voir ruff.toml).
+    # Séparé du job de tests : il tombe en quelques secondes, sans attendre pip.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install ruff
+      # Version épinglée : une nouvelle version de ruff ajoute des règles, et un portique
+      # qui rougit tout seul sur un changement de dépendance cesse d'être un signal.
+      run: python -m pip install --upgrade pip && pip install ruff==0.15.11
+
+    - name: Ruff (règles de correction, périmètre défini dans ruff.toml)
+      run: ruff check .
+
   test:
+    needs: lint           # ne pas payer 5 min de tests pour un finding de lint
     runs-on: ubuntu-latest
     timeout-minutes: 20  # borne dure : la suite complète passe en 3 min 09 en local
 

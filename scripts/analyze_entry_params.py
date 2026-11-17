@@ -28,24 +28,24 @@ if row and row[0]:
     print('PARAMETRES ACTUELS DE PRISE DE TRADE')
     print('='*60)
     
-    print(f"\nSCORE MINIMUM:")
+    print("\nSCORE MINIMUM:")
     print(f"  min_score_required: {config.get('min_score_required', 'N/A')}")
     
-    print(f"\nFILTRES ATR:")
+    print("\nFILTRES ATR:")
     print(f"  optimal_atr_min_1m: {config.get('optimal_atr_min_1m', 'N/A')}")
     print(f"  optimal_atr_max_1m: {config.get('optimal_atr_max_1m', 'N/A')}")
     print(f"  optimal_atr_min_5m: {config.get('optimal_atr_min_5m', 'N/A')}")
     print(f"  optimal_atr_max_5m: {config.get('optimal_atr_max_5m', 'N/A')}")
     
-    print(f"\nFILTRES RSI:")
+    print("\nFILTRES RSI:")
     print(f"  rsi_filter_enabled: {config.get('rsi_filter_enabled', 'N/A')}")
     print(f"  rsi_long_max: {config.get('rsi_long_max', 'N/A')}")
     print(f"  rsi_short_min: {config.get('rsi_short_min', 'N/A')}")
     
-    print(f"\nFILTRES VOLUME:")
+    print("\nFILTRES VOLUME:")
     print(f"  volume_multiplier: {config.get('volume_multiplier', 'N/A')}")
     
-    print(f"\nCONFLUENCE:")
+    print("\nCONFLUENCE:")
     print(f"  use_confluence: {config.get('use_confluence', 'N/A')}")
     print(f"  snr_threshold: {config.get('snr_threshold', 'N/A')}")
 
@@ -77,7 +77,7 @@ opps = cur.fetchone()[0]
 cur.execute('SELECT COUNT(*) FROM trades WHERE created_at > NOW() - INTERVAL %s', ('24 hours',))
 trades_24h = cur.fetchone()[0]
 
-print(f"\nDERNIERES 24H:")
+print("\nDERNIERES 24H:")
 print(f"  Scans effectues: {scans}")
 print(f"  Opportunites detectees: {opps}")
 print(f"  Trades executes: {trades_24h}")

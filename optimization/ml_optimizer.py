@@ -127,7 +127,7 @@ class MLOptimizer:
         best_params = self.study.best_params
         best_value = self.study.best_value
         
-        logger.info(f"✅ Optimisation terminée")
+        logger.info("✅ Optimisation terminée")
         logger.info(f"  Meilleur objectif: {best_value:.4f}")
         logger.info(f"  Paramètres: {json.dumps(best_params, indent=2)}")
         
@@ -289,7 +289,7 @@ class MLOptimizer:
             logger.info(f"  Test:  {test_start} → {test_end}")
             
             # 1. Optimiser sur train
-            logger.info(f"🤖 Optimisation sur train...")
+            logger.info("🤖 Optimisation sur train...")
             opt_results = self.optimize(
                 symbols=symbols,
                 start_date=train_start,
@@ -300,7 +300,7 @@ class MLOptimizer:
             best_params = opt_results['best_params']
             
             # 2. Tester sur test avec meilleurs params
-            logger.info(f"📊 Test sur période test...")
+            logger.info("📊 Test sur période test...")
             test_results = self.backtest_engine.run_backtest(
                 symbols=symbols,
                 start_date=test_start,
@@ -330,7 +330,7 @@ class MLOptimizer:
         avg_sharpe = np.mean([r['test_sharpe'] for r in results_list])
         avg_pf = np.mean([r['test_profit_factor'] for r in results_list])
         
-        logger.info(f"\n✅ Walk-Forward Optimization terminé")
+        logger.info("\n✅ Walk-Forward Optimization terminé")
         logger.info(f"  Winrate moyen: {avg_winrate:.1f}%")
         logger.info(f"  Sharpe moyen: {avg_sharpe:.2f}")
         logger.info(f"  Profit Factor moyen: {avg_pf:.2f}")
@@ -374,7 +374,9 @@ class MLOptimizer:
         try:
             import matplotlib.pyplot as plt
             
-            fig = optuna.visualization.matplotlib.plot_optimization_history(self.study)
+            # L'objet rendu n'est pas consommé : optuna dessine dans la figure courante
+            # de pyplot, et c'est elle que plt.savefig()/plt.show() utilisent.
+            optuna.visualization.matplotlib.plot_optimization_history(self.study)
             
             if save_path:
                 plt.savefig(save_path)
@@ -395,7 +397,7 @@ class MLOptimizer:
         try:
             import matplotlib.pyplot as plt
             
-            fig = optuna.visualization.matplotlib.plot_param_importances(self.study)
+            optuna.visualization.matplotlib.plot_param_importances(self.study)
             
             if save_path:
                 plt.savefig(save_path)

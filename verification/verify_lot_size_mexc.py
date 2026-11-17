@@ -100,10 +100,10 @@ async def test_lot_size():
                 failed_symbols.append((symbol, str(e)))
         
         # Test détaillé sur BTC
-        print(f"\n[3/3] Test détaillé BTC/USDT:USDT...")
+        print("\n[3/3] Test détaillé BTC/USDT:USDT...")
         if 'BTC/USDT:USDT' in markets:
             btc = markets['BTC/USDT:USDT']
-            print(f"\n  Structure complète du market BTC:")
+            print("\n  Structure complète du market BTC:")
             print(f"    id: {btc.get('id')}")
             print(f"    symbol: {btc.get('symbol')}")
             print(f"    base: {btc.get('base')}")
@@ -113,17 +113,17 @@ async def test_lot_size():
             print(f"    type: {btc.get('type')}")
             print(f"    linear: {btc.get('linear')}")
             
-            print(f"\n  Limits:")
+            print("\n  Limits:")
             limits = btc.get('limits', {})
             for key, val in limits.items():
                 print(f"    {key}: {val}")
             
-            print(f"\n  Precision:")
+            print("\n  Precision:")
             precision = btc.get('precision', {})
             for key, val in precision.items():
                 print(f"    {key}: {val}")
             
-            print(f"\n  Info (raw MEXC):")
+            print("\n  Info (raw MEXC):")
             info = btc.get('info', {})
             relevant_keys = ['contractSize', 'minVol', 'maxVol', 'volUnit', 'priceUnit', 'lotSize']
             for key in relevant_keys:
@@ -137,14 +137,14 @@ async def test_lot_size():
         print(f"\n  Succès: {success_count}/{len(TEST_SYMBOLS)}")
         
         if failed_symbols:
-            print(f"\n  ⚠️ Problèmes détectés:")
+            print("\n  ⚠️ Problèmes détectés:")
             for sym, reason in failed_symbols:
                 print(f"    - {sym}: {reason}")
         
         if success_count == len(TEST_SYMBOLS):
-            print(f"\n  ✅ Toutes les tailles de lot sont récupérables!")
+            print("\n  ✅ Toutes les tailles de lot sont récupérables!")
         else:
-            print(f"\n  ⚠️ Certaines paires ont des problèmes de récupération")
+            print("\n  ⚠️ Certaines paires ont des problèmes de récupération")
         
         print("=" * 70)
         
@@ -183,7 +183,7 @@ async def test_live_order_manager():
         # Test get_lot_size ou équivalent
         test_symbols = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
         
-        print(f"\n  Test récupération lot size via manager:")
+        print("\n  Test récupération lot size via manager:")
         for symbol in test_symbols:
             try:
                 # Vérifier si la méthode existe

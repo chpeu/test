@@ -199,9 +199,9 @@ def check_config():
         
         all_off = all(MARKET_REGIME_V2_CONFIG.get(t) == False for t in toggles)
         if all_off:
-            print(f"\n  [OK] Tous les toggles sont OFF par defaut (comportement V1 preserve)")
+            print("\n  [OK] Tous les toggles sont OFF par defaut (comportement V1 preserve)")
         else:
-            print(f"\n  [ATTENTION] Certains toggles sont ON!")
+            print("\n  [ATTENTION] Certains toggles sont ON!")
             all_ok = False
         
         return all_ok

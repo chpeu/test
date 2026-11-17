@@ -49,7 +49,7 @@ def check_position():
                 # Afficher next_event
                 next_event = pos.get('next_event')
                 if next_event:
-                    print(f"\n🎯 Prochaine étape:")
+                    print("\n🎯 Prochaine étape:")
                     print(f"  Type: {next_event.get('type')} - {next_event.get('description')}")
                     print(f"  Distance: {next_event.get('distance_pct', 0):.2f}%")
                     if next_event.get('distance_atr'):

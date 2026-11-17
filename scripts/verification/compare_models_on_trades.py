@@ -59,9 +59,9 @@ model_new_path = MODELS_PATH / "gradient_boosting_anti_overfit.pkl"
 model_new = None
 if model_new_path.exists():
     model_new = joblib.load(model_new_path)
-    print(f"   ✅ Modèle ANTI-OVERFIT chargé")
+    print("   ✅ Modèle ANTI-OVERFIT chargé")
 else:
-    print(f"   ❌ Modèle anti-overfit non trouvé")
+    print("   ❌ Modèle anti-overfit non trouvé")
 
 # Charger métadonnées pour features
 metadata_new_path = MODELS_PATH / "gradient_boosting_anti_overfit_metadata.json"
@@ -131,7 +131,7 @@ if model_new is not None:
     prec_new = precision_score(y_test, y_pred_new)
     rec_new = recall_score(y_test, y_pred_new)
     
-    print(f"\n   📊 MODÈLE ANTI-OVERFIT (NOUVEAU):")
+    print("\n   📊 MODÈLE ANTI-OVERFIT (NOUVEAU):")
     print(f"   {'='*50}")
     print(f"   Accuracy:  {acc_new:.1%}")
     print(f"   F1 Score:  {f1_new:.4f}")
@@ -139,7 +139,7 @@ if model_new is not None:
     print(f"   Recall:    {rec_new:.4f}")
     
     # Analyse par niveau de confiance
-    print(f"\n   📊 PERFORMANCE PAR CONFIANCE:")
+    print("\n   📊 PERFORMANCE PAR CONFIANCE:")
     thresholds = [0.5, 0.55, 0.6, 0.65, 0.7]
     
     for thresh in thresholds:
@@ -152,7 +152,7 @@ if model_new is not None:
             print(f"   Seuil {thresh:.0%}: Acc={acc_filtered:.1%} | Acceptés: {n_accepted} ({pct_accepted:.0f}%) | Rejetés: {n_rejected}")
     
     # Simulation de l'impact du filtre
-    print(f"\n   📊 SIMULATION IMPACT DU FILTRE:")
+    print("\n   📊 SIMULATION IMPACT DU FILTRE:")
     
     for thresh in [0.55, 0.6]:
         mask_accept = y_proba_new >= thresh
@@ -195,15 +195,15 @@ if model_new is not None:
             print(f"  ✅ FILTRE EFFICACE: +{improvement:.1f}% win rate avec seuil 55%")
             print(f"     Win rate sans filtre: {baseline_wr:.1f}%")
             print(f"     Win rate avec filtre: {wr_055:.1f}%")
-            print(f"\n  💡 RECOMMANDATION: Activer gb_filter_enabled=true, gb_min_confidence=0.55")
+            print("\n  💡 RECOMMANDATION: Activer gb_filter_enabled=true, gb_min_confidence=0.55")
         elif improvement > 2:
             print(f"  ⚠️ FILTRE LÉGÈREMENT UTILE: +{improvement:.1f}% win rate")
-            print(f"     Peut être utile pour réduire les mauvais trades")
-            print(f"\n  💡 RECOMMANDATION: Tester avec gb_min_confidence=0.6")
+            print("     Peut être utile pour réduire les mauvais trades")
+            print("\n  💡 RECOMMANDATION: Tester avec gb_min_confidence=0.6")
         else:
             print(f"  ❌ FILTRE PEU EFFICACE: {improvement:+.1f}% win rate")
-            print(f"     Le modèle n'améliore pas significativement le win rate")
-            print(f"\n  💡 RECOMMANDATION: Garder gb_filter_enabled=false ou réentraîner")
+            print("     Le modèle n'améliore pas significativement le win rate")
+            print("\n  💡 RECOMMANDATION: Garder gb_filter_enabled=false ou réentraîner")
     else:
         print("  ❌ Pas assez de trades acceptés avec seuil 55%")
     

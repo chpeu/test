@@ -124,17 +124,17 @@ if results.get('status') == 'success':
     print("  RÉSULTATS FINAUX")
     print("=" * 80)
     
-    print(f"\n[TRAIN]")
+    print("\n[TRAIN]")
     print(f"  Accuracy:  {train_metrics.get('accuracy', 0):.1%}")
     print(f"  ROC-AUC:   {train_metrics.get('roc_auc', 0):.1%}")
     print(f"  F1 Score:  {train_metrics.get('f1_score', 0):.3f}")
     
-    print(f"\n[TEST]")
+    print("\n[TEST]")
     print(f"  Accuracy:  {test_acc:.1%}")
     print(f"  ROC-AUC:   {test_roc:.1%}")
     print(f"  F1 Score:  {test_f1:.3f}")
     
-    print(f"\n[GAPS]")
+    print("\n[GAPS]")
     print(f"  Accuracy:  {acc_gap:.1%}")
     print(f"  ROC-AUC:   {gaps.get('roc_auc', 0):.1%}")
     
@@ -226,7 +226,7 @@ if results.get('status') == 'success':
             f.write("  INSUFFISANT - Inutilisable\n")
     
     print(f"[OK] Rapport sauvegardé: {rapport_path}")
-    print(f"[OK] Modèle sauvegardé: optimization/saved_models/xgboost_v2_final.pkl")
+    print("[OK] Modèle sauvegardé: optimization/saved_models/xgboost_v2_final.pkl")
     
 else:
     print("\n[ERROR] Entraînement a échoué")

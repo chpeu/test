@@ -44,7 +44,7 @@ def check_config_invert_signals():
         """)
         
         total, filled, nulls, null_pct = cursor.fetchone()
-        print(f"\n📊 Stats sur 6 derniers heures:")
+        print("\n📊 Stats sur 6 derniers heures:")
         print(f"   Total: {total}")
         print(f"   Remplis: {filled}")
         print(f"   NULL: {nulls} ({null_pct}%)")
@@ -60,7 +60,7 @@ def check_config_invert_signals():
         
         values = cursor.fetchall()
         if values:
-            print(f"\n📋 Valeurs exemples:")
+            print("\n📋 Valeurs exemples:")
             for val in values:
                 print(f"   {val[0]}")
     else:

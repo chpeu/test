@@ -84,39 +84,39 @@ def main():
         print(f"   Mode: {tp_sl_mode}")
         print(f"   Durée: {duration_minutes:.1f} min")
         
-        print(f"\n📊 État actuel:")
+        print("\n📊 État actuel:")
         print(f"   PnL: {pnl_pct:.3f}%")
         print(f"   Max PnL (MFE): {max_pnl_reached:.3f}%" if max_pnl_reached else "   Max PnL (MFE): N/A")
         
-        print(f"\n🔧 Trailing Stop:")
+        print("\n🔧 Trailing Stop:")
         print(f"   Trailing activé: {'✅ OUI' if trailing_activated else '❌ NON'}")
         if trailing_trigger_pnl_pct:
             print(f"   Trigger PnL: {trailing_trigger_pnl_pct:.3f}%")
         if trailing_final_distance_pct:
             print(f"   Distance finale: {trailing_final_distance_pct:.3f}%")
         
-        print(f"\n🎯 Break-Even:")
+        print("\n🎯 Break-Even:")
         print(f"   BE déclenché: {'✅ OUI' if be_triggered else '❌ NON'}")
         if be_triggered_pnl_pct:
             print(f"   BE PnL: {be_triggered_pnl_pct:.3f}%")
         
-        print(f"\n⏱️ Stagnation:")
+        print("\n⏱️ Stagnation:")
         print(f"   Détectée: {'⚠️ OUI' if stagnation_detected else '✅ NON'}")
         
         # Analyse du trailing
-        print(f"\n" + "=" * 60)
+        print("\n" + "=" * 60)
         print("🔍 DIAGNOSTIC TRAILING")
         print("=" * 60)
         
         if not trailing_activated:
-            print(f"\n⚠️ TRAILING NON ACTIVÉ")
-            print(f"   Raisons possibles:")
+            print("\n⚠️ TRAILING NON ACTIVÉ")
+            print("   Raisons possibles:")
             
             # Vérifier config depuis les logs (approximatif)
             if tp_sl_mode == 'FIXE':
-                print(f"   • Mode FIXE: trailing_trigger_pnl par défaut = ~0.20%")
+                print("   • Mode FIXE: trailing_trigger_pnl par défaut = ~0.20%")
             elif tp_sl_mode == 'ATR':
-                print(f"   • Mode ATR: trailing_trigger_pnl basé sur ATR")
+                print("   • Mode ATR: trailing_trigger_pnl basé sur ATR")
             
             if pnl_pct is not None:
                 if pnl_pct >= 0:
@@ -124,7 +124,7 @@ def main():
                 else:
                     print(f"   • Position en perte ({pnl_pct:.3f}%), trailing ne peut pas s'activer")
         else:
-            print(f"\n✅ TRAILING ACTIVÉ")
+            print("\n✅ TRAILING ACTIVÉ")
             if trailing_final_distance_pct:
                 distance_pct = abs((sl - entry_price) / entry_price * 100)
                 print(f"   Distance SL/Entry: {distance_pct:.3f}%")
@@ -133,22 +133,22 @@ def main():
                 if direction == 'LONG':
                     if sl < entry_price:
                         print(f"   ⚠️ SL ({sl:.6f}) est en dessous de l'entry ({entry_price:.6f})")
-                        print(f"   ℹ️ Trailing devrait remonter le SL à mesure que le prix monte")
+                        print("   ℹ️ Trailing devrait remonter le SL à mesure que le prix monte")
                     else:
                         print(f"   ✅ SL ({sl:.6f}) est au-dessus de l'entry (BE atteint)")
                 else:  # SHORT
                     if sl > entry_price:
                         print(f"   ⚠️ SL ({sl:.6f}) est au-dessus de l'entry ({entry_price:.6f})")
-                        print(f"   ℹ️ Trailing devrait descendre le SL à mesure que le prix baisse")
+                        print("   ℹ️ Trailing devrait descendre le SL à mesure que le prix baisse")
                     else:
                         print(f"   ✅ SL ({sl:.6f}) est en dessous de l'entry (BE atteint)")
         
         # Vérifier inversion
-        print(f"\n" + "=" * 60)
+        print("\n" + "=" * 60)
         print("🔄 VÉRIFICATION INVERSION")
         print("=" * 60)
         print(f"   Direction position: {direction}")
-        print(f"   ℹ️ Vérifiez dans les logs si vous voyez:")
+        print("   ℹ️ Vérifiez dans les logs si vous voyez:")
         print(f"   '🔄 INVERSION DE SIGNAL ACTIVÉE: {symbol}'")
         
         cursor.close()

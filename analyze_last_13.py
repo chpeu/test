@@ -66,7 +66,7 @@ def analyze_last_13_trades():
     avg_win = df[df['net_pnl_pct'] > 0]['net_pnl_pct'].mean() if winning_trades > 0 else 0
     avg_loss = df[df['net_pnl_pct'] < 0]['net_pnl_pct'].mean() if losing_trades > 0 else 0
     
-    print(f"\n📈 STATISTIQUES GLOBALES:")
+    print("\n📈 STATISTIQUES GLOBALES:")
     print(f"   Total trades: {total_trades}")
     print(f"   Winrate: {winrate:.1f}% ({winning_trades} wins / {losing_trades} losses)")
     print(f"   PnL total: {total_pnl:.2f} USDT")
@@ -78,7 +78,7 @@ def analyze_last_13_trades():
         print(f"   Profit Factor: {profit_factor:.3f}")
     
     # Configuration utilisée
-    print(f"\n⚙️  CONFIGURATION UTILISÉE:")
+    print("\n⚙️  CONFIGURATION UTILISÉE:")
     if not df.empty:
         first_row = df.iloc[0]
         print(f"   Mode: {first_row['mode'] or 'N/A'}")
@@ -88,7 +88,7 @@ def analyze_last_13_trades():
         print(f"   Trailing Trigger: {first_row['trailing_trigger']:.2f}%")
     
     # Détail des trades
-    print(f"\n📋 DÉTAIL DES TRADES:")
+    print("\n📋 DÉTAIL DES TRADES:")
     print("   N° | Symbole    | Direction | PnL %   | PnL USDT | Raison  | Durée")
     print("   ---|------------|-----------|---------|----------|---------|------")
     
@@ -98,8 +98,8 @@ def analyze_last_13_trades():
         print(f"   {idx:2d} | {row['symbol']:10s} | {row['direction']:9s} | {pnl_sign}{row['net_pnl_pct']:6.2f}% | {row['net_pnl_usdt']:+8.2f} | {row['exit_reason']:7s} | {duration_min:4.0f}m")
     
     # Analyse par raison de sortie
-    print(f"\n📊 ANALYSE PAR RAISON DE SORTIE:")
-    exit_stats = df.groupby('exit_reason').agg({
+    print("\n📊 ANALYSE PAR RAISON DE SORTIE:")
+    df.groupby('exit_reason').agg({
         'net_pnl_pct': ['count', 'mean', 'sum'],
         'net_pnl_usdt': 'sum'
     }).round(3)
@@ -115,7 +115,7 @@ def analyze_last_13_trades():
         print(f"   {reason:15s}: {count:2d} trades | PnL moy: {avg_pnl:+.3f}% | Total: {total_usdt:+.2f} USDT | WR: {wr:.0f}%")
     
     # Distribution des PnL
-    print(f"\n📈 DISTRIBUTION DES PnL:")
+    print("\n📈 DISTRIBUTION DES PnL:")
     bins = [-100, -0.3, -0.2, -0.1, 0, 0.1, 0.2, 0.3, 100]
     labels = ['<-0.3%', '-0.3% à -0.2%', '-0.2% à -0.1%', '-0.1% à 0%', '0% à 0.1%', '0.1% à 0.2%', '0.2% à 0.3%', '>0.3%']
     
@@ -127,12 +127,12 @@ def analyze_last_13_trades():
         print(f"   {cat:15s}: {count:2d} trades ({pct:5.1f}%)")
     
     # Comparaison avec avant
-    print(f"\n🔄 COMPARAISON AVEC LES 30 TRADES PRÉCÉDENTS:")
+    print("\n🔄 COMPARAISON AVEC LES 30 TRADES PRÉCÉDENTS:")
     print("   Période précédente: Winrate 63.3% | PnL: -0.18 USDT | Ratio: 0.23")
     print(f"   Période actuelle  : Winrate {winrate:.1f}% | PnL: {total_pnl:+.2f} USDT | Ratio: {(avg_win/abs(avg_loss)):.2f}" if avg_loss != 0 else "")
     
     # Conclusions
-    print(f"\n🎯 CONCLUSIONS:")
+    print("\n🎯 CONCLUSIONS:")
     if total_pnl > 0:
         print(f"   ✅ PnL positif: {total_pnl:.2f} USDT")
         if avg_win > 0.5:
@@ -146,15 +146,15 @@ def analyze_last_13_trades():
         print(f"   ⚠️  Winrate en baisse: {winrate:.1f}% (normal avec TP plus large)")
     
     # Recommandations
-    print(f"\n💡 RECOMMANDATIONS:")
+    print("\n💡 RECOMMANDATIONS:")
     if avg_win < 0.5:
-        print(f"   - Les gains sont encore trop petits, envisagez d'augmenter TP à 2.0%")
+        print("   - Les gains sont encore trop petits, envisagez d'augmenter TP à 2.0%")
     if avg_loss < -0.25:
-        print(f"   - Les pertes sont acceptables")
+        print("   - Les pertes sont acceptables")
     if total_pnl > 0:
-        print(f"   ✅ La configuration actuelle fonctionne mieux !")
+        print("   ✅ La configuration actuelle fonctionne mieux !")
     else:
-        print(f"   - Continuez à tester avec plus de trades")
+        print("   - Continuez à tester avec plus de trades")
 
 if __name__ == '__main__':
     try:

@@ -11,6 +11,18 @@ from datetime import datetime
 from api.routes import dashboard
 
 
+@pytest.fixture(autouse=True)
+def _no_real_bootstrap(monkeypatch):
+    """Aucun test ne doit déclencher le vrai bootstrap.
+
+    /api/start, /api/stop et /api/dashboard/summary appellent maintenant
+    core.bootstrap.ensure_instances() (awaité) : sans ce bouchon, ces routes
+    initialiseraient réellement le bot (Base SQLite, scheduler, tâches de fond).
+    """
+    import core.bootstrap as bootstrap
+    monkeypatch.setattr(bootstrap, 'ensure_instances', AsyncMock(), raising=False)
+
+
 @pytest.fixture
 def app():
     """Create FastAPI app with dashboard router"""
@@ -360,7 +372,7 @@ class TestDashboardRoutes:
         monkeypatch.setattr(state_manager, 'get_state_manager', lambda: _State())
 
         import core.bootstrap as bootstrap
-        monkeypatch.setattr(bootstrap, 'init_instances', lambda: None)
+        monkeypatch.setattr(bootstrap, 'ensure_instances', AsyncMock())
 
         response = client.get('/api/dashboard/summary')
         assert response.status_code == 200

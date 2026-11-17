@@ -43,7 +43,7 @@ def test_simple():
                 # Vérifier next_event
                 next_event = pos.get('next_event')
                 if next_event:
-                    print(f"\n🎯 Next event trouvé:")
+                    print("\n🎯 Next event trouvé:")
                     print(f"  Type: {next_event.get('type')}")
                     print(f"  Description: {next_event.get('description')}")
                     print(f"  Prix: {next_event.get('price')}")

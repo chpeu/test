@@ -201,7 +201,7 @@ study.optimize(objective, n_trials=100, show_progress_bar=True)
 
 best_params = study.best_params
 print(f"\n   Meilleur F1 CV: {study.best_value*100:.1f}%")
-print(f"   Best params:")
+print("   Best params:")
 for k, v in best_params.items():
     print(f"      {k}: {v}")
 
@@ -232,7 +232,7 @@ metrics = {
     'roc_auc': roc_auc_score(y_test, y_proba)
 }
 
-print(f"\n   RESULTATS AVANT CALIBRATION:")
+print("\n   RESULTATS AVANT CALIBRATION:")
 print(f"      Accuracy:  {metrics['accuracy']*100:.1f}%")
 print(f"      Precision: {metrics['precision']*100:.1f}%")
 print(f"      Recall:    {metrics['recall']*100:.1f}%")
@@ -264,7 +264,7 @@ metrics_cal = {
     'roc_auc': roc_auc_score(y_test, y_proba_cal)
 }
 
-print(f"\n   RESULTATS APRES CALIBRATION:")
+print("\n   RESULTATS APRES CALIBRATION:")
 print(f"      Accuracy:  {metrics_cal['accuracy']*100:.1f}%")
 print(f"      Precision: {metrics_cal['precision']*100:.1f}%")
 print(f"      Recall:    {metrics_cal['recall']*100:.1f}%")
@@ -393,7 +393,7 @@ print(f"""
 for k, v in best_params.items():
     print(f"   {k}: {v}")
 
-print(f"""
+print("""
    
    RECOMMANDATION:
    ---------------

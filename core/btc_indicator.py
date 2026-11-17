@@ -128,8 +128,8 @@ class BTCIndicator:
         try:
             # Récupérer ticker BTC
             ticker = None
-            klines_1h = None
-            klines_24h = None
+            # (klines_1h / klines_24h initialisés puis abandonnés au profit d'un
+            #  fetch_ohlcv local plus bas — rien d'autre ne les lisait)
             
             # Essayer avec le bypass client (futures)
             if hasattr(exchange, 'get_ticker'):

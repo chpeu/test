@@ -133,7 +133,7 @@ def verify_model_metadata():
     
     # Métriques
     metrics = metadata.get('metrics', {})
-    print(f"\n  Metriques:")
+    print("\n  Metriques:")
     print(f"     - Test Accuracy: {metrics.get('test_accuracy', 0)*100:.1f}%")
     print(f"     - F1 Score: {metrics.get('f1_score', 0):.3f}")
     print(f"     - Precision: {metrics.get('precision', 0):.3f}")
@@ -143,7 +143,7 @@ def verify_model_metadata():
     # Hyperparamètres du modèle
     hyperparams = metadata.get('hyperparameters', {})
     if hyperparams:
-        print(f"\n  Hyperparametres modele:")
+        print("\n  Hyperparametres modele:")
         for k, v in hyperparams.items():
             print(f"     - {k}: {v}")
     
@@ -198,7 +198,7 @@ def verify_confidence_threshold():
             expected_accepted = 6
             expected_rejected = 2
             if accepted == expected_accepted and rejected == expected_rejected:
-                print(f"  [OK] Comportement du seuil CORRECT")
+                print("  [OK] Comportement du seuil CORRECT")
                 return True
             else:
                 print(f"  [FAIL] Comportement inattendu! (attendu: {expected_accepted} acceptes, {expected_rejected} rejetes)")

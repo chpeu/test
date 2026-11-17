@@ -30,7 +30,7 @@ def test_model_info_detection():
         calibration_manager = MLCalibrationManager()
         model_info = calibration_manager.get_current_model_info()
         
-        print(f"[OK] Modèle détecté:")
+        print("[OK] Modèle détecté:")
         print(f"   Timestamp: {model_info.get('timestamp', 'unknown')}")
         print(f"   Type: {model_info.get('model_type', 'unknown')}")
         print(f"   Features: {model_info.get('n_features', 0)}")

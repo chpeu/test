@@ -73,7 +73,25 @@ def cmd_optimize(args):
     )
     
     logger.info("\n✅ Optimisation terminée avec succès!")
-    
+
+    # Le résultat de l'optimisation était jeté : le CLI rendait un code 0 sans jamais
+    # dire quel score ni quels paramètres avaient gagné — impossible de juger un run
+    # de 200 essais sans rouvrir l'étude Optuna à la main.
+    best_score = results.get('best_score') if isinstance(results, dict) else None
+    n_trials_done = results.get('n_trials') if isinstance(results, dict) else None
+    elapsed = results.get('elapsed_time') if isinstance(results, dict) else None
+    if n_trials_done is not None:
+        finish = f"{n_trials_done} essais"
+        if isinstance(elapsed, (int, float)):
+            finish += f" en {elapsed:.0f} s"
+        logger.info(f"   {finish}")
+    if isinstance(best_score, (int, float)):
+        logger.info(f"🏆 Meilleur score: {best_score:.4f}")
+    best_params = results.get('best_params') if isinstance(results, dict) else None
+    if best_params:
+        params_str = ", ".join(f"{k}={v}" for k, v in sorted(best_params.items()))
+        logger.info(f"🧪 Meilleurs paramètres: {params_str}")
+
     if args.save:
         logger.info("💾 Meilleurs paramètres sauvegardés dans config_overrides.json")
         logger.info("⚠️ Pense à relancer l'entraînement du modèle avec ces nouveaux paramètres!")
@@ -102,7 +120,7 @@ def cmd_show_best(args):
         best_trial = tuner.study.best_trial
         logger.info(f"📊 Best Score: {best_trial.value:.4f}")
         logger.info(f"📅 Date: {best_trial.datetime_start}")
-        logger.info(f"\n🎯 Hyperparamètres:\n")
+        logger.info("\n🎯 Hyperparamètres:\n")
         
         for param, value in best_trial.params.items():
             logger.info(f"  {param:25s} = {value}")
@@ -206,7 +224,15 @@ def cmd_dashboard(args):
             "--port", str(args.port)
         ]
         
-        subprocess.run(cmd)
+        # check=False assumé : un dashboard arrêté (Ctrl-C, code 130) n'est pas une
+        # erreur du tuner. Le code de sortie est quand même tracé, sinon l'échec
+        # d'optuna-dashboard (paquet absent, port déjà pris) passerait inaperçu.
+        completed = subprocess.run(cmd, check=False)
+        if completed.returncode not in (0, 130):
+            logger.warning(
+                f"⚠️ optuna-dashboard arrêté avec le code {completed.returncode} "
+                f"(install : pip install optuna-dashboard, port {args.port} libre ?)"
+            )
         
     except KeyboardInterrupt:
         logger.info("\n👋 Dashboard arrêté")

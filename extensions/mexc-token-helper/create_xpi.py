@@ -121,6 +121,6 @@ if __name__ == "__main__":
     print_installation_instructions()
     
     if success:
-        print(f"\nExtension Firefox prete a installer!")
+        print("\nExtension Firefox prete a installer!")
     else:
-        print(f"\nEchec de la creation de l'extension")
+        print("\nEchec de la creation de l'extension")

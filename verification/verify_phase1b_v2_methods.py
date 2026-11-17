@@ -48,9 +48,9 @@ def test_calculate_atr_metric():
     print(f"  Mediane stockee: {rs.last_atr_median}")
     
     if rs.last_outliers_count > 0:
-        print(f"  [OK] Outlier detecte et filtre")
+        print("  [OK] Outlier detecte et filtre")
     else:
-        print(f"  [INFO] Filtrage outlier pas applique (toggle OFF ou pas assez de variance)")
+        print("  [INFO] Filtrage outlier pas applique (toggle OFF ou pas assez de variance)")
     
     return True
 
@@ -80,9 +80,9 @@ def test_apply_smoothing():
     
     # Sans smoothing active, brut == lisse
     if results == values:
-        print(f"  [OK] Smoothing desactive (toggle OFF) - valeurs brutes retournees")
+        print("  [OK] Smoothing desactive (toggle OFF) - valeurs brutes retournees")
     else:
-        print(f"  [OK] Smoothing actif - EMA applique")
+        print("  [OK] Smoothing actif - EMA applique")
     
     return True
 
@@ -112,7 +112,7 @@ def test_should_change_regime():
     print(f"  ATR={atr_above}: change={result_above}")
     
     if result_above:
-        print(f"  [OK] Transition autorisee quand ATR au-dessus du seuil")
+        print("  [OK] Transition autorisee quand ATR au-dessus du seuil")
     
     return True
 
@@ -139,9 +139,9 @@ def test_calculate_combined_atr():
     print(f"  Resultat combine: {result:.4f}%")
     
     if abs(result - expected_1m) < 0.001:
-        print(f"  [OK] ATR 5m desactive (toggle OFF) - seul ATR 1m utilise")
+        print("  [OK] ATR 5m desactive (toggle OFF) - seul ATR 1m utilise")
     else:
-        print(f"  [OK] ATR 5m active - combinaison appliquee")
+        print("  [OK] ATR 5m active - combinaison appliquee")
     
     return True
 
@@ -171,7 +171,7 @@ def check_toggles_off():
             all_ok = False
     
     if strict and all_ok:
-        print(f"\n  [OK] Comportement V1 preserve (tous toggles OFF)")
+        print("\n  [OK] Comportement V1 preserve (tous toggles OFF)")
 
     return all_ok
 

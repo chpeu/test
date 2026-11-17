@@ -197,7 +197,7 @@ class StateManager:
                     symbol = position.get("symbol")
                 elif hasattr(position, "symbol"):
                     try:
-                        symbol = getattr(position, "symbol")
+                        symbol = position.symbol
                     except Exception:
                         symbol = None
                 elif hasattr(position, "get"):

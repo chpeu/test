@@ -274,7 +274,7 @@ class XGBoostTrainer:
                 str(self.model_dir / f"{self.model_name}_preprocessor.pkl")
             )
             
-            logger.info(f"💾 Preprocessor with feature selection saved")
+            logger.info("💾 Preprocessor with feature selection saved")
         
         # 6. Entraîner avec early stopping (sur features sélectionnées)
         logger.info("🎯 Entraînement du modèle final...")
@@ -474,10 +474,17 @@ class XGBoostTrainer:
         """Extraire feature importance triée"""
         
         importance = self.model.feature_importances_
+        if len(feature_names) != len(importance):
+            logger.warning(
+                f"⚠️ Feature importance: {len(importance)} valeurs pour "
+                f"{len(feature_names)} noms — troncature, vérifier le modèle chargé"
+            )
         
         feature_importance = [
             {"feature": name, "importance": float(imp)}
-            for name, imp in zip(feature_names, importance)
+            # strict=False assumé : l'anomalie de longueur est signalée ci-dessus ;
+            # planter une évaluation déjà menée serait pire que tronquer.
+            for name, imp in zip(feature_names, importance, strict=False)
         ]
         
         # Trier par importance décroissante
@@ -586,7 +593,7 @@ def train_xgboost_cli(
     print("🎯 ENTRAÎNEMENT XGBOOST TERMINÉ")
     print("=" * 70)
 
-    print(f"\n📊 Métriques Test:")
+    print("\n📊 Métriques Test:")
     print(f"  - Accuracy:  {results['metrics']['test']['accuracy']:.3f}")
     print(f"  - Precision: {results['metrics']['test']['precision']:.3f}")
     print(f"  - Recall:    {results['metrics']['test']['recall']:.3f}")
@@ -594,17 +601,17 @@ def train_xgboost_cli(
     print(f"  - ROC-AUC:   {results['metrics']['test']['roc_auc']:.3f}")
 
     if 'gaps' in results['metrics']:
-        print(f"\n📈 Gaps Train-Test (Overfitting Indicators):")
+        print("\n📈 Gaps Train-Test (Overfitting Indicators):")
         print(f"  - Accuracy Gap: {results['metrics']['gaps']['accuracy']:.3f}")
         print(f"  - ROC-AUC Gap:  {results['metrics']['gaps']['roc_auc']:.3f}")
 
     if 'cross_validation' in results['metrics']:
         cv = results['metrics']['cross_validation']
-        print(f"\n🔄 Cross-Validation (5-fold):")
+        print("\n🔄 Cross-Validation (5-fold):")
         print(f"  - Accuracy: {cv['accuracy_mean']:.3f} (+/- {cv['accuracy_std'] * 2:.3f})")
         print(f"  - ROC-AUC:  {cv['roc_auc_mean']:.3f} (+/- {cv['roc_auc_std'] * 2:.3f})")
 
-    print(f"\n🔝 Top 10 Features:")
+    print("\n🔝 Top 10 Features:")
     for i, feat in enumerate(results['feature_importance'], 1):
         print(f"  {i}. {feat['feature']}: {feat['importance']:.4f}")
 

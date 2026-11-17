@@ -151,13 +151,13 @@ def update_existing_atr_metrics(limit: int = None, dry_run: bool = False):
     conn.close()
     
     print(f"\n{'='*60}")
-    print(f"RESULTAT UPDATE")
+    print("RESULTAT UPDATE")
     print(f"{'='*60}")
     print(f"  Métriques traitées: {len(metrics)}")
     print(f"  Mises à jour: {updated}")
     print(f"  Erreurs: {errors}")
     if dry_run:
-        print(f"  [!] MODE DRY-RUN - Aucune modification réelle")
+        print("  [!] MODE DRY-RUN - Aucune modification réelle")
 
 
 if __name__ == '__main__':

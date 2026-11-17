@@ -75,7 +75,7 @@ def verify_trade(trade):
     
     # Vérifier si c'est un trade FIXE
     if tp_sl_mode == 'FIXE':
-        print(f"\n  🔍 VÉRIFICATION MODE FIXE...")
+        print("\n  🔍 VÉRIFICATION MODE FIXE...")
         
         # Vérifier les sorties interdites
         forbidden_exits = ['STAGNATION_MFE_PROTECT', 'STAGNATION_POSITIVE']
@@ -83,23 +83,23 @@ def verify_trade(trade):
         
         for forbidden in forbidden_exits:
             if forbidden in exit_reason:
-                print(f"\n  ❌ ALERTE CRITIQUE: Sortie interdite détectée!")
+                print("\n  ❌ ALERTE CRITIQUE: Sortie interdite détectée!")
                 print(f"     Exit reason: {exit_reason}")
                 print(f"     Ce mécanisme ({forbidden}) ne devrait s'appliquer QU'EN MODE ATR")
-                print(f"\n  ⚠️ ACTION REQUISE:")
-                print(f"     1. Vérifier que le backend a bien été redémarré")
-                print(f"     2. Analyser les logs backend pour ce trade")
-                print(f"     3. Vérifier la configuration tp_sl_mode")
+                print("\n  ⚠️ ACTION REQUISE:")
+                print("     1. Vérifier que le backend a bien été redémarré")
+                print("     2. Analyser les logs backend pour ce trade")
+                print("     3. Vérifier la configuration tp_sl_mode")
                 has_error = True
                 break
         
         if not has_error:
-            print(f"\n  ✅ Trade FIXE CONFORME")
-            print(f"     Aucun problème détecté")
+            print("\n  ✅ Trade FIXE CONFORME")
+            print("     Aucun problème détecté")
     
     elif tp_sl_mode == 'NULL':
-        print(f"\n  ⚠️ WARNING: tp_sl_mode non renseigné")
-        print(f"     Le champ tp_sl_mode devrait être 'FIXE' ou 'ATR'")
+        print("\n  ⚠️ WARNING: tp_sl_mode non renseigné")
+        print("     Le champ tp_sl_mode devrait être 'FIXE' ou 'ATR'")
     
     print(f"{'═' * 80}\n")
 
@@ -124,7 +124,7 @@ def main():
     
     last_checked_id = get_last_trade_id()
     print(f"\n📊 Dernier trade ID: {last_checked_id}")
-    print(f"⏳ En attente de nouveaux trades fermés...\n")
+    print("⏳ En attente de nouveaux trades fermés...\n")
     
     try:
         while True:

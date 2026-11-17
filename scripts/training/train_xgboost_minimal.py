@@ -30,21 +30,21 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("🎯 ENTRAÎNEMENT XGBOOST TERMINÉ")
     print("=" * 60)
-    print(f"\n📊 Métriques Test:")
+    print("\n📊 Métriques Test:")
     print(f"  - Accuracy:  {results['metrics']['test']['accuracy']:.3f}")
     print(f"  - Precision: {results['metrics']['test']['precision']:.3f}")
     print(f"  - Recall:    {results['metrics']['test']['recall']:.3f}")
     print(f"  - F1 Score:  {results['metrics']['test']['f1']:.3f}")
     print(f"  - ROC-AUC:   {results['metrics']['test']['roc_auc']:.3f}")
 
-    print(f"\n📊 Métriques Train:")
+    print("\n📊 Métriques Train:")
     print(f"  - Accuracy:  {results['metrics']['train']['accuracy']:.3f}")
     print(f"  - F1 Score:  {results['metrics']['train']['f1']:.3f}")
 
     gap = (results['metrics']['train']['f1'] - results['metrics']['test']['f1']) * 100
     print(f"\n⚖️ Overfitting Gap: {gap:.1f}%")
 
-    print(f"\n🔝 Top 10 Features:")
+    print("\n🔝 Top 10 Features:")
     for i, feat in enumerate(results['feature_importance'][:10], 1):
         print(f"  {i}. {feat['feature']}: {feat['importance']:.4f}")
 

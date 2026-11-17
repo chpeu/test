@@ -106,7 +106,7 @@ print()
 print('   🔧 RECOMMANDATIONS:')
 print(f'      atr_mult_sl: {config["atr_mult_sl"]} → 1.2 (+50%)')
 print(f'      atr_mult_tp: {config["atr_mult_tp"]} → 2.0 (+11%)')
-print(f'      Nouveau R/R: 1:1.67 (moins ambitieux mais plus réaliste)')
+print('      Nouveau R/R: 1:1.67 (moins ambitieux mais plus réaliste)')
 print()
 recommendations['CALME'] = {
     'atr_mult_sl': 1.2,
@@ -132,7 +132,7 @@ print()
 print('   🔧 RECOMMANDATIONS:')
 print(f'      atr_mult_sl: {config["atr_mult_sl"]} → 1.6 (+33%)')
 print(f'      atr_mult_tp: {config["atr_mult_tp"]} → 2.4 (+9%)')
-print(f'      Nouveau R/R: 1:1.50 (plus conservateur)')
+print('      Nouveau R/R: 1:1.50 (plus conservateur)')
 print()
 recommendations['NORMAL'] = {
     'atr_mult_sl': 1.6,
@@ -159,7 +159,7 @@ print()
 print('   🔧 RECOMMANDATIONS:')
 print(f'      atr_mult_sl: {config["atr_mult_sl"]} → 1.8 (+20%)')
 print(f'      atr_mult_tp: {config["atr_mult_tp"]} → 2.7 (+8%)')
-print(f'      Nouveau R/R: 1:1.50 (conservateur pour marché volatile)')
+print('      Nouveau R/R: 1:1.50 (conservateur pour marché volatile)')
 print()
 recommendations['VOLATILE'] = {
     'atr_mult_sl': 1.8,
@@ -188,7 +188,7 @@ print('   🔧 RECOMMANDATIONS:')
 print(f'      atr_mult_sl: {config["atr_mult_sl"]} → 1.0 (+43%)')
 print(f'      atr_mult_tp: {config["atr_mult_tp"]} → 1.8 (+20%)')
 print(f'      min_score_required: {config["min_score_required"]} → 10.5 (encore plus strict)')
-print(f'      Nouveau R/R: 1:1.80 (plus de marge pour le bruit du marché)')
+print('      Nouveau R/R: 1:1.80 (plus de marge pour le bruit du marché)')
 print()
 recommendations['CHOPPY'] = {
     'atr_mult_sl': 1.0,
@@ -251,7 +251,7 @@ print()
 for regime_name in ['calme', 'normal', 'volatile', 'choppy']:
     print(f'   Éditer: config/regimes/{regime_name}.json')
     rec = recommendations[regime_name.upper()]
-    print(f'   Modifier:')
+    print('   Modifier:')
     print(f'      "atr_mult_sl": {rec["atr_mult_sl"]},')
     print(f'      "atr_mult_tp": {rec["atr_mult_tp"]},')
     if 'min_score_required' in rec:

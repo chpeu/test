@@ -71,12 +71,12 @@ for category, columns in fixe_columns.items():
 
 # Résumé
 print(f"\n{'='*70}")
-print(f"📈 RÉSUMÉ")
+print("📈 RÉSUMÉ")
 print(f"   Colonnes remplies: {filled_cols}/{total_cols} ({filled_cols/total_cols*100:.0f}%)")
 print(f"   Colonnes NULL: {len(null_cols)}")
 
 if null_cols:
-    print(f"\n⚠️ Colonnes NULL à vérifier:")
+    print("\n⚠️ Colonnes NULL à vérifier:")
     for col in null_cols:
         print(f"   - {col}")
 
@@ -85,7 +85,7 @@ critical_fixe = ['max_pnl_reached', 'min_pnl_reached', 'be_triggered', 'trailing
 critical_ok = all(col in [c for c in fixe_columns['MFE/MAE'] + fixe_columns['Break-Even'] + fixe_columns['Trailing Stop'] 
                           if m.get(c) is not None or isinstance(m.get(c), bool)] for col in critical_fixe)
 
-print(f"\n🎯 COLONNES CRITIQUES MODE FIXE:")
+print("\n🎯 COLONNES CRITIQUES MODE FIXE:")
 for col in critical_fixe:
     val = m.get(col)
     if val is not None or isinstance(val, bool):

@@ -526,7 +526,7 @@ async def main():
     with open('test_results.json', 'w') as f:
         json.dump(results, f, indent=2)
     
-    logger.info(f"\n✅ Résultats sauvegardés dans test_results.json")
+    logger.info("\n✅ Résultats sauvegardés dans test_results.json")
 
 
 if __name__ == "__main__":

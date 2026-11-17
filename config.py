@@ -18,6 +18,28 @@ except Exception as e:
     import logging
     logging.warning(f"⚠️ Erreur chargement .env: {e}")
 
+
+def _env_number(name: str, default, cast):
+    """Lit une variable d'environnement numérique sans faire planter le démarrage.
+
+    Une variable présente mais vide (`POSTGRES_PORT=` dans .env, ou exportée vide
+    par un shell/CI) renvoie ``''`` : ``int('')`` levait alors ValueError au moment
+    de l'import de ce module, donc avant tout log — panne de démarrage illisible.
+    On retombe ici sur la valeur par défaut, comme pour une variable absente.
+    """
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return cast(str(raw).strip())
+    except (TypeError, ValueError):
+        import logging
+        logging.getLogger(__name__).warning(
+            f"⚠️ {name}={raw!r} n'est pas un nombre exploitable, valeur par défaut {default}"
+        )
+        return default
+
+
 # API MEXC
 MEXC_FUTURES_URL = "https://contract.mexc.com"
 
@@ -618,7 +640,7 @@ TRADING_CONFIG['telegram_enabled'] = TELEGRAM_ENABLED
 
 # Paper Trading Mode (optionnel)
 PAPER_TRADING_MODE = os.getenv("PAPER_TRADING_MODE", "False").lower() == "true"
-PAPER_TRADING_INITIAL_CAPITAL = float(os.getenv("PAPER_TRADING_INITIAL_CAPITAL", "1000.0"))
+PAPER_TRADING_INITIAL_CAPITAL = _env_number("PAPER_TRADING_INITIAL_CAPITAL", 1000.0, float)
 
 # Backtesting
 BACKTEST_DATA_PATH = "historical_data"
@@ -649,13 +671,13 @@ TELEGRAM_NOTIFY_SETUP_REJECTED = os.getenv("TELEGRAM_NOTIFY_SETUP_REJECTED", "fa
 # ============================================================================
 POSTGRES_ENABLED = os.getenv('POSTGRES_ENABLED', 'false').lower() == 'true'
 POSTGRES_HOST = os.getenv('POSTGRES_HOST', 'localhost')
-POSTGRES_PORT = int(os.getenv('POSTGRES_PORT', '5432'))
+POSTGRES_PORT = _env_number('POSTGRES_PORT', 5432, int)
 POSTGRES_DB = os.getenv('POSTGRES_DB', 'trade_cursor_ml')
 POSTGRES_USER = os.getenv('POSTGRES_USER', 'postgres')
 POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
 POSTGRES_USE_SSL = os.getenv('POSTGRES_USE_SSL', 'false').lower() == 'true'
-POSTGRES_MIN_CONN = int(os.getenv('POSTGRES_MIN_CONN', '1'))
-POSTGRES_MAX_CONN = int(os.getenv('POSTGRES_MAX_CONN', '5'))
+POSTGRES_MIN_CONN = _env_number('POSTGRES_MIN_CONN', 1, int)
+POSTGRES_MAX_CONN = _env_number('POSTGRES_MAX_CONN', 5, int)
 
 # ============================================================================
 # ML Configuration (Machine Learning Predictions)
@@ -668,10 +690,10 @@ ML_CONFIG = {
     "model_name": os.getenv('ML_MODEL_NAME', 'optimized'),
 
     # Seuil de confiance minimum pour accepter un trade
-    "min_confidence": float(os.getenv('ML_MIN_CONFIDENCE', '0.60')),  # 60% par défaut
+    "min_confidence": _env_number('ML_MIN_CONFIDENCE', 0.60, float),  # 60% par défaut
 
     # Seuil de confiance pour rejeter un trade (prédiction loss)
-    "max_loss_confidence": float(os.getenv('ML_MAX_LOSS_CONFIDENCE', '0.70')),  # 70% par défaut
+    "max_loss_confidence": _env_number('ML_MAX_LOSS_CONFIDENCE', 0.70, float),  # 70% par défaut
 
     # Mode de fonctionnement
     # - "STRICT": Accepter uniquement les prédictions 'win' avec confiance >= min_confidence
@@ -680,7 +702,7 @@ ML_CONFIG = {
     "mode": os.getenv('ML_MODE', 'NEGATIVE'),  # 🔥 NEGATIVE par défaut (meilleurs résultats)
     
     # 🔥 NOUVEAU: Seuil pour le mode NEGATIVE (rejeter si P(loss) >= ce seuil)
-    "loss_threshold": float(os.getenv('ML_LOSS_THRESHOLD', '0.45')),  # 45% = +6.8% win rate
+    "loss_threshold": _env_number('ML_LOSS_THRESHOLD', 0.45, float),  # 45% = +6.8% win rate
 
     # Logger les prédictions dans PostgreSQL
     "log_predictions": True,

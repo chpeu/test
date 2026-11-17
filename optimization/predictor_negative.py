@@ -286,7 +286,7 @@ if __name__ == "__main__":
     # Charger le prédicteur
     predictor = get_negative_predictor()
     
-    print(f"\n📋 Info modèle:")
+    print("\n📋 Info modèle:")
     for k, v in predictor.get_info().items():
         print(f"   {k}: {v}")
     
@@ -306,9 +306,9 @@ if __name__ == "__main__":
         'ema_diff_pct_5m': 0.15,
     }
     
-    print(f"\n🔮 Test prédiction:")
+    print("\n🔮 Test prédiction:")
     result = predictor.predict(test_features)
     for k, v in result.items():
         print(f"   {k}: {v}")
     
-    print(f"\n✅ Test terminé")
+    print("\n✅ Test terminé")

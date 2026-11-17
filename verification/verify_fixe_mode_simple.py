@@ -108,8 +108,8 @@ def main():
     print("=" * 80)
     
     if fixe_count == 0:
-        print(f"⚠️ Aucun trade en mode FIXE trouvé dans les 4 derniers trades")
-        print(f"\nModes trouvés:")
+        print("⚠️ Aucun trade en mode FIXE trouvé dans les 4 derniers trades")
+        print("\nModes trouvés:")
         for row in rows:
             print(f"  - Trade {row['id']}: {row['tp_sl_mode'] or 'NULL'}")
     elif not all_errors:

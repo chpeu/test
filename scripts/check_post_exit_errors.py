@@ -38,7 +38,7 @@ def check_post_exit_errors():
         print(f"\n⏰ {ts}")
         print(f"📝 {msg}")
         if stack:
-            print(f"\n📚 Stack trace:")
+            print("\n📚 Stack trace:")
             print(stack[:1000])
             print("..." if len(stack) > 1000 else "")
         print("-" * 80)

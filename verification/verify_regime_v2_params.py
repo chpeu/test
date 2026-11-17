@@ -106,7 +106,7 @@ def main():
         use_median = get_config_value('market_regime_use_median', False)
         outlier_filter = get_config_value('market_regime_outlier_filter', True)
         
-        print(f"  ✅ calculate_atr_metric() fonctionne")
+        print("  ✅ calculate_atr_metric() fonctionne")
         print(f"     → Valeurs test: {test_values}")
         print(f"     → Résultat: {result:.4f}%")
         print(f"     → Mode: {'Médiane' if use_median else 'Moyenne'}")
@@ -115,18 +115,18 @@ def main():
         # Test apply_smoothing
         smoothed = selector.apply_smoothing(0.25)
         use_smoothing = get_config_value('market_regime_use_smoothing', False)
-        print(f"  ✅ apply_smoothing() fonctionne")
+        print("  ✅ apply_smoothing() fonctionne")
         print(f"     → Lissage: {'ON' if use_smoothing else 'OFF'}")
         
         # Test should_change_regime
         should_change = selector.should_change_regime("NORMAL", "VOLATILE", 0.42)
         use_hysteresis = get_config_value('market_regime_use_hysteresis', False)
-        print(f"  ✅ should_change_regime() fonctionne")
+        print("  ✅ should_change_regime() fonctionne")
         print(f"     → Hystérésis: {'ON' if use_hysteresis else 'OFF'}")
         
         # Test determine_regime
         regime = selector.determine_regime(0.25, 25.0)
-        print(f"  ✅ determine_regime() fonctionne")
+        print("  ✅ determine_regime() fonctionne")
         print(f"     → Régime pour ATR=0.25%, ADX=25: {regime.name}")
 
         async def run_realistic_loop() -> None:

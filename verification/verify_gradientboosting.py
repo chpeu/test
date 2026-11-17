@@ -30,7 +30,7 @@ models_dir = "optimization/saved_models"
 
 # Charger modèle
 model = joblib.load(f"{models_dir}/gradient_boosting_optimized.pkl")
-print(f"   Modele charge")
+print("   Modele charge")
 
 # Charger preprocessor
 preprocessor = joblib.load(f"{models_dir}/gradient_boosting_optimized_preprocessor.pkl")
@@ -42,7 +42,7 @@ print(f"   Features: {len(feature_names)}")
 with open(f"{models_dir}/gradient_boosting_optimized_metadata.json") as f:
     metadata = json.load(f)
 
-print(f"   Metrics attendues:")
+print("   Metrics attendues:")
 test_metrics = metadata.get('metrics', {}).get('test', {})
 for k, v in test_metrics.items():
     if isinstance(v, float):
@@ -125,16 +125,16 @@ metrics = {
     'ROC-AUC': roc_auc_score(y_test, y_proba)
 }
 
-print(f"\n   RESULTATS GRADIENTBOOSTING OPTIMISE:")
-print(f"   " + "-" * 40)
+print("\n   RESULTATS GRADIENTBOOSTING OPTIMISE:")
+print("   " + "-" * 40)
 for name, value in metrics.items():
     print(f"   {name:12}: {value*100:.1f}%")
 
 # =============================================================================
 # COMPARAISON AVEC OBJECTIF
 # =============================================================================
-print(f"\n   COMPARAISON AVEC OBJECTIF:")
-print(f"   " + "-" * 40)
+print("\n   COMPARAISON AVEC OBJECTIF:")
+print("   " + "-" * 40)
 print(f"   {'Metrique':<12} {'Obtenu':>10} {'Attendu':>10} {'Diff':>10}")
 
 for name, value in metrics.items():
@@ -144,5 +144,5 @@ for name, value in metrics.items():
         status = "✓" if abs(diff) < 2 else "≈" if abs(diff) < 5 else "!"
         print(f"   {name:<12} {value*100:>9.1f}% {expected*100:>9.1f}% {diff:>+9.1f}% {status}")
 
-print(f"\n   [OK] Verification terminee")
+print("\n   [OK] Verification terminee")
 print("=" * 70)

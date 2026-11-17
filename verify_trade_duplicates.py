@@ -65,7 +65,7 @@ def check_and_alert_duplicates():
                     cur.execute(query2)
                     
                     dupes = cur.fetchall()
-                    for symbol, entry, count, ids, reasons in dupes:
+                    for symbol, entry, count, _ids, reasons in dupes:
                         print(f'  - {symbol} entry={entry}: {count} trades (reasons: {reasons})')
                     
                     return False  # Échec détection doublons

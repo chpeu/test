@@ -20,7 +20,7 @@ from utils.pricing import get_preferred_price
 from utils.session_detector import get_current_session, get_day_info
 
 try:
-    import psycopg2
+    import psycopg2  # noqa: F401  — disponibilité testée via PSYCOPG2_AVAILABLE
     from psycopg2.extras import execute_values, RealDictCursor
     from psycopg2.pool import ThreadedConnectionPool
     PSYCOPG2_AVAILABLE = True

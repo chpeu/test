@@ -69,11 +69,6 @@ class MLThresholdVerifier:
             return False
             
         colonnes = [(row[0], row[1], row[2]) for row in result]
-        expected_columns = [
-            ('calibrated_winrate', 'numeric', 'YES'),
-            ('ml_threshold_type', 'character varying', 'YES'),
-            ('ml_threshold_used', 'numeric', 'YES')
-        ]
         
         if len(colonnes) == 3:
             self.log_test("Schema Check", True, f"3 colonnes ML trouvées: {[c[0] for c in colonnes]}")

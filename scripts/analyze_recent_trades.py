@@ -183,20 +183,20 @@ def analyze_trades(trades):
         if mfe is not None and mfe <= 0:  # Jamais ete en profit
             bad_setup.append(t)
     
-    print(f"\n--- DIAGNOSTIC ---")
+    print("\n--- DIAGNOSTIC ---")
     print(f"Trades perdants avec MFE > 0.1% (mauvaise gestion): {len(bad_management)}")
     print(f"Trades perdants avec MFE <= 0% (mauvais setup): {len(bad_setup)}")
     
     if len(bad_management) > len(bad_setup):
-        print(f"\n>>> VERDICT: La mauvaise performance vient principalement de la GESTION DU TRADE")
-        print(f"    - Les setups atteignent des profits mais sont mal geres")
-        print(f"    - Solutions: Ajuster trailing stop, BE, TP partiels")
+        print("\n>>> VERDICT: La mauvaise performance vient principalement de la GESTION DU TRADE")
+        print("    - Les setups atteignent des profits mais sont mal geres")
+        print("    - Solutions: Ajuster trailing stop, BE, TP partiels")
     elif len(bad_setup) > len(bad_management):
-        print(f"\n>>> VERDICT: La mauvaise performance vient principalement des SETUPS")
-        print(f"    - Les trades n'atteignent jamais de profit significatif")
-        print(f"    - Solutions: Ameliorer les conditions d'entree, filtres ML")
+        print("\n>>> VERDICT: La mauvaise performance vient principalement des SETUPS")
+        print("    - Les trades n'atteignent jamais de profit significatif")
+        print("    - Solutions: Ameliorer les conditions d'entree, filtres ML")
     else:
-        print(f"\n>>> VERDICT: Mix des deux problemes (setup + gestion)")
+        print("\n>>> VERDICT: Mix des deux problemes (setup + gestion)")
     
     # Analyse GAP MFE - PnL (profit laisse sur la table)
     print(f"\n{'='*50}")
@@ -238,7 +238,7 @@ def analyze_trades(trades):
         medium_gaps = [g for g in gaps if 0.1 <= g['gap'] < 0.3]
         large_gaps = [g for g in gaps if g['gap'] >= 0.3]
         
-        print(f"\nRepartition des gaps:")
+        print("\nRepartition des gaps:")
         print(f"  - Gap < 0.1%: {len(small_gaps)} trades (bonne gestion)")
         print(f"  - Gap 0.1-0.3%: {len(medium_gaps)} trades (ameliorable)")
         print(f"  - Gap >= 0.3%: {len(large_gaps)} trades (profit perdu significatif)")
@@ -269,7 +269,7 @@ def analyze_trades(trades):
     trades_mfe_triggered = [t for t in trades if get_trailing_mfe_triggered(t) == True]
     trades_be_set = [t for t in trades if get_break_even_set(t) == True]
     
-    print(f"\n--- COUVERTURE ANTI-GIVEBACK ---")
+    print("\n--- COUVERTURE ANTI-GIVEBACK ---")
     print(f"Trades avec config AG remplie: {len(trades_with_ag_config)}/{len(trades)} ({len(trades_with_ag_config)/len(trades)*100:.1f}%)")
     if trades_with_ag_config:
         print(f"Trades avec AG activé: {len(trades_ag_enabled)}/{len(trades_with_ag_config)} ({len(trades_ag_enabled)/len(trades_with_ag_config)*100:.1f}%)")
@@ -301,7 +301,7 @@ def analyze_trades(trades):
             elif pnl >= 0:  # Protection a réussi à sauver le trade
                 protected_trades.append(t)
     
-    print(f"\n--- ANALYSE GIVEBACK ---")
+    print("\n--- ANALYSE GIVEBACK ---")
     protected_count = len(protected_trades)
     giveback_count = len(giveback_trades)
     total_protected_attempts = protected_count + giveback_count
@@ -330,7 +330,7 @@ def analyze_trades(trades):
                 print(f"  - PnL moyen au déclenchement Trailing MFE: {avg_mfe_trigger:.2f}%")
             
             # Top 5 pires givebacks
-            print(f"\n--- TOP 5 PIRES GIVEBACKS ---")
+            print("\n--- TOP 5 PIRES GIVEBACKS ---")
             sorted_givebacks = sorted(giveback_trades, key=lambda x: x['pnl'])[:5]
             for i, g in enumerate(sorted_givebacks, 1):
                 t = g['trade']
@@ -350,11 +350,11 @@ def analyze_trades(trades):
             print(f"\nTrades sauvés par les protections: {protected_count}")
             print(f"PnL total sauvé: {protected_pnl:.2f} USDT")
     else:
-        print(f"Aucune protection (BE/TrailingMFE) activée sur ces trades")
+        print("Aucune protection (BE/TrailingMFE) activée sur ces trades")
     
     # Top 10 des trades avec le plus gros gap (section déplacée au bon endroit)
     if gaps:
-        print(f"\n--- TOP 10 TRADES AVEC PLUS GROS GAP ---")
+        print("\n--- TOP 10 TRADES AVEC PLUS GROS GAP ---")
         sorted_gaps = sorted(gaps, key=lambda x: x['gap'], reverse=True)[:10]
         for i, g in enumerate(sorted_gaps, 1):
             t = g['trade']

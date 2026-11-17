@@ -27,7 +27,7 @@ def test_api_endpoint():
     """Teste l'endpoint /api/ml/dashboard/ml_trades_count"""
     print(f"\n{BLUE}=" * 60)
     print("TEST ENDPOINT /api/ml/dashboard/ml_trades_count")
-    print(f"=" * 60 + RESET)
+    print("=" * 60 + RESET)
     
     try:
         response = requests.get("http://localhost:8000/api/ml/dashboard/ml_trades_count", timeout=10)
@@ -186,7 +186,7 @@ def main():
         print(f"  {YELLOW}⚠️  {usable:,} trades ML utilisables (minimum){RESET}")
     else:
         print(f"  {RED}❌ {usable:,} trades ML utilisables (insuffisant){RESET}")
-        print(f"     → Envisagez de relâcher les filtres ou d'attendre plus de trades")
+        print("     → Envisagez de relâcher les filtres ou d'attendre plus de trades")
     
     if config_ok:
         print(f"  {GREEN}✅ Config cohérente entre fichier et API{RESET}")

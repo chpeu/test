@@ -81,7 +81,7 @@ feature_cols = [c for c in feature_cols if df[c].nunique() > 1]
 
 # Si pas assez de features ou de données, créer des données minimales pour éviter l'erreur
 if len(feature_cols) == 0 or len(df) < 10:
-    print(f"Pas assez de donnees/features. Creation dataset minimal pour tests...")
+    print("Pas assez de donnees/features. Creation dataset minimal pour tests...")
     # Créer un dataset minimal pour éviter les erreurs
     df_minimal = pd.DataFrame({
         'feature1': np.random.normal(0, 1, 100),

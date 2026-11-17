@@ -298,7 +298,7 @@ def calculate_derived_features(df: pd.DataFrame) -> pd.DataFrame:
             # Heures défavorables (nuit Europe, peu de volume)
             df_eng['unfavorable_hour'] = df_eng['hour_utc'].isin([3, 4, 5, 22, 23]).astype(int)
             
-            logger.info(f"🕐 Features temporelles ajoutées: 11 nouvelles features")
+            logger.info("🕐 Features temporelles ajoutées: 11 nouvelles features")
         except Exception as e:
             logger.warning(f"⚠️ Erreur features temporelles: {e}")
     

@@ -470,7 +470,7 @@ def main():
     print(f"  Gap: {best[1]['gap']*100:.1f}%")
     
     # Sauvegarder les top features pour utilisation
-    print(f"\nTop features identifies:")
+    print("\nTop features identifies:")
     for f in valid_features[:15]:
         print(f"  - {f}")
 

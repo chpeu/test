@@ -56,7 +56,7 @@ def check_position():
                 # Afficher next_event
                 next_event = pos.get('next_event')
                 if next_event:
-                    print(f"\n🎯 Prochaine étape:")
+                    print("\n🎯 Prochaine étape:")
                     print(f"  Type: {next_event.get('type')} - {next_event.get('description')}")
                     print(f"  Distance: {next_event.get('distance_pct', 0):.2f}%")
                     if next_event.get('distance_atr'):
@@ -82,7 +82,7 @@ def simulate_price_update():
     print("\n📊 Simulation mise à jour prix...")
     # Forcer une update de position en appelant le check loop
     try:
-        response = requests.post(f"{BASE_URL}/api/position/check", timeout=5)
+        requests.post(f"{BASE_URL}/api/position/check", timeout=5)
         print("✅ Check position envoyé")
     except Exception:
         print("⚠️ Endpoint /api/position/check non disponible (normal)")

@@ -96,13 +96,13 @@ def main():
         
         try:
             should_trade, confidence = predictor.predict(test_features, threshold=0.5)
-            print(f'   [OK] Prediction reussie')
+            print('   [OK] Prediction reussie')
             print(f'   Should trade: {should_trade}')
             print(f'   Confidence: {confidence:.4f} ({confidence*100:.2f}%)')
             
             # Test avec différents seuils
             thresholds = [0.45, 0.5, 0.55, 0.6]
-            print(f'   Tests avec differents seuils:')
+            print('   Tests avec differents seuils:')
             for th in thresholds:
                 should, conf = predictor.predict(test_features, threshold=th)
                 print(f'      Seuil {th*100:.0f}%: {"[ACCEPT]" if should else "[REJECT]"} (conf: {conf*100:.1f}%)')

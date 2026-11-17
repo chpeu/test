@@ -141,7 +141,7 @@ def analyze_confidence_distribution():
     # Statistiques
     print("\n[4/4] Distribution des confiances...")
     
-    print(f"\n  📊 STATISTIQUES GLOBALES:")
+    print("\n  📊 STATISTIQUES GLOBALES:")
     print(f"      Min:     {confidence.min()*100:.1f}%")
     print(f"      Max:     {confidence.max()*100:.1f}%")
     print(f"      Moyenne: {confidence.mean()*100:.1f}%")
@@ -151,7 +151,7 @@ def analyze_confidence_distribution():
     # Distribution par seuils
     thresholds = [0.30, 0.40, 0.50, 0.55, 0.60, 0.65, 0.70]
     
-    print(f"\n  📊 TAUX D'ACCEPTATION PAR SEUIL:")
+    print("\n  📊 TAUX D'ACCEPTATION PAR SEUIL:")
     print(f"      {'Seuil':<10} {'Acceptés':<15} {'%':<10} {'Win Rate réel'}")
     print(f"      {'-'*55}")
     
@@ -170,7 +170,7 @@ def analyze_confidence_distribution():
         print(f"      {threshold*100:.0f}%       {n_accepted:<15} {pct_accepted:.1f}%      {win_rate:.1f}%   {marker}")
     
     # Histogramme textuel
-    print(f"\n  📊 HISTOGRAMME DES CONFIANCES:")
+    print("\n  📊 HISTOGRAMME DES CONFIANCES:")
     bins = np.arange(0, 1.05, 0.1)
     hist, _ = np.histogram(confidence, bins=bins)
     
@@ -181,7 +181,7 @@ def analyze_confidence_distribution():
         print(f"      {bins[i]*100:3.0f}%-{bins[i+1]*100:3.0f}%: {bar} ({hist[i]})")
     
     # Recommandations
-    print(f"\n  💡 RECOMMANDATIONS:")
+    print("\n  💡 RECOMMANDATIONS:")
     
     median_conf = np.median(confidence) * 100
     

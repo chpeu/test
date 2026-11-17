@@ -106,9 +106,9 @@ def main():
     
     # Le probleme: +1.07 bot vs -0.07 MEXC
     # Difference = ~1.14 USDT
-    print(f"PnL Bot attendu: +1.07 USDT")
-    print(f"PnL MEXC reel: -0.07 USDT")
-    print(f"Difference: ~1.14 USDT")
+    print("PnL Bot attendu: +1.07 USDT")
+    print("PnL MEXC reel: -0.07 USDT")
+    print("Difference: ~1.14 USDT")
     print()
     
     # Verifier si exit_price correspond au SL

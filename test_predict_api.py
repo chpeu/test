@@ -95,13 +95,13 @@ try:
         # Performance du modele
         if 'model_performance' in data and data['model_performance']:
             perf = data['model_performance']
-            print(f"\nPerformance du modele:")
+            print("\nPerformance du modele:")
             print(f"   Test Accuracy: {perf['test_accuracy']:.1%}")
             print(f"   Test F1: {perf['test_f1']:.1%}")
         
         # Top features pour cette prediction
         if data.get('top_features'):
-            print(f"\nTop Features influentes:")
+            print("\nTop Features influentes:")
             for i, feat in enumerate(data['top_features'][:3], 1):
                 print(f"   {i}. {feat['feature']}: {feat['importance']:.1f}")
         

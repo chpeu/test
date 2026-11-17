@@ -93,21 +93,21 @@ if exit_time and entry_time:
 else:
     duration = 0
 
-print(f"\n[1] IDENTIFICATION")
+print("\n[1] IDENTIFICATION")
 print(f"    Trade ID: {trade_id}")
 print(f"    Symbol: {symbol}")
 print(f"    Direction: {direction}")
 print(f"    Score: {score:.1f}")
 print(f"    Status: {status}")
 
-print(f"\n[2] ENTREE")
+print("\n[2] ENTREE")
 print(f"    Date/Heure: {entry_time}")
 print(f"    Prix entree: {entry_price:.6f}")
 print(f"    Taille: {size_usdt:.2f} USDT")
 print(f"    Leverage: {leverage}x")
 print(f"    ATR: {atr_entry:.6f} ({atr_pct:.3f}%)")
 
-print(f"\n[3] NIVEAUX CALCULES")
+print("\n[3] NIVEAUX CALCULES")
 print(f"    SL: {sl_price:.6f} (distance: {sl_atr_mult:.2f}x ATR)")
 print(f"    TP: {tp_price:.6f} (distance: {tp_atr_mult:.2f}x ATR)")
 if direction == 'LONG':
@@ -119,13 +119,13 @@ else:
 print(f"    SL%: {sl_pct:.2f}%")
 print(f"    TP%: {tp_pct:.2f}%")
 
-print(f"\n[4] PARAMETRES ATR UTILISES")
+print("\n[4] PARAMETRES ATR UTILISES")
 print(f"    ATR mult SL: {atr_mult_sl_used}")
 print(f"    ATR mult TP: {atr_mult_tp_used}")
 print(f"    Regime volatilite: {volatility_state}")
 print(f"    Regime a l'entree: {regime_at_entry}")
 
-print(f"\n[5] EVOLUTION DU TRADE")
+print("\n[5] EVOLUTION DU TRADE")
 print(f"    Max PnL atteint: {max_pnl:.2f}%" if max_pnl else "    Max PnL: N/A")
 print(f"    Min PnL atteint: {min_pnl:.2f}%" if min_pnl else "    Min PnL: N/A")
 if max_pnl_trade:
@@ -134,14 +134,14 @@ if min_pnl_trade:
     print(f"    Min PnL (metrics): {min_pnl_trade}")
 print(f"    Duree: {duration:.1f} minutes")
 
-print(f"\n[6] SORTIE")
+print("\n[6] SORTIE")
 print(f"    Date/Heure: {exit_time}")
 print(f"    Prix sortie: {exit_price:.6f}")
 print(f"    Raison: {exit_reason}")
 print(f"    PnL: {pnl_usdt:.4f} USDT ({pnl_pct:.2f}%)")
 
 # Analyse du resultat
-print(f"\n[7] ANALYSE")
+print("\n[7] ANALYSE")
 if pnl_pct > 0:
     print(f"    Resultat: GAGNANT (+{pnl_pct:.2f}%)")
     if max_pnl > 0 and pnl_pct < max_pnl * 0.5:
@@ -151,14 +151,14 @@ else:
     if min_pnl and min_pnl < pnl_pct:
         print(f"    >> Recuperation partielle: Min etait {min_pnl:.2f}%, sorti a {pnl_pct:.2f}%")
 
-print(f"\n[8] SCENARIOS WHAT-IF")
+print("\n[8] SCENARIOS WHAT-IF")
 print(f"    Si params CALME: {pnl_if_calme}")
 print(f"    Si params NORMAL: {pnl_if_normal}")
 print(f"    Si params VOLATILE: {pnl_if_volatile}")
 print(f"    Regime optimal retrospectif: {optimal_regime}")
 
 # Timeline
-print(f"\n[9] TIMELINE DU TRADE")
+print("\n[9] TIMELINE DU TRADE")
 print(f"    {entry_time} - OUVERTURE {direction} @ {entry_price:.6f}")
 
 if direction == 'LONG':
@@ -175,15 +175,15 @@ print(f"    {exit_time} - FERMETURE @ {exit_price:.6f} ({exit_reason})")
 print(f"    Mouvement prix final: {price_move:+.2f}%")
 
 # Diagnostic
-print(f"\n[10] DIAGNOSTIC")
+print("\n[10] DIAGNOSTIC")
 if exit_reason and 'SL' in str(exit_reason).upper():
-    print(f"    >> Trade sorti en STOP LOSS")
+    print("    >> Trade sorti en STOP LOSS")
     if sl_atr_mult < 1.0:
         print(f"    >> SL trop serre ({sl_atr_mult:.2f}x ATR) - considerer augmenter")
 elif exit_reason and 'TP' in str(exit_reason).upper():
-    print(f"    >> Trade sorti en TAKE PROFIT - Objectif atteint!")
+    print("    >> Trade sorti en TAKE PROFIT - Objectif atteint!")
 elif exit_reason and 'TRAILING' in str(exit_reason).upper():
-    print(f"    >> Trade sorti par TRAILING STOP")
+    print("    >> Trade sorti par TRAILING STOP")
 else:
     print(f"    >> Sortie: {exit_reason}")
 

@@ -141,21 +141,21 @@ for idx, row in df.iterrows():
         print(f"  Size: {size:.2f} USDT, Leverage: {leverage}x, Fees: {fees:.4f}")
         print(f"  Regime: {row['entry_market_regime']}")
         
-        print(f"\n  [PnL BRUT (mouvement prix)]")
+        print("\n  [PnL BRUT (mouvement prix)]")
         print(f"    Calcule: {pnl_brut_pct:+.4f}%")
         print(f"    Enregistre (pnl_percent): {pnl_pct_recorded:+.4f}%")
         if pnl_diff > 0.01:
             print(f"    >> ECART: {pnl_diff:.4f}%")
         
-        print(f"\n  [PnL NET (avec fees)]")
+        print("\n  [PnL NET (avec fees)]")
         print(f"    Calcule: {net_pnl_pct_calc:+.4f}% ({net_pnl_usdt_calc:+.4f} USDT)")
         print(f"    Enregistre: {net_pnl_pct_recorded:+.4f}% ({net_pnl_usdt_recorded:+.4f} USDT)")
         
-        print(f"\n  [ATR Multipliers]")
+        print("\n  [ATR Multipliers]")
         print(f"    SL: enregistre={sl_mult_recorded}, reel={sl_atr_real:.2f}x")
         print(f"    TP: enregistre={tp_mult_recorded}, reel={tp_atr_real:.2f}x")
         if sl_diff > 0.5 or tp_diff > 0.5:
-            print(f"    >> INCOHERENCE ATR detectee!")
+            print("    >> INCOHERENCE ATR detectee!")
         
         print(f"  Exit: {row['exit_reason']}")
 

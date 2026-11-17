@@ -244,7 +244,7 @@ class LightGBMTrainer:
         logger.info(f"⚖️ Scale pos weight: {scale_pos_weight:.2f}")
 
         # 8. Entraînement
-        logger.info(f"\n🎯 Entraînement LightGBM...")
+        logger.info("\n🎯 Entraînement LightGBM...")
         
         model_params = {
             "n_estimators": n_estimators,
@@ -278,12 +278,16 @@ class LightGBMTrainer:
             callbacks=callbacks
         )
 
-        # Walk-forward
-        walk_forward_results = None
+        # Walk-forward: attention, _walk_forward_validation() est un placeholder qui
+        # renvoie {"mean_score": 0.0, "std_score": 0.0}. Son résultat n'était ni renvoyé
+        # ni journalisé : un appel train(walk_forward=True) croyait valider le modèle
+        # sans jamais le faire, et aucun fichier ne portait trace de cette validation.
+        # On le dit à voix haute plutôt que de laisser croire à une validation réussie.
         if walk_forward:
-            walk_forward_results = self._walk_forward_validation(
-                df, feature_cols if not feature_selection else selected_features,
-                walk_forward_splits, model_params
+            logger.warning(
+                "⚠️ walk_forward=True non servi : LightGBMTrainer._walk_forward_validation() "
+                "est un placeholder (mean_score=0.0). Réimplémenter la validation avant de "
+                "se fier à cette option, sinon passer par un trainer qui la fait vraiment."
             )
 
         # Calibration
@@ -403,9 +407,16 @@ class LightGBMTrainer:
         # Normalize
         importance = importance / importance.sum()
         
+        if len(feature_names) != len(importance):
+            logger.warning(
+                f"⚠️ Feature importance: {len(importance)} valeurs pour "
+                f"{len(feature_names)} noms — troncature, vérifier le modèle chargé"
+            )
         feature_importance = [
             {"feature": name, "importance": float(imp)}
-            for name, imp in zip(feature_names, importance)
+            # strict=False assumé : une longueur différente est une anomalie, signalée
+            # ci-dessus, mais ne doit pas faire échouer un entraînement déjà terminé.
+            for name, imp in zip(feature_names, importance, strict=False)
         ]
         feature_importance.sort(key=lambda x: x["importance"], reverse=True)
         return feature_importance
@@ -585,7 +596,7 @@ class LightGBMTrainer:
         if len(self.feature_names) != len(importances):
             return {}
         
-        return dict(zip(self.feature_names, importances))
+        return dict(zip(self.feature_names, importances, strict=True))
 
     def _get_feature_importance(self) -> Dict[str, float]:
         """Alias pour get_feature_importance (compatibilité tests)"""

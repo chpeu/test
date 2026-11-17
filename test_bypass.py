@@ -210,7 +210,7 @@ async def test_live_order(token: str, symbol: str, amount: float):
     )
     
     if result.success:
-        print(f"   ✅ ORDRE PASSÉ!")
+        print("   ✅ ORDRE PASSÉ!")
         print(f"   ✅ Order ID: {result.order_id}")
         print(f"   ✅ Data: {result.data}")
         
@@ -219,7 +219,7 @@ async def test_live_order(token: str, symbol: str, amount: float):
         await asyncio.sleep(2)
         
         # Fermer position
-        print(f"\n📥 Fermeture position...")
+        print("\n📥 Fermeture position...")
         close_result = await client.submit_order(
             symbol=symbol,
             side=OrderSide.CLOSE_LONG,

@@ -330,7 +330,7 @@ class OptunaV2Tuner:
         start_time = time.time()
 
         # 1. Charger données
-        logger.info(f"\n📥 Chargement données...")
+        logger.info("\n📥 Chargement données...")
 
         base_df = load_features_from_postgres(
             timeframe_days=timeframe_days,
@@ -340,13 +340,13 @@ class OptunaV2Tuner:
         logger.info(f"✅ {len(base_df)} trades chargés")
 
         # 2. Feature engineering avancé
-        logger.info(f"\n🔧 Feature engineering avancé...")
+        logger.info("\n🔧 Feature engineering avancé...")
 
         df = calculate_all_advanced_features(base_df)
 
         # 3. Filtrer marginal trades
         if filter_marginal_trades and 'target_pnl' in df.columns:
-            logger.info(f"\n🔍 Filtrage trades marginaux...")
+            logger.info("\n🔍 Filtrage trades marginaux...")
 
             initial_count = len(df)
             df = df[abs(df['target_pnl']) >= marginal_threshold].copy()
@@ -354,7 +354,7 @@ class OptunaV2Tuner:
             logger.info(f"✂️ {initial_count - len(df)} trades exclus")
 
         # 4. Temporal split
-        logger.info(f"\n📅 Temporal split...")
+        logger.info("\n📅 Temporal split...")
 
         train_df, val_df, test_df = temporal_train_test_split(
             df,
@@ -364,7 +364,7 @@ class OptunaV2Tuner:
         )
 
         # 5. Preprocessing
-        logger.info(f"\n🔧 Preprocessing...")
+        logger.info("\n🔧 Preprocessing...")
 
         exclude_cols = ['scan_id', 'timestamp', 'symbol', 'target_win', 'target_pnl', 'is_opportunity']
         feature_cols = [col for col in train_df.columns if col not in exclude_cols]
@@ -440,7 +440,7 @@ class OptunaV2Tuner:
         logger.info(f"\n{'='*90}")
         logger.info(f"🏆 OPTIMISATION TERMINÉE EN {elapsed/60:.1f} minutes")
         logger.info(f"{'='*90}")
-        logger.info(f"\n🏆 MEILLEURS HYPERPARAMÈTRES:")
+        logger.info("\n🏆 MEILLEURS HYPERPARAMÈTRES:")
         for param, value in best_params.items():
             logger.info(f"  - {param}: {value}")
         logger.info(f"\n📈 Best {self.metric}: {best_score:.4f}")
@@ -544,6 +544,6 @@ if __name__ == "__main__":
         save_config=True
     )
 
-    print(f"\n✅ Optimisation terminée !")
+    print("\n✅ Optimisation terminée !")
     print(f"✅ Best score: {results['best_score']:.4f}")
-    print(f"✅ Meilleurs params sauvegardés dans config_overrides.json")
+    print("✅ Meilleurs params sauvegardés dans config_overrides.json")

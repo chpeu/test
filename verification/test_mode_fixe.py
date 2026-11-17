@@ -525,7 +525,7 @@ def run_tests():
     # Vérification finale
     final_pnl_at_sl = calculate_pnl(pos.entry, pos.sl, pos.direction)
     
-    print(f"\n   📊 Résultat final:")
+    print("\n   📊 Résultat final:")
     print(f"      SL final: {pos.sl:.6f}")
     print(f"      MFE: +{pos.max_pnl_reached:.3f}%")
     print(f"      PnL si SL touché: +{final_pnl_at_sl:.3f}%")

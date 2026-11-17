@@ -37,7 +37,7 @@ try:
     
     # Vérifier que le mode NEGATIVE est actif
     if ML_CONFIG.get('mode') == 'NEGATIVE':
-        print(f"\n   ✅ Mode NEGATIVE actif")
+        print("\n   ✅ Mode NEGATIVE actif")
     else:
         print(f"\n   ⚠️  Mode {ML_CONFIG.get('mode')} (pas NEGATIVE)")
     
@@ -62,9 +62,9 @@ try:
     print(f"   threshold: {info['threshold']}")
     
     if info['is_loaded']:
-        print(f"\n   ✅ Modele charge avec succes")
+        print("\n   ✅ Modele charge avec succes")
     else:
-        print(f"\n   ❌ Modele non charge")
+        print("\n   ❌ Modele non charge")
         
 except Exception as e:
     print(f"   ❌ Erreur: {e}")
@@ -121,10 +121,10 @@ try:
             print(f"      Trade {i+1}: P(loss)={p_loss*100:.1f}% -> {status} (reel: {actual})")
         
         print(f"\n   Resume: {n_rejected}/{n_tests} trades rejetes ({n_rejected/n_tests*100:.0f}%)")
-        print(f"   ✅ Predictions fonctionnent")
+        print("   ✅ Predictions fonctionnent")
         
     else:
-        print(f"   ⚠️  Pas de trades disponibles")
+        print("   ⚠️  Pas de trades disponibles")
         
 except Exception as e:
     print(f"   ❌ Erreur: {e}")
@@ -185,7 +185,7 @@ try:
         else:
             filtered_wr = 0
         
-        print(f"\n   Resultats:")
+        print("\n   Resultats:")
         print(f"      Total trades: {total}")
         print(f"      Trades rejetes: {rejected} ({rejected/total*100:.1f}%)")
         print(f"      Trades conserves: {kept} ({kept/total*100:.1f}%)")
@@ -194,9 +194,9 @@ try:
         print(f"      Amelioration: {(filtered_wr - baseline_wr)*100:+.1f}%")
         
         if filtered_wr > baseline_wr:
-            print(f"\n   ✅ Le filtre AMELIORE le win rate!")
+            print("\n   ✅ Le filtre AMELIORE le win rate!")
         else:
-            print(f"\n   ⚠️  Le filtre n'ameliore pas (peut varier selon les donnees)")
+            print("\n   ⚠️  Le filtre n'ameliore pas (peut varier selon les donnees)")
             
     else:
         print(f"   ⚠️  Pas assez de trades ({len(df)} < 50)")
@@ -213,7 +213,7 @@ print("\n" + "=" * 70)
 print("  RESUME")
 print("=" * 70)
 
-print(f"""
+print("""
    Configuration:
    - Mode: NEGATIVE (filtre negatif)
    - Seuil: P(loss) >= 45% -> REJET

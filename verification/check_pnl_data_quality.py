@@ -44,7 +44,7 @@ with engine.connect() as conn:
     r = conn.execute(query1).fetchone()
     print(f"\nLookback: {lookback_hours}h")
     print(f"Total trades avec MFE: {r[0]}")
-    print(f"\nDistribution PnL (USDT):")
+    print("\nDistribution PnL (USDT):")
     print(f"  Min: {r[5]} | Max: {r[6]} | Avg: {r[7]} | Std: {r[8]}")
     print(f"  PnL > +1$: {r[1]} | PnL < -1$: {r[2]}")
     print(f"  PnL > +0.5$: {r[3]} | PnL < -0.5$: {r[4]}")
@@ -84,7 +84,7 @@ FROM mfe_data
 
 with engine.connect() as conn:
     r = conn.execute(query2).fetchone()
-    print(f"\nDistribution MFE (%):")
+    print("\nDistribution MFE (%):")
     print(f"  Min: {r[4]}% | Max: {r[5]}% | Avg: {r[6]}%")
     print(f"  P50: {r[7]}% | P90: {r[8]}%")
     print(f"  MFE > 1%: {r[1]} | MFE > 0.5%: {r[2]} | MFE < 0.05%: {r[3]}")
@@ -136,7 +136,7 @@ with engine.connect() as conn:
     rows = result.fetchall()
     cols = list(result.keys())
 
-print(f"\n" + "-" * 80)
+print("\n" + "-" * 80)
 print("TRADES SUSPECTS: MFE > 0.5% mais PnL < -0.10$ (max 15)")
 print("-" * 80)
 
@@ -180,7 +180,7 @@ FROM trade_data
 
 with engine.connect() as conn:
     r = conn.execute(query4).fetchone()
-    print(f"\n" + "-" * 80)
+    print("\n" + "-" * 80)
     print("VALEURS IMPOSSIBLES:")
     print("-" * 80)
     print(f"  MFE négatif: {r[0]}")
@@ -208,7 +208,7 @@ WHERE t.created_at > NOW() - INTERVAL '{lookback_hours} hours'
 
 with engine.connect() as conn:
     r = conn.execute(query5).fetchone()
-    print(f"\n" + "=" * 80)
+    print("\n" + "=" * 80)
     print("RÉSUMÉ BASELINE (trades avec MFE valide)")
     print("=" * 80)
     print(f"Total trades: {r[0]}")

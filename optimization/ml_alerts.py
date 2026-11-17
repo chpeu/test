@@ -170,7 +170,7 @@ class MLAlertManager:
             # import requests
             # requests.post(webhook_url, json={'content': message})
             
-            logger.info(f"📤 Webhook alerte envoyée (simulé)")
+            logger.info("📤 Webhook alerte envoyée (simulé)")
             return {'status': 'success', 'message': 'Webhook envoyé'}
             
         except Exception as e:
