@@ -15,38 +15,54 @@ const resolveBackendUrl = () => {
 
 const backendUrl = resolveBackendUrl();
 
+// Tunnel API + WebSocket partage par le serveur de dev ET par l'aperçu du build
+// (`npm run preview`). Sans lui, le build servi seul ne joindrait pas le backend :
+// l'interface resterait bloque sur « Connexion au backend... ».
+const proxyPartage = {
+	// Proxy API vers FastAPI backend
+	'/api': {
+		target: backendUrl,
+		changeOrigin: true,
+		ws: false
+	},
+	// REMPLACEMENT: WebSocket natif au lieu de Socket.IO
+	'/ws': {
+		target: backendUrl, // Vite convertit l'URL HTTP en WebSocket
+		changeOrigin: true,
+		ws: true,
+		configure: (proxy, _options) => {
+			proxy.on('error', (err, _req, _res) => {
+				console.log('Proxy WebSocket error (normal if backend not running):', err.message);
+			});
+			proxy.on('proxyReqWs', (proxyReq, req, socket) => {
+				socket.on('error', (err) => {
+					console.log('WebSocket connection error (normal if backend not running):', err.message);
+				});
+			});
+		}
+	}
+};
+
+const hote = process.env.FRONTEND_HOST || '0.0.0.0';
+const portFront = Number(process.env.FRONTEND_PORT || 3000);
+
 export default defineConfig({
 	plugins: [sveltekit()],
 
 	server: {
-		port: 3000,
-		host: '0.0.0.0', // 🔥 Permettre l'accès depuis l'extérieur (iPhone, etc.)
-		proxy: {
-			// Proxy API vers FastAPI backend
-			'/api': {
-				target: backendUrl,
-				changeOrigin: true,
-				ws: false
-			},
-			// 🔥 REMPLACEMENT: WebSocket natif au lieu de Socket.IO
-			'/ws': {
-				target: backendUrl, // 🔥 FIX: Utiliser l'URL HTTP, Vite convertira en WebSocket
-				changeOrigin: true,
-				ws: true, // WebSocket support
-				configure: (proxy, _options) => {
-					// Gérer les erreurs de connexion WebSocket
-					proxy.on('error', (err, _req, _res) => {
-						console.log('Proxy WebSocket error (normal if backend not running):', err.message);
-					});
-					proxy.on('proxyReqWs', (proxyReq, req, socket) => {
-						// Gérer les reconnexions WebSocket
-						socket.on('error', (err) => {
-							console.log('WebSocket connection error (normal if backend not running):', err.message);
-						});
-					});
-				}
-			}
-		}
+		port: portFront,
+		host: hote, // 🔥 Permettre l'accès depuis l'extérieur (iPhone, etc.)
+		proxy: proxyPartage
+	},
+
+	// Aperçu du build de production (`npm run preview`) : memes regles de tunnel
+	// que le serveur de dev, pour tester l'application construite et non la
+	// version chaude (le serveur de dev perd parfois le fil apres une
+	// reoptimisation des dependances : page blanche jusqu'au rechargement).
+	preview: {
+		port: portFront,
+		host: hote,
+		proxy: proxyPartage
 	},
 
 	build: {
