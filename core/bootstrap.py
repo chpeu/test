@@ -324,9 +324,14 @@ async def init_instances() -> None:
         except (ImportError, AttributeError) as e:
             logger.warning(f"⚠️ Error injecting dependencies into loops: {e}")
         
-        sched.start()
-        state.set_is_scanning(True)
-        logger.info(f"✅ Scheduler started automatically ({time.time()-start:.3f}s)")
+        # Verrou de visite (VISITE_SANS_SCAN=1) : ici se joue le demarrage
+        # automatique. Sans ce garde-fou, boucher les routes /api/start et la
+        # commande WebSocket ne servirait a rien : le robot scannerait deja des
+        # l'allumage, et un signal valide ouvrirait une position reelle.
+        from utils.visit_lock import arm_scheduler_at_boot
+
+        if arm_scheduler_at_boot(sched, state):
+            logger.info(f"✅ Scheduler started automatically ({time.time()-start:.3f}s)")
 
     # 7 bis. Injection du scheduler dans les routes API.
     # Elle ne pouvait pas se faire à l'étape 6 : le scheduler n'existe pas encore.

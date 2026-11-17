@@ -9,6 +9,11 @@
 	let rebooting = false;
 	let quietLoading = false;
 
+	// Verrou de visite : le serveur est lance avec VISITE_SANS_SCAN=1 (refus a la
+	// source, dans api/safety_lock.py). Ce drapeau-la n'est que l'affichage : il grise
+	// le bouton pour ne pas laisser croire qu'on peut demarrer le robot.
+	const scannerVerrouille = !!import.meta.env.VITE_VISITE_SANS_SCAN;
+
 	// 🔧 FIX: S'assurer que loading est toujours false au démarrage
 	onMount(() => {
 		loading = false;
@@ -194,10 +199,11 @@
 			<button
 				class="btn btn-primary"
 				on:click={startBot}
-				disabled={loading}
+				disabled={loading || scannerVerrouille}
+				title={scannerVerrouille ? 'Serveur lance en mode visite : scan et ordres coupes a la source' : ''}
 				data-debug-name="botControls.startButton"
 			>
-				{loading ? '⏳ Starting...' : '▶️ Start Scanner'}
+				{scannerVerrouille ? '🔒 Scanner verrouillé' : loading ? '⏳ Starting...' : '▶️ Start Scanner'}
 			</button>
 		{:else}
 			<button

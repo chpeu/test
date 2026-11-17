@@ -542,6 +542,16 @@ async def handle_client_command(command: str, params: dict):
     from utils.logging_utils import add_log
     
     if command == 'start_scanner':
+        # Verrou de visite (VISITE_SANS_SCAN=1) : c'est la porte utilisee par le
+        # bouton « Start Scanner » de l'interface. Sans le verrou ici, boucher les
+        # deux routes REST ne servirait a rien.
+        from api.safety_lock import RAISON as _RAISON
+        from api.safety_lock import scan_lock_active as _lock_active
+
+        if _lock_active():
+            logger.warning(f"🔒 commande WS 'start_scanner' refusee : {_RAISON}")
+            return {'status': 'error', 'locked': True, 'error': _RAISON, 'is_scanning': False}
+
         await init_instances()
         ws_mgr = _ws_manager or state.get_ws_manager()
         

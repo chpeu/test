@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 
 from api.auth import verify_api_key
+from api.safety_lock import lock_response, log_refus, scan_lock_active
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,27 @@ def set_scheduler(scheduler):
     """Injecter l'instance scheduler"""
     global _scheduler
     _scheduler = scheduler
+
+
+def _resolve_scheduler():
+    """Scheduler injecté, sinon celui connu de `state_manager`.
+
+    `api/routes/position.py` utilise déjà ce repli (`_scheduler or
+    state.get_scheduler()`). Sans lui, /api/start et /api/stop répondent
+    « Scheduler not available » alors que le scheduler existe : l'injection
+    (étape 7 bis de `core/bootstrap.py`) peut échouer sans que l'application
+    s'en aperçoive, et le routeur `dashboard` est le seul à ne pas avoir de
+    filet. Le repli est silencieux (debug) pour ne pas noyer le journal.
+    """
+    if _scheduler:
+        return _scheduler
+    try:
+        from core.state_manager import get_state_manager
+
+        return get_state_manager().get_scheduler()
+    except Exception as e:  # repli défensif : pas de scheduler, pas de panne
+        logger.debug(f"Repli scheduler indisponible: {type(e).__name__}: {e}")
+        return None
 
 
 def set_position_manager(position_manager):
@@ -259,6 +281,12 @@ async def start_scanner(user: dict = Security(verify_api_key)):
     2. Démarrer le scheduler pour les boucles automatiques
     3. Émettre événement SocketIO
     """
+    # Verrou de visite (VISITE_SANS_SCAN=1) : refuse ici, avant toute chose, sinon
+    # le scheduler tournerait et les ordres partiraient sur l'échange.
+    if scan_lock_active():
+        log_refus("POST /api/start")
+        return lock_response()
+
     # 🔥 FIX: Initialiser les instances si nécessaire
     try:
         if not _scheduler or not _app_state:
@@ -268,9 +296,13 @@ async def start_scanner(user: dict = Security(verify_api_key)):
                 await ensure_instances()
             except Exception as e:
                 logger.warning(f"Impossible d'initialiser les instances: {e}")
-        
+
+        # Repli : le scheduler peut être connu de state_manager sans avoir été
+        # injecté ici (voir _resolve_scheduler).
+        sched = _resolve_scheduler()
+
         # 🔥 FIX: Retourner 200 avec success=False au lieu de 503
-        if not _scheduler or not _app_state:
+        if not sched or not _app_state:
             return JSONResponse({
                 'success': False,
                 'status': 'error',
@@ -280,8 +312,8 @@ async def start_scanner(user: dict = Security(verify_api_key)):
 
         try:
             # 🔥 FIX: Démarrer le scheduler si disponible
-            if _scheduler and not _app_state.get('is_scanning', False):
-                _scheduler.start()
+            if sched and not _app_state.get('is_scanning', False):
+                sched.start()
                 logger.info("✅ Scanner démarré via /api/start")
 
             if _app_state:
@@ -328,7 +360,8 @@ async def stop_scanner():
     POST /api/stop
     Arrêter le scanner et le scheduler
     """
-    if not _scheduler or not _app_state:
+    sched = _resolve_scheduler()
+    if not sched or not _app_state:
         return JSONResponse({
             'success': False,
             'status': 'error',
@@ -337,8 +370,8 @@ async def stop_scanner():
         }, status_code=200)
 
     try:
-        if _scheduler and _app_state.get('is_scanning', False):
-            _scheduler.stop()
+        if sched and _app_state.get('is_scanning', False):
+            sched.stop()
             logger.info("✅ Scanner arrêté via /api/stop")
 
         if _app_state:

@@ -8,6 +8,8 @@ from fastapi import APIRouter, Request, Query, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Dict
 
+from api.safety_lock import lock_response, log_refus, scan_lock_active
+
 logger = logging.getLogger(__name__)
 
 # Variables globales injectées par main.py
@@ -130,6 +132,12 @@ async def start_scanner(
         "top_n": 20  # Nombre de paires à scanner (défaut: 20)
     }
     """
+    # Verrou de visite (VISITE_SANS_SCAN=1) : meme porte que /api/start, version
+    # « un scan unique ». Un scan unique peut deja ouvrir une position.
+    if scan_lock_active():
+        log_refus("POST /api/scanner/start")
+        return lock_response()
+
     try:
         # Parser les données de la requête
         data = {}
