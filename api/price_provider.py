@@ -49,8 +49,6 @@ class HybridPriceProvider:
     """
     
     def __init__(self):
-        self.ws_manager: Optional[WebSocketManager] = None
-        
         # 🔥 FIX: Gestion d'exception pour get_mexc_client()
         self.rest_client = get_mexc_client()
         if self.rest_client is None:
@@ -59,9 +57,22 @@ class HybridPriceProvider:
             logger.error("❌ HybridPriceProvider: impossible d'obtenir MEXCClient")
             raise RuntimeError("MEXCClient indisponible")
 
+        self._init_state()
+
+    def _init_state(self) -> None:
+        """Attributs d'instance, separes de la creation du client MEXC.
+
+        Le repli « tests » de `PriceProvider` (aucun client MEXC disponible)
+        passe par ici au lieu de re-énumérer les attributs a la main. Avant
+        cette separation, il en oubliait (`_background_tasks`, `client`) : un
+        controle de stop-loss ou un alias disparaissait sans bruit, et le
+        correctif du parent ne vivait que dans une seule des deux voies.
+        """
+        self.ws_manager: Optional[WebSocketManager] = None
+
         # Compatibilité tests (alias historique)
         self.client = self.rest_client
-        
+
         self.use_websocket = True
 
         # Cache des derniers prix reçus
@@ -711,20 +722,15 @@ class PriceProvider(HybridPriceProvider):
         try:
             super().__init__()
         except Exception:
-            # Fallback minimal pour tests
+            # Fallback minimal pour tests : meme etat que la voie normale
+            # (`_init_state`), seul le client MEXC est remplace par un objet
+            # vide. Maintenir ici une liste d'attributs reproduirait le trou
+            # d'origine : chaque ajout au parent y passait inaperçu.
             from types import SimpleNamespace
-            self.ws_manager = None
+
             self.rest_client = SimpleNamespace()
+            self._init_state()
             self.use_websocket = False
-            self.price_cache = {}
-            self._cache_lock = None
-            self._ws_lifecycle_lock = None
-            self.message_buffer = deque(maxlen=100)
-            self.socketio_emit_callback = None
-            self.active_position_symbol = None
-            self.monitored_symbols = []
-            self._sl_check_callback = None
-            self._sl_check_params = None
 
     @property
     def client(self):
