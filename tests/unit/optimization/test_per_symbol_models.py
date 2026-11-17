@@ -69,7 +69,7 @@ class TestPerSymbolModelManagerInit:
         from optimization.per_symbol_models import PerSymbolModelManager
 
         with patch.object(PerSymbolModelManager, "_load_existing_models") as mock_load:
-            manager = PerSymbolModelManager()
+            PerSymbolModelManager()
             mock_load.assert_called_once()
 
 
@@ -244,12 +244,47 @@ class TestPerSymbolModelManagerTrainSymbolModel:
 
 
 class TestPerSymbolModelManagerOptimizeHyperparams:
+    """Test de `_optimize_hyperparams`.
+
+    Reconstitué le 17/11/2026 : le fichier etait **coupe en pleine ligne** a la fin
+    (`mock_study.bes`), a la fois ici et dans sa source de mars 2026 — la copie
+    s'est arretee la. `mock_study.bes` etant une simple lecture d'attribut, le test
+    passait sans jamais appeler la methode ni verifier quoi que ce soit.
+    """
+
     def test_optimize_hyperparams_success(self):
-        from optimization.per_symbol_models import PerSymbolModelManager
+        from optimization.per_symbol_models import RANDOM_SEED, PerSymbolModelManager
 
         manager = PerSymbolModelManager()
         X_train = pd.DataFrame({"f1": np.random.randn(100), "f2": np.random.randn(100)})
         y_train = pd.Series([1] * 50 + [0] * 50)
-        with patch("optuna.create_study") as mock_create_study:
-            mock_study = Mock()
-            mock_study.bes
+
+        mock_study = Mock()
+        mock_study.best_params = {"n_estimators": 120, "max_depth": 4}
+        mock_study.best_value = 0.72
+
+        # `import optuna` est local a la methode : c'est l'attribut du module
+        # optuna qu'il faut remplacer, pas celui du module teste.
+        with patch("optuna.create_study", return_value=mock_study) as mock_create_study:
+            params = manager._optimize_hyperparams(X_train, y_train, n_trials=2)
+
+        mock_create_study.assert_called_once()
+        mock_study.optimize.assert_called_once()
+        assert params["n_estimators"] == 120
+        assert params["max_depth"] == 4
+        # le module force toujours sa graine, independamment de l'etude
+        assert params["random_state"] == RANDOM_SEED
+
+    def test_optimize_hyperparams_falls_back_on_error(self):
+        """Optuna en echec -> parametres par defaut annonces, pas d'exception."""
+        from optimization.per_symbol_models import RANDOM_SEED, PerSymbolModelManager
+
+        manager = PerSymbolModelManager()
+        X_train = pd.DataFrame({"f1": [1.0, 2.0, 3.0, 4.0] * 3})
+        y_train = pd.Series([1, 0, 1, 0] * 3)
+
+        with patch("optuna.create_study", side_effect=RuntimeError("optuna indisponible")):
+            params = manager._optimize_hyperparams(X_train, y_train, n_trials=1)
+
+        assert params["n_estimators"] == 150
+        assert params["random_state"] == RANDOM_SEED

@@ -32,7 +32,7 @@ def test_regime_enabled():
     print("="*60)
     
     # S'assurer que le régime est activé
-    original_enabled = TRADING_CONFIG.get('market_regime_enabled', True)
+    TRADING_CONFIG.get('market_regime_enabled', True)
     TRADING_CONFIG['market_regime_enabled'] = True
     
     # Valeurs base (sliders)

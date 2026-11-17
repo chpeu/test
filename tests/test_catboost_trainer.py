@@ -161,7 +161,7 @@ class TestCatBoostTrainerIntegration:
             
             # Le train devrait gérer le cas où prepare_training_dataset retourne None
             try:
-                result = trainer.train(timeframe_days=30, min_trades=10)
+                trainer.train(timeframe_days=30, min_trades=10)
                 # Si ça ne plante pas, c'est que la gestion d'erreur fonctionne
             except Exception as e:
                 # Acceptable si c'est une exception contrôlée

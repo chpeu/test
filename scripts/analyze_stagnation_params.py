@@ -14,7 +14,7 @@ from psycopg2.extras import RealDictCursor
 
 DB_CONFIG = {
     'host': os.getenv('POSTGRES_HOST', 'localhost'),
-    'port': int(os.getenv('POSTGRES_PORT', 5432)),
+    'port': int(os.getenv('POSTGRES_PORT') or 5432),
     'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
     'user': os.getenv('POSTGRES_USER', 'postgres'),
     'password': os.getenv('POSTGRES_PASSWORD', 'postgres')
@@ -40,7 +40,7 @@ def analyze_params(limit=100):
     
     # Stats globales
     wins = [t for t in trades if (t['pnl_pct'] or 0) > 0]
-    losses = [t for t in trades if (t['pnl_pct'] or 0) < 0]
+    [t for t in trades if (t['pnl_pct'] or 0) < 0]
     total_pnl = sum(t['pnl_usdt'] or 0 for t in trades)
     
     print(f"\nWin Rate: {len(wins)/len(trades)*100:.1f}% | PnL Total: {total_pnl:.2f} USDT")

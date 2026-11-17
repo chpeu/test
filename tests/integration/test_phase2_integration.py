@@ -23,7 +23,7 @@ class TestPhase2Integration:
     @pytest.fixture
     def factory(self):
         """Factory configurée pour les tests"""
-        config = FactoryConfig(environment="test", use_mocks=True)
+        FactoryConfig(environment="test", use_mocks=True)
         return get_configured_analyzer_factory("test", use_mocks=True)
     
     @pytest.fixture
@@ -555,8 +555,8 @@ class TestPhase2Integration:
         assert 'cached_components' in factory_stats
         
         # Créer plusieurs composants pour tester le cache
-        analyzer1 = factory.create_analyzer(analyzer_config)
-        analyzer2 = factory.create_analyzer(analyzer_config)  # Devrait être mis en cache
+        factory.create_analyzer(analyzer_config)
+        factory.create_analyzer(analyzer_config)  # Devrait être mis en cache
         
         # Test que le cache fonctionne
         updated_stats = factory.get_factory_stats()

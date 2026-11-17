@@ -113,13 +113,13 @@ def main():
         print(f"     → Filtrage outliers: {'ON' if outlier_filter else 'OFF'}")
         
         # Test apply_smoothing
-        smoothed = selector.apply_smoothing(0.25)
+        selector.apply_smoothing(0.25)
         use_smoothing = get_config_value('market_regime_use_smoothing', False)
         print("  ✅ apply_smoothing() fonctionne")
         print(f"     → Lissage: {'ON' if use_smoothing else 'OFF'}")
         
         # Test should_change_regime
-        should_change = selector.should_change_regime("NORMAL", "VOLATILE", 0.42)
+        selector.should_change_regime("NORMAL", "VOLATILE", 0.42)
         use_hysteresis = get_config_value('market_regime_use_hysteresis', False)
         print("  ✅ should_change_regime() fonctionne")
         print(f"     → Hystérésis: {'ON' if use_hysteresis else 'OFF'}")

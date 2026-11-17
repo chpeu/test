@@ -62,7 +62,7 @@ def main():
     trades_with_errors = []
     
     # Analyser chaque trade
-    for i, row in enumerate(rows, 1):
+    for _i, row in enumerate(rows, 1):
         trade_id = row['id']
         symbol = row['symbol']
         direction = row['direction']

@@ -61,12 +61,7 @@ async def run_test():
     # Données simulées
     symbol = "BTC/USDT"
     entry_price = 50000.0
-    setup = {
-        'symbol': symbol,
-        'direction': 'LONG',
-        'score': 9.5,
-        'indicators': {'atr_percent': 0.10, 'adx': 20}
-    }
+    # (dict `setup` et `trade_data` : construits puis jamais utilises — supprimes)
     
     # Créer position fictive
     class MockPosition:
@@ -84,16 +79,6 @@ async def run_test():
     pm.active_position = MockPosition()
     
     # Données trade pour log
-    trade_data = {
-        'symbol': symbol,
-        'direction': 'LONG',
-        'status': 'OPEN',
-        'entry_price': entry_price,
-        'size': 0.001,
-        'leverage': 5,
-        'entry_score': 9.5,
-        # Paramètres effectifs seront ajoutés par log_trade via le code qu'on a modifié
-    }
     
     # Note: On appelle directement log_trade via PositionManager pour tester la logique d'enrichissement
     # Mais comme log_trade est encapsulé, on va simuler ce que fait PositionManager.log_trade

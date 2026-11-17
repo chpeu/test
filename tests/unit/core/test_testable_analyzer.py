@@ -241,7 +241,7 @@ class TestTestableAnalyzerLogging:
         from unittest.mock import patch
 
         with patch("core.implementations.testable_analyzer.logger") as mock_logger:
-            analyzer = TestableAnalyzer()
+            TestableAnalyzer()
 
             # Vérifier que logger.info a été appelé
             assert mock_logger.info.called

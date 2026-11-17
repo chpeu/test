@@ -165,7 +165,7 @@ print("RESUME - INCOHERENCES DETECTEES")
 print("=" * 80)
 
 issues = []
-for idx, row in df.iterrows():
+for _idx, row in df.iterrows():
     entry = float(row['entry_price']) if row['entry_price'] else 0
     exit_p = float(row['exit_price']) if row['exit_price'] else 0
     direction = row['direction']
@@ -209,7 +209,7 @@ with engine.connect() as conn:
     ada_cols = list(result.keys())
 
 if ada:
-    ada_data = dict(zip(ada_cols, ada))
+    ada_data = dict(zip(ada_cols, ada, strict=True))
     print("\nToutes les colonnes PnL du trade ADA:")
     pnl_cols = [c for c in ada_cols if 'pnl' in c.lower() or 'fee' in c.lower() or 'price' in c.lower()]
     for col in pnl_cols:

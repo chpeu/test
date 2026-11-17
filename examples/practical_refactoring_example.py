@@ -3,23 +3,25 @@
 Exemple Pratique - Refactorisation Sécurisée en Action
 Démontre l'utilisation réelle de la refactorisation avec migration progressive
 """
+# Annotations evaluatees tardivement : sans ca, `List[str]` dans la dataclass
+# ci-dessous levait un NameError a l'importation (Dict/List n'etaient pas
+# importés, et `TradingSession` etait referencee avant sa definition).
+from __future__ import annotations
 
 import asyncio
 import time
 import logging
-from typing import Dict, Any, List
 from dataclasses import dataclass
+from typing import Dict, List
 
 # Imports refactorisation
 from core.feature_flags import (
     get_feature_flags_manager, 
     enable_flag, 
-    disable_flag, 
-    is_flag_enabled
+    disable_flag,  # noqa: F401  (exemple : API documentee, pas appelee ici)
+    is_flag_enabled,  # noqa: F401  (exemple : API documentee, pas appelee ici)
 )
 from core.factories.position_manager_factory import PositionManagerFactory
-from core.interfaces.position_manager_interface import PositionSetup, PositionManagerConfig
-from core.interfaces.analyzer_interface import AnalyzerConfig
 from core.implementations.testable_analyzer import TestableAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -198,9 +200,11 @@ class PracticalRefactoringDemo:
         """Phase analyse"""
         
         if use_testable:
-            # Utiliser TestableAnalyzer
-            analyzer_config = AnalyzerConfig(test_mode=True)
-            analyzer = TestableAnalyzer(analyzer_config)
+            # Utiliser TestableAnalyzer. `AnalyzerConfig` n'etait ni importe ni
+            # acceptant `test_mode` (c'est une dataclass de seuils) : l'analyzer
+            # construit sa propre configuration par defaut et `test_mode` se regle
+            # juste apres, comme le faisait deja la ligne suivante.
+            analyzer = TestableAnalyzer()
             analyzer.test_mode = True
             
             # Mock data réaliste
@@ -510,7 +514,7 @@ def demo_ab_testing():
     print("🧪 DÉMONSTRATION A/B TESTING")
     print("=" * 60)
     
-    fm = get_feature_flags_manager()
+    get_feature_flags_manager()
     
     # Configuration A/B 50%
     enable_flag('use_testable_position_manager', 50.0)

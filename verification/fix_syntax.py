@@ -39,24 +39,8 @@ def fix_position_manager():
     # Fix the missing except/finally block error and indentation
     # Specifically looking for the broken try blocks I introduced
     
-    # 1. Fix the CB status try block
-    old_cb_block = """                    try:
-                        from utils.effective_config import get_effective_value
-                        if get_effective_value('trading_circuit_breaker_enabled') or get_effective_value('trading_circuit_breaker_enabled') is None:
-                            from core.trading_circuit_breaker import get_trading_circuit_breaker
-                            trading_cb = get_trading_circuit_breaker()
-                            cb_status = trading_cb.get_status()
-                            trade_data['entry_cb_state'] = cb_status.get('state', 'ACTIVE')
-                            trade_data['entry_consecutive_losses'] = cb_status.get('consecutive_losses', 0)
-                            trade_data['entry_daily_pnl_pct'] = cb_status.get('daily_pnl_pct', 0)
-                            trade_data['entry_cb_score_boost'] = cb_status.get('score_boost', 0)
-                        else:
-                            trade_data['entry_cb_state'] = 'DISABLED'
-                            trade_data['entry_consecutive_losses'] = 0
-                            trade_data['entry_daily_pnl_pct'] = 0
-                            trade_data['entry_cb_score_boost'] = 0
-                    except Exception as e:
-                        logger.debug(f"⚠️ Impossible de récupérer CB: {e}")"""
+    # 1. (Le bloc `old_cb_block`, copié ici lors de l'incident, n'a jamais servi :
+    #    aucune substitution ne l'utilisait. Supprime.)
     
     # Actually, I'll just rewrite the whole method or block carefully
     # Looking at the previous read_file output for line 4082 area

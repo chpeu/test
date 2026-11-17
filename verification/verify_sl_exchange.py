@@ -167,7 +167,6 @@ def test_sl_margin_calculation():
             sl_distance_pct = abs(bot_sl_price - entry_price) / entry_price
             sl_price = entry_price * (1 + sl_distance_pct * SL_MEXC_MARGIN)
         
-        sl_exchange_percent = sl_distance_pct * SL_MEXC_MARGIN * 100
         
         # Verify MEXC SL is wider than bot SL
         bot_sl_pct = abs(entry_price - bot_sl_price) / entry_price * 100

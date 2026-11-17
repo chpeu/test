@@ -326,7 +326,7 @@ def analyze_trade(trade):
     events.sort(key=lambda x: x['time'])
     
     # Afficher timeline
-    for i, event in enumerate(events):
+    for _i, event in enumerate(events):
         time_str = f"{event['time']:.0f}s" if event['time'] < 9999 else "?"
         icon = {
             'OPEN': '🟢',

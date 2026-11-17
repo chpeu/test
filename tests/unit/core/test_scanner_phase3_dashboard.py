@@ -385,6 +385,8 @@ class TestScannerPhase3DashboardAlerts:
         ]
         error_alerts = [a for a in dashboard.alerts_active if a["type"] == "ERROR_RATE"]
 
+        # L'alerte critique etait calculee sans jamais etre verifiee.
+        assert len(critical_alerts) > 0
         assert len(error_alerts) > 0
         assert any(a["level"] == "CRITICAL" for a in error_alerts)
 
@@ -413,6 +415,8 @@ class TestScannerPhase3DashboardAlerts:
         warning_alerts = [a for a in dashboard.alerts_active if a["level"] == "WARNING"]
         latency_alerts = [a for a in dashboard.alerts_active if a["type"] == "LATENCY"]
 
+        # L'alerte warning etait calculee sans jamais etre verifiee.
+        assert len(warning_alerts) > 0
         assert len(latency_alerts) > 0
         assert any(a["level"] == "WARNING" for a in latency_alerts)
 

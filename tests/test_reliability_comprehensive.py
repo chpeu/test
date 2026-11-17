@@ -116,9 +116,11 @@ class TestRetryDecorator:
 
             @retry(max_attempts=2, delay=0.1)
             def always_fails():
-                raise Exception("Always fails")
+                raise RuntimeError("Always fails")
 
-            with pytest.raises(Exception):
+            # Le décorateur relance l'erreur apres épuisement des essais :
+            # on attend ce type précis, pas n'importe quelle exception.
+            with pytest.raises(RuntimeError, match="Always fails"):
                 always_fails()
         except Exception:
             pytest.skip("Test not applicable")

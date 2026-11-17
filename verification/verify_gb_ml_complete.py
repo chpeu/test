@@ -228,7 +228,7 @@ class MLVerifier:
             from optimization.optuna_gb_tuner import GradientBoostingOptunaOptimizer
             
             # Test creation avec GB standard
-            opt_gb = GradientBoostingOptunaOptimizer(n_trials=2, timeout_minutes=1, model_type='gb')
+            GradientBoostingOptunaOptimizer(n_trials=2, timeout_minutes=1, model_type='gb')
             self.add_check("Optuna GB", "OK", "Instance creee")
             
             # Test creation avec HistGB

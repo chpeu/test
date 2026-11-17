@@ -133,7 +133,7 @@ def verify_config_match(data, config):
     ]
     
     all_ok = True
-    for file_key, api_key, file_val, api_val in checks:
+    for file_key, _api_key, file_val, api_val in checks:
         if file_val is None:
             print(f"  ⚠️  {file_key}: pas dans config_overrides.json")
             continue

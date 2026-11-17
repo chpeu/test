@@ -342,10 +342,11 @@ class TestReliabilityManager:
         """Test fetch avec échec complet"""
         from api.reliability import fetch_with_retry
 
-        # Mock qui échoue toujours
-        mock_func = AsyncMock(side_effect=Exception("Error"))
+        # Mock qui échoue toujours : `fetch_with_retry` relance l'erreur réseau
+        # telle quelle (branche « erreur réseau standard retryable »).
+        mock_func = AsyncMock(side_effect=ConnectionError("Error"))
 
-        with pytest.raises(Exception):
+        with pytest.raises(ConnectionError, match="Error"):
             await fetch_with_retry(mock_func)
 
         assert mock_func.call_count >= 1
@@ -372,7 +373,7 @@ class TestReliabilityManager:
 
         mock_func = AsyncMock(side_effect=slow_func)
 
-        with pytest.raises(Exception):
+        with pytest.raises(asyncio.TimeoutError, match="Timeout"):
             await fetch_with_retry(mock_func)
 
 

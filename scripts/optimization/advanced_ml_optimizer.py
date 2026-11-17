@@ -58,7 +58,7 @@ def load_data():
         # Alternative: charger directement depuis les fichiers sauvegardes
         
         # Essayer de charger le dataset depuis les fichiers caches
-        cache_dir = Path(__file__).parent / "optimization" / "data"
+        Path(__file__).parent / "optimization" / "data"
         
         # Utiliser le feature loader du backend (qui fonctionne)
         # En appelant l'API de training qui charge les donnees

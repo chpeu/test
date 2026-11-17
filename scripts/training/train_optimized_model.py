@@ -257,7 +257,7 @@ class OptimizedModelTrainer:
         # Prédictions
         y_train_pred = self.model.predict(X_train_scaled)
         y_test_pred = self.model.predict(X_test_scaled)
-        y_test_proba = self.model.predict_proba(X_test_scaled)[:, 1]
+        self.model.predict_proba(X_test_scaled)[:, 1]
         
         # Métriques
         train_acc = accuracy_score(y_train, y_train_pred)
@@ -369,7 +369,7 @@ def verify_model():
         logger.error("❌ Modèle non trouvé")
         return False
     
-    pipeline = joblib.load(model_path)
+    joblib.load(model_path)
     
     # Charger metadata
     metadata_path = models_dir / "optimized_classifier_metadata.json"

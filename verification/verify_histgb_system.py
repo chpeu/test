@@ -424,7 +424,7 @@ def run_all_verifications(auto_fix: bool = False) -> Dict[str, VerificationResul
         return results
     
     print("\n   ⚠️  PROBLÈMES DÉTECTÉS:")
-    for name, r in results.items():
+    for _name, r in results.items():
         if not r.passed:
             print(f"      - {r.name}")
     

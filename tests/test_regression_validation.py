@@ -526,9 +526,9 @@ class TestIntegrationRegression:
             # Close position
             # Note: La fermeture peut échouer si la position n'a pas été correctement ouverte
             try:
-                closed = pm.close_position(result.position_id, "Integration test")
+                pm.close_position(result.position_id, "Integration test")
                 # On vérifie juste que la méthode ne crash pas
-            except Exception as e:
+            except Exception:
                 pass
             
             # Verify no active positions

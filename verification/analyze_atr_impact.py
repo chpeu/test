@@ -105,8 +105,6 @@ def analyze_trades():
         
         # Determiner si le comportement aurait change
         max_pnl = t['max_pnl_reached'] or 0
-        be_triggered = t['be_triggered']
-        trail_activated = t['trailing_activated']
         
         # Le BE/Trailing aurait-il ete declenche differemment?
         be_would_change = (max_pnl >= be_old) != (max_pnl >= be_new)

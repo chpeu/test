@@ -93,7 +93,7 @@ class WebSocketStabilityTester:
                             msg_type = data.get('type')
                             if msg_type == 'pong':
                                 connection_info['pongs_received'] += 1
-                                ping_id = data.get('ping_id')
+                                data.get('ping_id')
                                 client_ts = data.get('client_ts')
                                 if client_ts:
                                     rtt_ms = (time.time() - client_ts) * 1000

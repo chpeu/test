@@ -461,7 +461,7 @@ class TestPilotPerformanceAndSafety:
         managers = []
         analyzers = []
         
-        for i in range(100):
+        for _i in range(100):
             managers.append(TestablePositionManager())
             analyzers.append(TestableAnalyzer())
             

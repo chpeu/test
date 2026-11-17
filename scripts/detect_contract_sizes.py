@@ -103,7 +103,7 @@ async def main():
     print("-" * 80)
     
     # Trouver les symboles ou l'API dit 1.0 mais on a un override
-    for symbol, cs in normal_contracts:
+    for symbol, _cs in normal_contracts:
         if symbol in KNOWN_OVERRIDES:
             real_cs = KNOWN_OVERRIDES[symbol]
             print(f"{symbol:<20} {'1.0 (FAUX)':<20} {real_cs:<20} OVERRIDE ACTIF")

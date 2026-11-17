@@ -37,7 +37,9 @@ exclude = ['trade_id', 'timestamp', 'target_win', 'target_pnl', 'symbol', 'direc
            'entry_price', 'exit_price', 'pnl_pct', 'pnl_usdt']
 feature_cols = [c for c in df.columns if c not in exclude and df[c].dtype in ['float64', 'int64', 'float32', 'int32']]
 X = df[feature_cols].fillna(0)
-y = df['target_win'].map({'t':1,'f':0,True:1,False:0,1:1,0:0})
+# `1` et `True` (pareil pour `0`/`False`) sont la MEME cle dans un dictionnaire :
+# les entrees `1:1` et `0:0` ecrasaient silencieusement `True:1` et `False:0`.
+y = df['target_win'].map({'t': 1, 'f': 0, True: 1, False: 0})
 
 print(f"   Dataset: {len(X)} samples, {len(feature_cols)} features")
 print(f"   Distribution: WIN={y.sum()} ({y.mean():.1%}), LOSS={len(y)-y.sum()} ({1-y.mean():.1%})")
@@ -65,7 +67,7 @@ print("\n[3/4] Test sur donnees recentes (split temporel)...")
 if 'timestamp' in df.columns:
     df_sorted = df.sort_values('timestamp')
     X_sorted = df_sorted[feature_cols].fillna(0)
-    y_sorted = df_sorted['target_win'].map({'t':1,'f':0,True:1,False:0,1:1,0:0})
+    y_sorted = df_sorted['target_win'].map({'t': 1, 'f': 0, True: 1, False: 0})
     
     # Derniers 20% comme test
     split_idx = int(len(X_sorted) * 0.8)

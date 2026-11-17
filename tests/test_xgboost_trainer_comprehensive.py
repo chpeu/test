@@ -81,7 +81,7 @@ class TestXGBoostTrainerInit:
         from optimization.models.xgboost_trainer import XGBoostTrainer
 
         model_dir = tmp_path / "new_models"
-        trainer = XGBoostTrainer(model_dir=str(model_dir))
+        XGBoostTrainer(model_dir=str(model_dir))
 
         assert model_dir.exists()
 
@@ -336,7 +336,7 @@ class TestEdgeCases:
         """Test entraînement avec NaN"""
         from optimization.models.xgboost_trainer import XGBoostTrainer
 
-        trainer = XGBoostTrainer(model_dir=str(tmp_path / "models"))
+        XGBoostTrainer(model_dir=str(tmp_path / "models"))
 
         # This would require full mock setup
         pytest.skip("Complex test requiring full mock setup")
@@ -345,7 +345,7 @@ class TestEdgeCases:
         """Test predict avec features manquantes"""
         from optimization.models.xgboost_trainer import XGBoostTrainer
 
-        trainer = XGBoostTrainer(model_dir=str(tmp_path / "models"))
+        XGBoostTrainer(model_dir=str(tmp_path / "models"))
 
         # This would require model setup
         pytest.skip("Complex test requiring model setup")

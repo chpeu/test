@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import pytest
 
 from optimization.data.feature_engineering import calculate_derived_features, select_top_features
 
@@ -126,11 +127,8 @@ def test_select_top_features_raises_when_target_missing():
         'f1': [1.0], 'f2': [2.0]
     })
 
-    try:
+    with pytest.raises(ValueError, match="Target column"):
         select_top_features(df, target_col='target_win')
-        assert False, "Expected ValueError"
-    except ValueError as e:
-        assert "Target column" in str(e)
 
 
 def test_select_top_features_correlation_skips_constant_columns():
@@ -172,8 +170,5 @@ def test_select_top_features_invalid_method_raises():
         'target_win': [1, 0],
     })
 
-    try:
+    with pytest.raises(ValueError, match="not supported"):
         select_top_features(df, target_col='target_win', method='nope')
-        assert False, "Expected ValueError"
-    except ValueError as e:
-        assert "not supported" in str(e)

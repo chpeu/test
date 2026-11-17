@@ -214,7 +214,7 @@ def simulate_trade_with_optimal_params(trade: Dict[str, Any], current_config: Di
     # Extraire les données du trade
     realized_pnl = float(trade['realized_pnl_pct'] or 0)
     post_exit_mfe = float(trade['post_exit_mfe_pct'] or 0)  # Max favorable après sortie
-    post_exit_mae = float(trade['post_exit_mae_pct'] or 0)  # Max adverse après sortie
+    float(trade['post_exit_mae_pct'] or 0)  # Max adverse après sortie
     current_efficiency = float(trade['exit_efficiency_pct'] or 50)
     
     # Paramètres ML optimaux calculés pour ce trade
@@ -362,7 +362,7 @@ def calculate_ml_targets(trade_data: Dict[str, Any], post_exit_data: Dict[str, A
     post_exit_mae = float(post_exit_data.get('post_exit_mae_pct') or 0)
     post_exit_mfe = float(post_exit_data.get('post_exit_mfe_pct') or 0)
     used_sl = float(post_exit_data.get('used_sl_pct') or 0.15)
-    time_to_mfe = int(post_exit_data.get('time_to_mfe_sec') or 60)
+    int(post_exit_data.get('time_to_mfe_sec') or 60)
     would_have_hit_tp = post_exit_data.get('would_have_hit_original_tp', False)
     
     # 1. SL optimal: basé sur MAE post-exit

@@ -56,7 +56,7 @@ def check_live_trading_status():
     try:
         conn = psycopg2.connect(
             host=os.getenv('POSTGRES_HOST', 'localhost'),
-            port=os.getenv('POSTGRES_PORT', 5432),
+            port=os.getenv('POSTGRES_PORT') or 5432,
             dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', '')
@@ -109,7 +109,7 @@ def check_eda_v2_status():
     try:
         conn = psycopg2.connect(
             host=os.getenv('POSTGRES_HOST', 'localhost'),
-            port=os.getenv('POSTGRES_PORT', 5432),
+            port=os.getenv('POSTGRES_PORT') or 5432,
             dbname=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD', '')

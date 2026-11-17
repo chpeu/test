@@ -40,7 +40,7 @@ class TestBootstrap:
     def test_bootstrap_import(self):
         """Test import du module bootstrap"""
         try:
-            import core.bootstrap
+            import core.bootstrap  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module bootstrap non disponible")
@@ -61,7 +61,7 @@ class TestBtcIndicator:
     def test_btc_indicator_import(self):
         """Test import du module btc_indicator"""
         try:
-            import core.btc_indicator
+            import core.btc_indicator  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module btc_indicator non disponible")
@@ -104,7 +104,7 @@ class TestCorrelationDynamic:
     def test_correlation_dynamic_import(self):
         """Test import du module correlation_dynamic"""
         try:
-            import core.correlation_dynamic
+            import core.correlation_dynamic  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module correlation_dynamic non disponible")
@@ -147,7 +147,7 @@ class TestErrorHandling:
     def test_error_handling_import(self):
         """Test import du module error_handling"""
         try:
-            import core.error_handling
+            import core.error_handling  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module error_handling non disponible")
@@ -190,7 +190,7 @@ class TestExceptions:
     def test_exceptions_import(self):
         """Test import du module exceptions"""
         try:
-            import core.exceptions
+            import core.exceptions  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module exceptions non disponible")
@@ -233,7 +233,7 @@ class TestAnalyzerFilters:
     def test_analyzer_filters_import(self):
         """Test import du module analyzer filters"""
         try:
-            import core.analyzer.filters
+            import core.analyzer.filters  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module analyzer.filters non disponible")
@@ -255,7 +255,7 @@ class TestAnalyzerScoring:
     def test_analyzer_scoring_import(self):
         """Test import du module analyzer scoring"""
         try:
-            import core.analyzer.scoring
+            import core.analyzer.scoring  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module analyzer.scoring non disponible")
@@ -276,7 +276,7 @@ class TestRiskDetector:
     def test_risk_detector_import(self):
         """Test import du module risk_detector"""
         try:
-            import core.analyzer.risk_detector
+            import core.analyzer.risk_detector  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module risk_detector non disponible")
@@ -297,7 +297,7 @@ class TestSignalGenerator:
     def test_signal_generator_import(self):
         """Test import du module signal_generator"""
         try:
-            import core.analyzer.signal_generator
+            import core.analyzer.signal_generator  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module signal_generator non disponible")
@@ -318,7 +318,7 @@ class TestTrendCalculator:
     def test_trend_calculator_import(self):
         """Test import du module trend_calculator"""
         try:
-            import core.analyzer.trend_calculator
+            import core.analyzer.trend_calculator  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module trend_calculator non disponible")
@@ -340,7 +340,7 @@ class TestCallbacksPositionCheckLoop:
     def test_position_check_loop_import(self):
         """Test import du module position_check_loop"""
         try:
-            import core.callbacks.position_check_loop
+            import core.callbacks.position_check_loop  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module position_check_loop non disponible")
@@ -362,7 +362,7 @@ class TestCallbacksScannerLoop:
     def test_scanner_loop_import(self):
         """Test import du module scanner_loop"""
         try:
-            import core.callbacks.scanner_loop
+            import core.callbacks.scanner_loop  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module scanner_loop non disponible")

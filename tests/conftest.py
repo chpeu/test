@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 
 
 # CRITICAL: Apply logger fixes BEFORE any imports
-import logging
 import logging.handlers
 
 # Immediately disable all file-based logging
@@ -37,7 +36,7 @@ def _disable_file_logging():
     
     # Override any custom handlers that might exist
     try:
-        from utils.logger import SafeRotatingFileHandler as CustomSafeHandler
+        from utils.logger import SafeRotatingFileHandler as CustomSafeHandler  # noqa: F401  (sonde : l'import est le test)
         import utils.logger
         utils.logger.SafeRotatingFileHandler = SafeRotatingFileHandler
     except ImportError:

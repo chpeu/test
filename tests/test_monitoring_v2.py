@@ -704,11 +704,8 @@ def test_monitor_model_performance_exception_handling(monkeypatch):
     predictions = pd.DataFrame({'predicted_pnl': [0.1]})
     actuals = pd.DataFrame({'actual_pnl': [0.1]})
     
-    try:
+    with pytest.raises(RuntimeError, match="Monitoring failed"):
         monitor_model_performance(predictions, actuals)
-        assert False, "Should have raised exception"
-    except RuntimeError as e:
-        assert "Monitoring failed" in str(e)
 
 
 def test_get_drift_detector_singleton():

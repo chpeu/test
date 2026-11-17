@@ -160,7 +160,7 @@ def verify_cross_validation(X, y, params, model_type='gb', n_splits=5):
     print(f"   - Precision: {precision_scores.mean():.3f} ± {precision_scores.std():.3f}")
     
     print("\n📊 Scores par fold:")
-    for i, (acc, f1, prec) in enumerate(zip(accuracy_scores, f1_scores, precision_scores)):
+    for i, (acc, f1, prec) in enumerate(zip(accuracy_scores, f1_scores, precision_scores, strict=True)):
         print(f"   Fold {i+1}: Acc={acc*100:.1f}%, F1={f1:.3f}, Prec={prec:.3f}")
     
     return {
@@ -312,7 +312,7 @@ def run_full_verification():
     holdout_results = verify_holdout_validation(X, y, params, model_type)
     
     # 5. Comparer avec modèle sauvegardé
-    saved_model = compare_with_saved_model()
+    compare_with_saved_model()
     
     # 6. Résumé
     print("\n" + "="*80)

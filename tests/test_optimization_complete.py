@@ -134,7 +134,7 @@ class TestAutoRetrain:
     def test_auto_retrain_import(self):
         """Test import du module auto_retrain"""
         try:
-            import optimization.auto_retrain
+            import optimization.auto_retrain  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module auto_retrain non disponible")
@@ -390,7 +390,7 @@ class TestOptunaTuners:
     def test_optuna_gradientboosting_import(self):
         """Test import du module optuna_gradientboosting"""
         try:
-            import optimization.optuna_gradientboosting
+            import optimization.optuna_gradientboosting  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module optuna_gradientboosting non disponible")
@@ -504,7 +504,7 @@ class TestMultiConfigBacktest:
                 {'param1': 0.2, 'param2': 20}
             ]
             
-            with patch('pandas.DataFrame') as mock_df:
+            with patch('pandas.DataFrame'):
                 results = backtester.run(configs)
                 assert isinstance(results, (list, dict, pd.DataFrame))
         except (ImportError, AttributeError, TypeError):

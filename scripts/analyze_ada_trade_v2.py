@@ -31,7 +31,7 @@ if not rows:
     sys.exit(0)
 
 row = rows[0]
-data = dict(zip(cols, row))
+data = dict(zip(cols, row, strict=True))
 
 print("=" * 70)
 print("FILM DU TRADE ADA")

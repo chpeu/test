@@ -259,8 +259,8 @@ class TestLightGBMTrainerImports:
     def test_sklearn_imports_mocked(self):
         """Test que les imports sklearn sont gérés"""
         try:
-            from sklearn.metrics import accuracy_score
-            from sklearn.calibration import CalibratedClassifierCV
+            from sklearn.metrics import accuracy_score  # noqa: F401  (sonde : l'import est le test)
+            from sklearn.calibration import CalibratedClassifierCV  # noqa: F401  (sonde : l'import est le test)
             # Devrait fonctionner même si mocké
             assert True
         except ImportError:

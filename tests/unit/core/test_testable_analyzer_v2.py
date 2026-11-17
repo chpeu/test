@@ -123,7 +123,7 @@ class TestTestableAnalyzerV2Init:
     def test_init_default_indicators(self):
         """Test initialisation avec indicateurs par défaut"""
         config = AnalyzerConfig()
-        analyzer = TestableAnalyzerV2(
+        TestableAnalyzerV2(
             config=config,
             indicator_calculator=MockIndicatorCalculator(),
             signal_generator=MockSignalGenerator(),

@@ -65,8 +65,6 @@ def test_ts_vs_tp_detection():
     """Test la detection de raison TS vs TP"""
     
     # Cas 1: Prix touche SL avec PnL >= 0 -> TS
-    direction = 'LONG'
-    entry = 100.0
     sl = 99.5  # SL a 0.5% en dessous
     tp = 101.0  # TP a 1% au dessus
     current_price = 99.4  # Prix touche le SL

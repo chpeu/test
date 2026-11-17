@@ -95,6 +95,26 @@ async def test_handle_client_command_start_scanner_emits_and_sets_scanning(monke
 
 
 @pytest.mark.asyncio
+async def test_handle_client_command_start_scanner_refuse_en_mode_visite(monkeypatch: pytest.MonkeyPatch):
+    """Bouton « Start Scanner » + `VISITE_SANS_SCAN=1` : refus, rien ne demarre."""
+    ws_mgr = types.SimpleNamespace(emit=AsyncMock(), _command_handlers={}, handle_command=AsyncMock())
+    state = _DummyState(ws_mgr=ws_mgr)
+    monkeypatch.setattr(state_manager, "get_state_manager", lambda: state)
+    monkeypatch.setenv("VISITE_SANS_SCAN", "1")
+
+    init_instances = AsyncMock()
+    _install_module(monkeypatch, "core.bootstrap", init_instances=init_instances, run_initial_top_pairs_scan=AsyncMock())
+    _install_module(monkeypatch, "utils.logging_utils", add_log=AsyncMock())
+
+    out = await ws_routes.handle_client_command("start_scanner", {})
+
+    assert out["status"] == "error"
+    assert out["locked"] is True
+    assert state._is_scanning is False
+    init_instances.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_handle_client_command_stop_scanner(monkeypatch: pytest.MonkeyPatch):
     ws_mgr = types.SimpleNamespace(emit=AsyncMock(), _command_handlers={}, handle_command=AsyncMock())
     state = _DummyState(ws_mgr=ws_mgr)

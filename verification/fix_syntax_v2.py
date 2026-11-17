@@ -28,7 +28,7 @@ def fix_analyzer_syntax():
         lines = f.readlines()
     
     new_lines = []
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         # Specific fix for the recovery mode block which seems to be causing issues
         if "# === RECOVERY MODE PROGRESSIF ===" in line:
             new_lines.append("                # === RECOVERY MODE PROGRESSIF ===\n")

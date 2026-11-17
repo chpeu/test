@@ -129,7 +129,7 @@ class TestLiveOrderManagerInit:
         mock_exchange = Mock()
         mock_mexc.return_value = mock_exchange
         
-        manager = LiveOrderManager("key", "secret", testnet=True)
+        LiveOrderManager("key", "secret", testnet=True)
         
         # Vérifier warning loggé
         mock_logger.warning.assert_called_once()
@@ -242,7 +242,7 @@ class TestOpenPosition:
             
             manager = LiveOrderManager("key", "secret", dry_run=False)
             
-            result = manager.open_position(
+            manager.open_position(
                 symbol='ETH/USDT',
                 direction='SHORT',
                 entry_price=3000.0,
@@ -722,8 +722,8 @@ class TestEdgeCases:
             
             # Simuler plusieurs ordres avec latences différentes
             with patch('time.time', side_effect=[0, 0.1, 0.1, 0.3, 0.3, 0.5]):  # 100ms, 200ms
-                result1 = manager.open_position('BTC/USDT', 'LONG', 50000.0, 100.0)
-                result2 = manager.open_position('ETH/USDT', 'LONG', 3000.0, 300.0)
+                manager.open_position('BTC/USDT', 'LONG', 50000.0, 100.0)
+                manager.open_position('ETH/USDT', 'LONG', 3000.0, 300.0)
             
             stats = manager.get_stats()
             

@@ -67,20 +67,20 @@ class TestAnalyzerRealExecution:
                                 params = list(sig.parameters.keys())
                                 
                                 if len(params) == 0:
-                                    result = obj()
+                                    obj()
                                 elif len(params) == 1:
                                     if 'symbol' in params[0].lower():
-                                        result = obj("BTC/USDT:USDT")
+                                        obj("BTC/USDT:USDT")
                                     elif 'data' in params[0].lower():
-                                        result = obj({'rsi': 45, 'macd': 0.1, 'adx': 30})
+                                        obj({'rsi': 45, 'macd': 0.1, 'adx': 30})
                                     else:
-                                        result = obj("test_param")
+                                        obj("test_param")
                                 elif len(params) == 2:
-                                    result = obj("BTC/USDT:USDT", {'rsi': 45})
+                                    obj("BTC/USDT:USDT", {'rsi': 45})
                                 else:
                                     # Fonction complexe, essayer avec mocks
                                     mock_args = [Mock() for _ in range(min(len(params), 3))]
-                                    result = obj(*mock_args)
+                                    obj(*mock_args)
                                 
                                 functions_executed += 1
                                 
@@ -244,7 +244,7 @@ class TestPositionManagerRealExecution:
                         # Calcul PnL simulé
                         for current_price in [entry_price + 200, entry_price - 200]:
                             if position_size > 0:
-                                pnl = (current_price - entry_price) * position_size
+                                (current_price - entry_price) * position_size
                                 calculations_performed += 1
         
         assert calculations_performed > 50  # Beaucoup de calculs
@@ -375,7 +375,7 @@ class TestCoreModulesIndividualFunctions:
                     method = getattr(manager, method_name)
                     try:
                         if 'get' in method_name:
-                            result = method()
+                            method()
                         elif 'set' in method_name:
                             if 'scanning' in method_name:
                                 method(True)
@@ -426,24 +426,24 @@ class TestCoreModulesIndividualFunctions:
                     # Signatures spécialisées pour indicateurs
                     if any(x in func_name.lower() for x in ['rsi', 'macd', 'ema', 'sma', 'bollinger']):
                         if 'period' in str(inspect.signature(func)):
-                            result = func(price_data, 14)
+                            func(price_data, 14)
                         else:
-                            result = func(price_data)
+                            func(price_data)
                         indicators_calculated += 1
                         
                     elif 'atr' in func_name.lower():
-                        result = func(highs, lows, closes, 14)
+                        func(highs, lows, closes, 14)
                         indicators_calculated += 1
                         
                     elif 'adx' in func_name.lower():
-                        result = func(highs, lows, closes, 14)
+                        func(highs, lows, closes, 14)
                         indicators_calculated += 1
                         
                     elif 'volume' in func_name.lower():
                         if 'price' in str(inspect.signature(func)):
-                            result = func(price_data, volume_data)
+                            func(price_data, volume_data)
                         else:
-                            result = func(volume_data, 14)
+                            func(volume_data, 14)
                         indicators_calculated += 1
                         
                     else:
@@ -451,11 +451,11 @@ class TestCoreModulesIndividualFunctions:
                         sig = inspect.signature(func)
                         params = len(sig.parameters)
                         if params == 1:
-                            result = func(price_data)
+                            func(price_data)
                         elif params == 2:
-                            result = func(price_data, 14)
+                            func(price_data, 14)
                         elif params >= 3:
-                            result = func(highs, lows, closes)
+                            func(highs, lows, closes)
                         indicators_calculated += 1
                         
                 except Exception:
@@ -536,7 +536,7 @@ class TestCoreFileSystemExecution:
             pytest.skip("Répertoire core/ non trouvé")
         
         python_files = []
-        for root, dirs, files in os.walk(core_dir):
+        for root, _dirs, files in os.walk(core_dir):
             for file in files:
                 if file.endswith('.py') and not file.startswith('__'):
                     python_files.append(os.path.join(root, file))

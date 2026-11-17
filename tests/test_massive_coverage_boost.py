@@ -110,7 +110,6 @@ class TestPositionManagerMassiveCoverage:
         
         for scenario in market_scenarios:
             base_price = scenario['base_price']
-            volatility = scenario['volatility']
             
             # Test différents spreads et risques
             for spread_pct in [0.01, 0.015, 0.02, 0.025, 0.03]:
@@ -398,7 +397,7 @@ class TestUtilsAndHelpersCoverage:
                 calculations += 1
         
         # Calculs volatilité
-        for i in range(20):
+        for _i in range(20):
             price_changes = [0.01, -0.005, 0.015, -0.02, 0.008]
             variance = sum([(x - sum(price_changes)/len(price_changes))**2 for x in price_changes]) / len(price_changes)
             volatility = math.sqrt(variance)

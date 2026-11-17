@@ -97,18 +97,18 @@ def print_film_detailed(trade, index):
     # Métriques
     mfe = trade.get('max_pnl_reached')
     mae = trade.get('min_pnl_reached')
-    max_price = trade.get('max_price_reached')
-    min_price = trade.get('min_price_reached')
+    trade.get('max_price_reached')
+    trade.get('min_price_reached')
     time_to_mfe = trade.get('time_to_max_pnl_seconds')
     time_to_mae = trade.get('time_to_min_pnl_seconds')
     
     be_triggered = trade.get('be_triggered', False)
-    be_at = trade.get('be_triggered_at')
-    be_pnl = trade.get('be_triggered_pnl_pct')
+    trade.get('be_triggered_at')
+    trade.get('be_triggered_pnl_pct')
     
     trailing_activated = trade.get('trailing_activated', False)
-    trailing_at = trade.get('trailing_activated_at')
-    trailing_final_sl = trade.get('trailing_final_sl_price')
+    trade.get('trailing_activated_at')
+    trade.get('trailing_final_sl_price')
     trailing_distance = trade.get('trailing_final_distance_pct')
     
     print(f"\n{'─'*80}")

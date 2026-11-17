@@ -51,7 +51,6 @@ def check_phase0_infrastructure():
     # 2. Verifier config MARKET_REGIME_V2_CONFIG
     try:
         from config import MARKET_REGIME_V2_CONFIG
-        toggles = ['v2_enabled', 'use_median', 'use_hysteresis', 'use_smoothing']
         print(f"  [OK] MARKET_REGIME_V2_CONFIG present ({len(MARKET_REGIME_V2_CONFIG)} cles)")
         results['config'] = True
     except Exception as e:

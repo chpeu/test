@@ -649,7 +649,7 @@ def main():
     test_8_improvement_suggestions(X, y, all_results['cv'], all_results['overfitting'])
     
     # Verdict final
-    score = generate_final_verdict(all_results)
+    generate_final_verdict(all_results)
     
     # Sauvegarder résultats
     results_file = PROJECT_ROOT / "audit_gradientboosting_results.json"

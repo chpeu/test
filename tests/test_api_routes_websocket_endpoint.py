@@ -190,7 +190,6 @@ async def test_websocket_endpoint_timeout_ping_send_fails_continues(monkeypatch:
 
     # Simuler seulement 2 timeouts pour éviter boucle infinie
     timeout_count = 0
-    original_wait_for = ws_routes.asyncio.wait_for
     
     async def _limited_wait_for(awaitable, timeout=None):
         nonlocal timeout_count

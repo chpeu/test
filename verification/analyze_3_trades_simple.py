@@ -127,7 +127,7 @@ def main():
         
         ts_count = sum(1 for r in rows if r[6] == 'TS')  # exit_reason est index 6
         sl_count = sum(1 for r in rows if r[6] == 'SL')
-        trailing_activated_count = sum(1 for r in rows if r[9])  # trailing_triggered index 9
+        sum(1 for r in rows if r[9])  # trailing_triggered index 9
         avg_pnl = sum(r[7] for r in rows if r[7]) / len(rows)
         
         print(f"Trailing Stop (TS): {ts_count}/3 trades")

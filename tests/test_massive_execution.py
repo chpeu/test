@@ -250,7 +250,7 @@ class TestCoreModulesMassive:
                     try:
                         instance = cls()
                         if hasattr(instance, '__dict__'):
-                            attrs = vars(instance)
+                            vars(instance)
                     except Exception:
                         pass
                 
@@ -318,7 +318,7 @@ class TestUtilsMassive:
         ] * 10  # Répéter pour plus d'exécution
         
         for key in test_keys:
-            value = get_effective_value(key)
+            get_effective_value(key)
             # Valeur peut être None ou un nombre
         
         # Test ajustements multiples
@@ -331,8 +331,8 @@ class TestUtilsMassive:
             
             set_local_trade_adjustments(adjustments)
             
-            for key, expected in adjustments.items():
-                adjusted = get_effective_value(key)
+            for key, _expected in adjustments.items():
+                get_effective_value(key)
             
             clear_local_trade_adjustments()
     
@@ -393,7 +393,7 @@ class TestAPIMassive:
                 breakers.append(breaker)
                 
                 # Simuler succès/échecs
-                for j in range(i+1):
+                for _j in range(i+1):
                     breaker.record_success()
                     breaker.record_failure()
             
@@ -414,11 +414,11 @@ class TestAPIMassive:
         ] * 5
         
         for value in test_values:
-            result = _safe_float(value)
+            _safe_float(value)
         
         # Test HybridPriceProvider
         providers = []
-        for i in range(5):
+        for _i in range(5):
             provider = HybridPriceProvider()
             providers.append(provider)
             

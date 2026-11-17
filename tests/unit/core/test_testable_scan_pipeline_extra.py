@@ -279,7 +279,7 @@ class TestTestableScanPipelineStats:
         pipeline = TestableScanPipeline()
 
         # Simuler plusieurs exécutions
-        for i in range(10):
+        for _i in range(10):
             pipeline.successful_executions += 1
             pipeline.execution_count += 1
             pipeline.total_execution_time_ms += 100.0
@@ -310,7 +310,7 @@ class TestTestableScanPipelineCircuitBreaker:
         pipeline.enable_circuit_breaker = True
 
         # Simuler plusieurs échecs consécutifs (seuil par défaut = 5)
-        for i in range(5):
+        for _i in range(5):
             pipeline.failed_executions += 1
             pipeline.consecutive_failures += 1
             pipeline._handle_pipeline_failure()
@@ -326,7 +326,7 @@ class TestTestableScanPipelineCircuitBreaker:
         pipeline.enable_circuit_breaker = True
 
         # Simuler échecs
-        for i in range(5):
+        for _i in range(5):
             pipeline.failed_executions += 1
             pipeline.consecutive_failures += 1
             pipeline._handle_pipeline_failure()

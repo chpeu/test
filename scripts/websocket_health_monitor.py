@@ -313,7 +313,7 @@ async def main():
     args = parser.parse_args()
     
     # Utiliser l'intervalle spécifié
-    interval = args.interval if hasattr(args, 'interval') else CHECK_INTERVAL
+    args.interval if hasattr(args, 'interval') else CHECK_INTERVAL
     
     monitor = WebSocketHealthMonitor()
     

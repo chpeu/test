@@ -49,7 +49,7 @@ class TestEffectiveConfig:
     def test_effective_config_import(self):
         """Test import du module effective_config"""
         try:
-            import utils.effective_config
+            import utils.effective_config  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module effective_config non disponible")
@@ -70,7 +70,7 @@ class TestErrorHistory:
     def test_error_history_import(self):
         """Test import du module error_history"""
         try:
-            import utils.error_history
+            import utils.error_history  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module error_history non disponible")
@@ -92,7 +92,7 @@ class TestApiHelper:
     def test_api_helper_import(self):
         """Test import du module api_helper"""
         try:
-            import utils.helpers.api_helper
+            import utils.helpers.api_helper  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module api_helper non disponible")
@@ -113,7 +113,7 @@ class TestConfigHelper:
     def test_config_helper_import(self):
         """Test import du module config_helper"""
         try:
-            import utils.helpers.config_helper
+            import utils.helpers.config_helper  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module config_helper non disponible")
@@ -134,7 +134,7 @@ class TestDataLoggerHelper:
     def test_data_logger_helper_import(self):
         """Test import du module data_logger_helper"""
         try:
-            import utils.helpers.data_logger_helper
+            import utils.helpers.data_logger_helper  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module data_logger_helper non disponible")
@@ -156,7 +156,7 @@ class TestMarketHelper:
     def test_market_helper_import(self):
         """Test import du module market_helper"""
         try:
-            import utils.helpers.market_helper
+            import utils.helpers.market_helper  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module market_helper non disponible")
@@ -177,7 +177,7 @@ class TestPositionHelper:
     def test_position_helper_import(self):
         """Test import du module position_helper"""
         try:
-            import utils.helpers.position_helper
+            import utils.helpers.position_helper  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module position_helper non disponible")
@@ -198,7 +198,7 @@ class TestStatsHelper:
     def test_stats_helper_import(self):
         """Test import du module stats_helper"""
         try:
-            import utils.helpers.stats_helper
+            import utils.helpers.stats_helper  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module stats_helper non disponible")
@@ -219,7 +219,7 @@ class TestHistoryUtils:
     def test_history_utils_import(self):
         """Test import du module history_utils"""
         try:
-            import utils.history_utils
+            import utils.history_utils  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module history_utils non disponible")
@@ -240,7 +240,7 @@ class TestLogger:
     def test_logger_import(self):
         """Test import du module logger"""
         try:
-            import utils.logger
+            import utils.logger  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module logger non disponible")
@@ -261,7 +261,7 @@ class TestLoggingUtils:
     def test_logging_utils_import(self):
         """Test import du module logging_utils"""
         try:
-            import utils.logging_utils
+            import utils.logging_utils  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module logging_utils non disponible")
@@ -282,7 +282,7 @@ class TestPricing:
     def test_pricing_import(self):
         """Test import du module pricing"""
         try:
-            import utils.pricing
+            import utils.pricing  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module pricing non disponible")
@@ -303,7 +303,7 @@ class TestSessionDetector:
     def test_session_detector_import(self):
         """Test import du module session_detector"""
         try:
-            import utils.session_detector
+            import utils.session_detector  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module session_detector non disponible")
@@ -324,7 +324,7 @@ class TestAsyncDecorators:
     def test_async_decorators_import(self):
         """Test import du module async_decorators"""
         try:
-            import utils.decorators.async_decorators
+            import utils.decorators.async_decorators  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module async_decorators non disponible")

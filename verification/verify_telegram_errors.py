@@ -190,7 +190,7 @@ def check_telegram_notify_functions():
     try:
         # Import dynamique pour vérifier
         import importlib.util
-        spec = importlib.util.spec_from_file_location("main_check", "main.py")
+        importlib.util.spec_from_file_location("main_check", "main.py")
         # On ne peut pas exécuter main.py directement, vérifions le code
         with open("main.py", "r", encoding="utf-8") as f:
             content = f.read()

@@ -74,7 +74,7 @@ def investigate_sl_parameters():
         load_dotenv()
         conn = psycopg2.connect(
             host=os.getenv('POSTGRES_HOST', 'localhost'),
-            port=int(os.getenv('POSTGRES_PORT', 5432)),
+            port=int(os.getenv('POSTGRES_PORT') or 5432),
             database=os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
             user=os.getenv('POSTGRES_USER', 'postgres'),
             password=os.getenv('POSTGRES_PASSWORD'),

@@ -187,7 +187,6 @@ class TestUpdateLiveConfig:
         """Test mise à jour config réussie"""
         mock_load.return_value = {'trading_mode': 'PAPER'}
         mock_save.return_value = True
-        mock_manager = None  # Pas de manager actif
 
         response = client.post("/api/live/config", json={
             'trading_mode': 'LIVE',

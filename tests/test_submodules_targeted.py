@@ -344,7 +344,7 @@ class TestCoreCallbacksSubmodules:
     def test_position_check_loop_direct(self):
         """Test direct position_check_loop.py"""
         try:
-            from core.callbacks.position_check_loop import check_position_status, should_close_position
+            from core.callbacks.position_check_loop import check_position_status, should_close_position  # noqa: F401  (sonde : l'import est le test)
             
             # Mock position active
             position_data = {
@@ -423,8 +423,8 @@ class TestCoreUtilityModules:
             assert is_valid is True
             
             # Test sauvegarde/chargement (mock file operations)
-            with patch('builtins.open', create=True) as mock_open:
-                with patch('json.dump') as mock_dump:
+            with patch('builtins.open', create=True):
+                with patch('json.dump'):
                     result = save_config(test_config, "test_config.json")
                     assert result is True
                     
@@ -438,7 +438,7 @@ class TestCoreUtilityModules:
     def test_error_handling_direct(self):
         """Test direct error_handling.py"""
         try:
-            from core.error_handling import handle_api_error, handle_trade_error, ErrorSeverity
+            from core.error_handling import handle_api_error, handle_trade_error, ErrorSeverity  # noqa: F401  (sonde : l'import est le test)
             
             # Test API error
             api_error = {
@@ -472,7 +472,6 @@ class TestCalculationsExtensive:
     def test_position_sizing_calculations(self):
         """Calculs de taille de position étendus"""
         # Différents scénarios de calcul
-        test_scenarios = []
         
         balances = [500, 1000, 2000, 5000, 10000]
         risk_percentages = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
@@ -499,11 +498,11 @@ class TestCalculationsExtensive:
                         
                         # LONG PnL
                         pnl_long = (current_price - entry_price) * position_size
-                        pnl_pct_long = (pnl_long / balance) * 100
+                        (pnl_long / balance) * 100
                         
                         # SHORT PnL
                         pnl_short = (entry_price - current_price) * position_size
-                        pnl_pct_short = (pnl_short / balance) * 100
+                        (pnl_short / balance) * 100
                         
                         calculations_performed += 2
                         

@@ -144,7 +144,7 @@ if rows:
     print(f"{'Symbol':<10} {'Dir':<6} {'Entry':<12} {'Exit':<12} {'Max/Min P':<12} {'MFE%':<8} {'PnL$':<8}")
     print("-" * 80)
     for row in rows:
-        t = dict(zip(cols, row))
+        t = dict(zip(cols, row, strict=True))
         max_min = t['max_p'] if t['direction'] == 'LONG' else t['min_p']
         print(f"{t['symbol']:<10} {t['direction']:<6} {t['entry']:<12} {t['exit']:<12} {max_min:<12} {t['mfe_pct']:+.2f}%   {t['pnl_usdt']:+.2f}$")
     print(f"\n⚠️ {len(rows)} trades avec MFE élevé mais PnL négatif - normal si le prix a atteint MFE puis retracé")

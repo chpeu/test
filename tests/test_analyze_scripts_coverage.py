@@ -310,7 +310,7 @@ class TestAnalyzeScriptsIntegration:
                     
                     # Si le script a une fonction main, on peut essayer de la mocker
                     if hasattr(module, 'main'):
-                        main_func = getattr(module, 'main')
+                        main_func = module.main
                         assert callable(main_func)
             
             except ImportError:
@@ -335,7 +335,7 @@ class TestAnalyzeScriptsIntegration:
                 module_source = str(dir(module))
                 db_indicators = ['connect', 'cursor', 'execute', 'fetchall', 'sql']
                 
-                has_db_operations = any(indicator in module_source.lower() for indicator in db_indicators)
+                any(indicator in module_source.lower() for indicator in db_indicators)
                 
                 # Ou bien chercher des imports database
                 if hasattr(module, '__file__'):

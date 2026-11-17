@@ -1,7 +1,6 @@
 """
 Tests pour core/database.py
 """
-import pytest
 import os
 import tempfile
 from core.database import TradeDatabase
@@ -355,12 +354,14 @@ class TestTradeDatabase:
     def test_close_connection(self):
         """Test fermeture connexion"""
         db = TradeDatabase(self.db_path)
+        assert db.conn is not None
         db.close()
 
-        # Vérifier que la connexion est fermée
-        # (tenter une opération devrait échouer)
-        with pytest.raises(Exception):
-            db.conn.cursor()
+        # `close()` appelle sqlite puis met `self.conn` a None (core/database.py:281),
+        # et il est idempotent : un second appel ne doit rien casser.
+        assert db.conn is None
+        db.close()
+        assert db.conn is None
 
     def test_condition_types_serialization(self):
         """Test sérialisation/désérialisation condition_types"""

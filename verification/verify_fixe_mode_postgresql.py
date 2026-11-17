@@ -85,7 +85,7 @@ def main():
         # Analyser chaque trade
         for row in rows:
             # Convertir row en dict
-            row_dict = dict(zip(columns, row))
+            row_dict = dict(zip(columns, row, strict=True))
             trade_id = row_dict['id']
             symbol = row_dict['symbol']
             direction = row_dict['direction']

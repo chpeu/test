@@ -82,6 +82,7 @@ def run_sql(query: str):
         env=env,
         encoding="utf-8",
         errors="replace",
+        check=False,  # code retour lu par le script (returncode/stderr)
     )
 
     if result.returncode != 0:

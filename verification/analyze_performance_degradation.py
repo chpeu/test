@@ -80,7 +80,7 @@ def main():
         # Convertir en liste de dicts
         trades = []
         for row in rows:
-            trade = dict(zip(columns, row))
+            trade = dict(zip(columns, row, strict=True))
             trades.append(trade)
         
         # Inverser pour ordre chronologique
@@ -238,7 +238,7 @@ def main():
         print("=" * 100)
         
         stagnation_count = exit_reasons.get('STAGNATION', {}).get('count', 0)
-        sl_count = exit_reasons.get('SL', {}).get('count', 0) + exit_reasons.get('SL_EXCHANGE', {}).get('count', 0)
+        exit_reasons.get('SL', {}).get('count', 0) + exit_reasons.get('SL_EXCHANGE', {}).get('count', 0)
         
         if stagnation_count >= 3:
             print("\n1. 🕐 TIMEOUT STAGNATION TROP COURT")

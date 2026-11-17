@@ -155,7 +155,7 @@ def test_bypass_client_available():
     print_section("4. VERIFICATION CLIENT BYPASS")
     
     try:
-        from trading.mexc_futures_bypass import MexcFuturesBypass, Position
+        from trading.mexc_futures_bypass import MexcFuturesBypass, Position  # noqa: F401  (sonde : l'import est le test)
         
         print_status(
             "Import MexcFuturesBypass",

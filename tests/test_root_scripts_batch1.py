@@ -19,10 +19,11 @@ class TestOptimizeTpSl:
         """Test import du script optimize_tp_sl"""
         with patch('builtins.__import__'):
             try:
-                import optimize_tp_sl
-                assert True  # Si pas d'exception, import OK
-            except ImportError:
-                assert False, "Impossible d'importer optimize_tp_sl"
+                import optimize_tp_sl  # noqa: F401  (sonde : le module doit s'importer)
+            except ImportError as exc:
+                # `assert False` disparait avec `python -O` : on élève une vraie
+                # erreur, avec la cause enchaînée pour pouvoir la lire.
+                raise AssertionError(f"Impossible d'importer optimize_tp_sl: {exc}") from exc
 
 
 class TestAnalyzeScripts:
@@ -32,7 +33,7 @@ class TestAnalyzeScripts:
         """Test import analyze_performance.py"""
         try:
             with patch('sys.argv', ['analyze_performance.py']):
-                import analyze_performance
+                import analyze_performance  # noqa: F401  (sonde : l'import est le test)
         except (ImportError, SystemExit):
             pass  # OK si script existe
 
@@ -40,7 +41,7 @@ class TestAnalyzeScripts:
         """Test import analyze_trades.py"""  
         try:
             with patch('sys.argv', ['analyze_trades.py']):
-                import analyze_trades
+                import analyze_trades  # noqa: F401  (sonde : l'import est le test)
         except (ImportError, SystemExit):
             pass
 
@@ -48,7 +49,7 @@ class TestAnalyzeScripts:
         """Test import analyze_profitability.py"""
         try:
             with patch('sys.argv', ['analyze_profitability.py']):
-                import analyze_profitability
+                import analyze_profitability  # noqa: F401  (sonde : l'import est le test)
         except (ImportError, SystemExit):
             pass
 
@@ -64,7 +65,7 @@ class TestMigrationScripts:
         ]
         
         for filename in migration_files:
-            filepath = os.path.join('..', filename)
+            os.path.join('..', filename)
             # Test que le fichier existe ou peut être importé
             try:
                 with patch('sys.argv', [filename]):

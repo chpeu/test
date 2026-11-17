@@ -49,7 +49,7 @@ class TestSimplePGLogger:
         mock_psycopg2.connect.return_value = mock_conn
 
         with patch.dict(os.environ, {}, clear=True):
-            logger = SimplePGLogger()
+            SimplePGLogger()
 
             mock_psycopg2.connect.assert_called_once_with(
                 host='localhost',

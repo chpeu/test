@@ -57,7 +57,7 @@ key_cols = [
 
 for row in rows:
     print()
-    row_dict = dict(zip(cols, row))
+    row_dict = dict(zip(cols, row, strict=True))
     
     # Calculate PnL % from entry/exit
     entry_p = row_dict.get('entry_price')

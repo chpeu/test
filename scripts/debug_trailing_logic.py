@@ -111,7 +111,6 @@ def main():
         entry_price = 100.0
         current_sl = 99.0  # SL initial -1%
         current_tp = 101.0  # TP initial +1%
-        direction = "LONG"
         
         print("Position LONG fictive:")
         print(f"  Entry: {entry_price}")

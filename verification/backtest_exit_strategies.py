@@ -78,7 +78,7 @@ with engine.connect() as conn:
     rows = result.fetchall()
     cols = list(result.keys())
 
-trades = [dict(zip(cols, row)) for row in rows]
+trades = [dict(zip(cols, row, strict=True)) for row in rows]
 
 print("=" * 80)
 print("BACKTEST EXIT STRATEGIES (fees=0, slippage={:.2f}%)".format(SLIPPAGE_PCT))

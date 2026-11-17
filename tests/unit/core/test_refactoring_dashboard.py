@@ -83,7 +83,7 @@ class TestRefactoringDashboardRoutes:
         from flask import Flask
 
         app = Flask(__name__)
-        dashboard = RefactoringDashboard(app, "localhost", 5001)
+        RefactoringDashboard(app, "localhost", 5001)
         app.config["TESTING"] = True
 
         with app.test_client() as client:

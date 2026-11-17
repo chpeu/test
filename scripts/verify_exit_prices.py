@@ -61,14 +61,14 @@ def analyze_exit_prices():
                 trade_id = t[0]
                 symbol = t[1]
                 direction = t[2]
-                entry_price = float(t[3]) if t[3] else 0
+                float(t[3]) if t[3] else 0
                 exit_price = float(t[4]) if t[4] else 0
                 sl_price = float(t[5]) if t[5] else 0
-                tp_price = float(t[6]) if t[6] else 0
+                float(t[6]) if t[6] else 0
                 exit_reason = t[7]
-                pnl_pct = float(t[8]) if t[8] else 0
-                net_pnl_pct = float(t[9]) if t[9] else 0
-                entry_fill = float(t[10]) if t[10] else 0
+                float(t[8]) if t[8] else 0
+                float(t[9]) if t[9] else 0
+                float(t[10]) if t[10] else 0
                 exit_fill = float(t[11]) if t[11] else 0
                 created_at = t[12]
                 

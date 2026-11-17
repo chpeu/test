@@ -168,7 +168,7 @@ class MLVerificationLoop:
             y_true = df['target_win'].astype(int)
             
             y_pred = pipeline.predict(X)
-            y_proba = pipeline.predict_proba(X)[:, 1]
+            pipeline.predict_proba(X)[:, 1]
             
             # Métriques
             from sklearn.metrics import accuracy_score, f1_score

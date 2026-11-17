@@ -206,8 +206,8 @@ class ThresholdOptimizer:
         logger.info("="*60)
         
         # Analyser chaque seuil
-        spread_results = self.analyze_spread_impact()
-        orderbook_results = self.analyze_orderbook_impact()
+        self.analyze_spread_impact()
+        self.analyze_orderbook_impact()
         early_inv_trades = self.analyze_early_invalidation()
         winrate = self.analyze_score_threshold()
         

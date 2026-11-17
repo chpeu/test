@@ -160,7 +160,7 @@ def run_tests():
         (49.5, 30.38, 1, 2, True),  # Cas réel SUI: 49.5 USDT / 30.38 dispo -> 2x
     ]
     
-    for size, balance, lev, expected_lev, expected_ok in test_cases_2:
+    for size, balance, lev, _expected_lev, expected_ok in test_cases_2:
         result_lev, ok, msg = verifier.calculate_leverage(size, balance, lev)
         
         # Vérifier que le levier est adapté ET que la nouvelle marge < balance

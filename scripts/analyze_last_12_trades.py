@@ -40,7 +40,7 @@ old_config_trades = []
 new_config_trades = []
 
 for r in rows:
-    d = dict(zip(cols, r))
+    d = dict(zip(cols, r, strict=True))
     if d['timestamp_exit'] >= CONFIG_CHANGE_TIME:
         new_config_trades.append(d)
     else:
@@ -65,7 +65,6 @@ def analyze_trades(trades, label, config_info):
         pnl = d['pnl_pct'] or 0
         mfe = d['max_favorable_excursion'] or 0
         mae = d['max_adverse_excursion'] or 0
-        dur = d['duration_sec'] or 0
         score = d['setup_score'] or 0
         
         total_pnl += pnl

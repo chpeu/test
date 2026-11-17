@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import argparse
 import os
 import re
@@ -170,16 +169,9 @@ def _get_contract_size(symbol: str, specs: Dict[str, Any]) -> float:
 
 
 def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
-    # Load contract specs cache
-    specs = {}
-    cache_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "contract_specs_cache.json")
-    if os.path.exists(cache_path):
-        try:
-            with open(cache_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                specs = data.get("specs", {})
-        except Exception as e:
-            print(f"Warning: Could not load contract specs cache: {e}")
+    # Le chargement du cache de specs de contrat etait mort : `data.get("specs", {})`
+    # jetait le resultat et `specs` ne servait nulle part dans la fonction. Supprime
+    # plutot que de laisser une lecture de fichier sans effet.
 
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb[sheet] if sheet else wb[wb.sheetnames[0]]
@@ -237,10 +229,12 @@ def parse_mexc_fr_orders_xlsx(path: str, sheet: Optional[str]) -> pd.DataFrame:
         if len(non_empty) == 1 and _clean_text(non_empty[0]) and "%" in str(non_empty[0]):
             continue
 
-        def _cell(i: Optional[int]) -> Any:
-            if i is None or i < 0 or i >= len(cells):
+        # La ligne courante est transmise par argument par defaut : une fermeture
+        # ne capture que la variable de boucle (`cells`), pas sa valeur.
+        def _cell(i: Optional[int], row_cells=cells) -> Any:
+            if i is None or i < 0 or i >= len(row_cells):
                 return None
-            return cells[i]
+            return row_cells[i]
 
         symbol_raw = _clean_text(_cell(symbol_idx))
         if not symbol_raw:

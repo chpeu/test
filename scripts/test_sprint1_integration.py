@@ -34,9 +34,9 @@ def test_market_regime_selector():
     
     try:
         from core.market_regime_selector import (
-            MarketRegimeSelector, 
+            MarketRegimeSelector,  # noqa: F401  (sonde : l'import est le test)
             get_regime_selector,
-            MarketRegime
+            MarketRegime,  # noqa: F401  (sonde)
         )
         print(f"{GREEN}[OK]{RESET} Import MarketRegimeSelector")
     except ImportError as e:
@@ -105,7 +105,7 @@ def test_trading_circuit_breaker():
     try:
         from core.trading_circuit_breaker import (
             TradingCircuitBreaker,
-            get_trading_circuit_breaker,
+            get_trading_circuit_breaker,  # noqa: F401  (sonde)
             CircuitBreakerState
         )
         print(f"{GREEN}[OK]{RESET} Import TradingCircuitBreaker")

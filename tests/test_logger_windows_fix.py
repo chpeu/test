@@ -31,7 +31,7 @@ class TestLoggerWindowsFix:
             mock_handler = Mock()
             MockHandler.return_value = mock_handler
 
-            logger = setup_logger(log_to_file=True, level="INFO")
+            setup_logger(log_to_file=True, level="INFO")
 
             # Vérifier que SafeRotatingFileHandler est utilisé
             MockHandler.assert_called_once()
@@ -78,7 +78,7 @@ class TestLoggerWindowsFix:
             MockHandler.side_effect = Exception("Permission denied")
 
             # Mock logger pour capturer le warning
-            with patch("utils.logger.logger") as mock_logger_instance:
+            with patch("utils.logger.logger"):
                 logger = setup_logger(log_to_file=True)
 
                 # Logger devrait être créé malgré l'exception
@@ -105,7 +105,7 @@ class TestLoggerWindowsFix:
             mock_ws_handler = Mock()
             MockWSHandler.return_value = mock_ws_handler
 
-            logger = setup_logger(ws_manager=mock_ws_manager)
+            setup_logger(ws_manager=mock_ws_manager)
 
             # Vérifier que WebSocket handler est créé et configuré
             MockWSHandler.assert_called_once()
@@ -119,7 +119,7 @@ class TestLoggerWindowsFix:
                 mock_handler = Mock()
                 MockHandler.return_value = mock_handler
 
-                logger = setup_logger(log_to_file=True)
+                setup_logger(log_to_file=True)
 
                 # En mode debug, le niveau devrait être DEBUG
                 mock_handler.setLevel.assert_called_with(logging.DEBUG)
@@ -131,7 +131,7 @@ class TestLoggerWindowsFix:
                 mock_handler = Mock()
                 MockHandler.return_value = mock_handler
 
-                logger = setup_logger(log_to_file=True)
+                setup_logger(log_to_file=True)
 
                 # En mode production, le niveau devrait être INFO
                 mock_handler.setLevel.assert_called_with(logging.INFO)
@@ -231,7 +231,7 @@ class TestLoggerIntegration:
 
     def test_logger_console_and_file_output(self):
         """Test que le logger écrit sur console ET fichier"""
-        with patch("sys.stdout") as mock_stdout:
+        with patch("sys.stdout"):
             logger = setup_logger(log_to_file=True, level="INFO")
 
             logger.info("Test dual output message")

@@ -229,7 +229,7 @@ class TestEffectiveConfigSimple:
         ]
         
         for key in common_keys:
-            value = get_effective_value(key)
+            get_effective_value(key)
             # Peut être None, 0, ou une valeur - pas d'erreur
             assert True
     
@@ -363,17 +363,13 @@ class TestErrorHandling:
     
     def test_exception_handling(self):
         """Test gestion exceptions"""
-        try:
-            result = 10 / 2
-            assert result == 5
-        except ZeroDivisionError:
-            assert False, "Ne devrait pas arriver"
-        
-        try:
-            result = 10 / 0
-            assert False, "Devrait lever une exception"
-        except ZeroDivisionError:
-            assert True, "Exception attendue"
+        # Divisions garde-fou : la bonne marche calcule, la division par zero leve.
+        # (L'ancien corps testait avec `try/except: assert False` — ces assertions
+        #-la disparaissent avec `python -O` : le test ne verifiait plus rien.)
+        assert 10 / 2 == 5
+
+        with pytest.raises(ZeroDivisionError):
+            _ = 10 / 0
     
     def test_type_checking(self):
         """Test vérifications de type"""

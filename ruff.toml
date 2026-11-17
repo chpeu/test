@@ -77,10 +77,14 @@ extend-immutable-calls = [
 
 [lint.per-file-ignores]
 # ─────────────────────────────────────────────────────────────────────────────
-# Dette constatée le 10/10/2026, zone par zone. Chaque liste est un périmètre
-# oÙ la règle est désactivée POUR LES SITES EXISTANTS : une nouvelle violation
-# d'une règle NON listée, n'importe où, fait échouer la CI. À solder en vidant
-# ces listes, jamais en en ajoutant.
+# Liste VIDÉE le 17/11/2026 : les cinq zones qui y figuraient (`tests/**`,
+# `scripts/**`, `verification/**`, `examples/**`, `tools/**`) sont passées à zéro
+# violation, elles sont donc désormais tenues par les mêmes règles que le code de
+# production. Total soldé : 323 signalements (124 imports morts, 116 variables
+# inutiles, 26 variables de boucle, 11 `zip()` sans `strict`, 9 variables
+# d'environnement mal typées, plus F601/B023/B004/B011/B017/B018/F811 traités un
+# par un). Une nouvelle exemption doit être justifiée par une ligne ci-dessous ET
+# prouvée avec un fichier sonde volontairement cassé.
 # ─────────────────────────────────────────────────────────────────────────────
 # Scripts d'un jour à la racine du dépôt : ils sont passés à zero en ce commit, ils
 # restent donc DANS le portique, sans exemption.
@@ -90,13 +94,4 @@ extend-immutable-calls = [
 # désactive les règles dans TOUT le dépôt, portique compris (vérifié avec un fichier
 # volontairement cassé dans api/). Les motifs ci-dessous commencent donc tous par un
 # nom de répertoire ; une nouvelle exemption sans répertoire doit être prouvée.
-"tests/**" = [
-    "F401",  # imports de fixtures/patch utilisés par effet de bord
-    "F811",
-    "F841",  # 89 sites : variables de test préparées puis lues via l'objet testé
-    "B004", "B007", "B009", "B010", "B011", "B017", "B018",
-]
-"scripts/**" = ["F401", "F841", "B007", "B905", "PLW1508"]
-"verification/**" = ["F401", "F601", "F841", "B007", "B023", "B905", "PLW1508", "PLW1510"]
-"examples/**" = ["F401", "F841"]
-"tools/**" = ["F841", "PLW1510"]
+# (aucune exemption en vigueur)

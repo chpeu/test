@@ -294,7 +294,7 @@ class TestScalabilityScanner:
         """Test synchrone fetch_spread_data avec orderbook vide"""
         from core.scanner import ScalabilityScanner
         
-        scanner = ScalabilityScanner()
+        ScalabilityScanner()
         
         # Simulation directe sans async - validation logique business
         empty_orderbook = {}
@@ -316,7 +316,7 @@ class TestScalabilityScanner:
         """Test synchrone fetch_spread_data calcul spread correct"""
         from core.scanner import ScalabilityScanner
         
-        scanner = ScalabilityScanner()
+        ScalabilityScanner()
         
         # Mock orderbook valide
         orderbook = {
@@ -356,7 +356,7 @@ class TestScalabilityScanner:
         """Test synchrone scan_pair validation données insuffisantes"""
         from core.scanner import ScalabilityScanner
         
-        scanner = ScalabilityScanner()
+        ScalabilityScanner()
         
         # Simulation klines insuffisantes
         insufficient_klines = [
@@ -399,7 +399,7 @@ class TestScalabilityScanner:
         """Test synchrone validation logique business scan_top_pairs"""
         from core.scanner import ScalabilityScanner
         
-        scanner = ScalabilityScanner()
+        ScalabilityScanner()
         
         # Mock markets configuration
         mock_markets = {

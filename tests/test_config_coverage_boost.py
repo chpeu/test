@@ -282,8 +282,8 @@ class TestIntegrationBasic:
     def test_core_and_api_integration(self):
         """Test intégration core + api"""
         try:
-            import core.scanner
-            import api.mexc_client
+            import core.scanner  # noqa: F401  (sonde : l'import est le test)
+            import api.mexc_client  # noqa: F401  (sonde : l'import est le test)
             
             # Test que les imports fonctionnent ensemble
             assert True

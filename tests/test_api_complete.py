@@ -20,7 +20,7 @@ class TestAuth:
     def test_auth_import(self):
         """Test import du module auth"""
         try:
-            import api.auth
+            import api.auth  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module auth non disponible")
@@ -41,7 +41,7 @@ class TestLiveTradingEndpoints:
     def test_live_trading_endpoints_import(self):
         """Test import du module live_trading_endpoints"""
         try:
-            import api.live_trading_endpoints
+            import api.live_trading_endpoints  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module live_trading_endpoints non disponible")
@@ -62,7 +62,7 @@ class TestMexc:
     def test_mexc_import(self):
         """Test import du module mexc"""
         try:
-            import api.mexc
+            import api.mexc  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module mexc non disponible")
@@ -107,7 +107,7 @@ class TestRegimeEndpoints:
     def test_regime_endpoints_import(self):
         """Test import du module regime_endpoints"""
         try:
-            import api.regime_endpoints
+            import api.regime_endpoints  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module regime_endpoints non disponible")
@@ -128,7 +128,7 @@ class TestReliability:
     def test_reliability_import(self):
         """Test import du module reliability"""
         try:
-            import api.reliability
+            import api.reliability  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module reliability non disponible")
@@ -149,7 +149,7 @@ class TestRoutesAnalytics:
     def test_routes_analytics_import(self):
         """Test import du module routes analytics"""
         try:
-            import api.routes.analytics
+            import api.routes.analytics  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.analytics non disponible")
@@ -170,7 +170,7 @@ class TestRoutesConfig:
     def test_routes_config_import(self):
         """Test import du module routes config"""
         try:
-            import api.routes.config
+            import api.routes.config  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.config non disponible")
@@ -191,7 +191,7 @@ class TestRoutesDashboard:
     def test_routes_dashboard_import(self):
         """Test import du module routes dashboard"""
         try:
-            import api.routes.dashboard
+            import api.routes.dashboard  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.dashboard non disponible")
@@ -212,7 +212,7 @@ class TestRoutesExport:
     def test_routes_export_import(self):
         """Test import du module routes export"""
         try:
-            import api.routes.export
+            import api.routes.export  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.export non disponible")
@@ -233,7 +233,7 @@ class TestRoutesLogs:
     def test_routes_logs_import(self):
         """Test import du module routes logs"""
         try:
-            import api.routes.logs
+            import api.routes.logs  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.logs non disponible")
@@ -254,7 +254,7 @@ class TestRoutesMetrics:
     def test_routes_metrics_import(self):
         """Test import du module routes metrics"""
         try:
-            import api.routes.metrics
+            import api.routes.metrics  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.metrics non disponible")
@@ -275,7 +275,7 @@ class TestRoutesMl:
     def test_routes_ml_import(self):
         """Test import du module routes ml"""
         try:
-            import api.routes.ml
+            import api.routes.ml  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml non disponible")
@@ -296,7 +296,7 @@ class TestRoutesMlConfig:
     def test_routes_ml_config_import(self):
         """Test import du module routes ml_config"""
         try:
-            import api.routes.ml_config
+            import api.routes.ml_config  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml_config non disponible")
@@ -317,7 +317,7 @@ class TestRoutesMlModels:
     def test_routes_ml_models_import(self):
         """Test import du module routes ml_models"""
         try:
-            import api.routes.ml_models
+            import api.routes.ml_models  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml_models non disponible")
@@ -338,7 +338,7 @@ class TestRoutesNotifications:
     def test_routes_notifications_import(self):
         """Test import du module routes notifications"""
         try:
-            import api.routes.notifications
+            import api.routes.notifications  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.notifications non disponible")
@@ -359,7 +359,7 @@ class TestRoutesPosition:
     def test_routes_position_import(self):
         """Test import du module routes position"""
         try:
-            import api.routes.position
+            import api.routes.position  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.position non disponible")
@@ -380,7 +380,7 @@ class TestRoutesPrice:
     def test_routes_price_import(self):
         """Test import du module routes price"""
         try:
-            import api.routes.price
+            import api.routes.price  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.price non disponible")
@@ -401,7 +401,7 @@ class TestRoutesScanner:
     def test_routes_scanner_import(self):
         """Test import du module routes scanner"""
         try:
-            import api.routes.scanner
+            import api.routes.scanner  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.scanner non disponible")
@@ -422,7 +422,7 @@ class TestRoutesWebsocketStats:
     def test_routes_websocket_stats_import(self):
         """Test import du module routes websocket_stats"""
         try:
-            import api.routes.websocket_stats
+            import api.routes.websocket_stats  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.websocket_stats non disponible")
@@ -446,7 +446,7 @@ class TestRoutesMlCalibration:
     def test_routes_ml_calibration_import(self):
         """Test import du module routes ml_calibration"""
         try:
-            import api.routes.ml_calibration
+            import api.routes.ml_calibration  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml_calibration non disponible")
@@ -467,7 +467,7 @@ class TestRoutesMlDashboard:
     def test_routes_ml_dashboard_import(self):
         """Test import du module routes ml_dashboard"""
         try:
-            import api.routes.ml_dashboard
+            import api.routes.ml_dashboard  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml_dashboard non disponible")
@@ -488,7 +488,7 @@ class TestRoutesMlPredictions:
     def test_routes_ml_predictions_import(self):
         """Test import du module routes ml_predictions"""
         try:
-            import api.routes.ml_predictions
+            import api.routes.ml_predictions  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml_predictions non disponible")
@@ -509,7 +509,7 @@ class TestRoutesMlTasks:
     def test_routes_ml_tasks_import(self):
         """Test import du module routes ml_tasks"""
         try:
-            import api.routes.ml_tasks
+            import api.routes.ml_tasks  # noqa: F401  (sonde : l'import est le test)
             assert True
         except ImportError:
             pytest.skip("Module routes.ml_tasks non disponible")

@@ -51,7 +51,8 @@ def test_1_script_direct():
             capture_output=True,
             text=True,
             timeout=60,  # 1 minute max pour ce test
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+                check=False,  # code retour lu par le script (returncode/stderr)
         )
         
         stdout = result.stdout

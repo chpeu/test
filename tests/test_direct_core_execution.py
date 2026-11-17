@@ -57,7 +57,7 @@ class TestAnalyzerDirectExecution:
         
         # Exécuter au moins une classe
         classes_executed = 0
-        for class_name, class_obj in classes[:3]:  # Limiter à 3
+        for _class_name, class_obj in classes[:3]:  # Limiter à 3
             try:
                 with patch('core.analyzer.get_mexc_client', return_value=Mock()):
                     instance = class_obj()
@@ -70,7 +70,12 @@ class TestAnalyzerDirectExecution:
                                 if callable(method):
                                     if 'analyze' in method_name:
                                         method("BTC/USDT:USDT")
-                                    elif hasattr(method, '__call__'):
+                                    else:
+                                        # `callable(method)` vient d'etre verifie : le test
+                                        # `hasattr(method, '__call__')` etait toujours vrai ici,
+                                        # et n'est de toute facon pas la facon fiable de tester
+                                        # le caractere appelable (objets sans __call__ mais
+                                        # appelables vus par callable()).
                                         method()
                             except Exception:
                                 pass
@@ -150,7 +155,7 @@ class TestPositionManagerDirectExecution:
             try:
                 instance = class_obj()
                 assert instance is not None
-            except Exception as e:
+            except Exception:
                 # Si l'instanciation échoue, c'est OK - le test vérifie juste qu'on peut charger le module
                 pass
         
@@ -380,7 +385,7 @@ class TestExceptionsDirectExecution:
         
         exceptions_tested = 0
         
-        for exc_name, exc_class in exception_classes:
+        for _exc_name, exc_class in exception_classes:
             try:
                 # Créer exception
                 exc = exc_class("Test message")

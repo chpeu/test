@@ -74,7 +74,7 @@ def check_trading_config():
     print("=" * 60)
     
     try:
-        from config import TRADING_CONFIG, MARKET_REGIME_V2_CONFIG
+        from config import TRADING_CONFIG, MARKET_REGIME_V2_CONFIG  # noqa: F401  (sonde : l'import est le test)
         
         print(f"  [OK] MARKET_REGIME_V2_CONFIG charge ({len(MARKET_REGIME_V2_CONFIG)} cles)")
         
@@ -107,7 +107,6 @@ def check_get_config_value():
             ('market_regime_smoothing_alpha', 0.3),
         ]
         
-        all_ok = True
         for key, expected in tests:
             value = get_config_value(key, expected)
             status = "[OK]" if value == expected else "[DIFF]"
@@ -135,7 +134,7 @@ def check_v1_behavior():
         
         # calculate_atr_metric devrait retourner la moyenne (pas la mediane)
         result = rs.calculate_atr_metric(test_values)
-        expected_mean = sum(test_values) / len(test_values)
+        sum(test_values) / len(test_values)
         
         # Avec outlier_filter=True par defaut, l'outlier peut etre filtre
         print(f"  Valeurs test: {test_values}")
@@ -177,7 +176,7 @@ def check_v2_behavior_simulation():
         from core.market_regime_selector import MarketRegimeSelector
         import statistics
         
-        rs = MarketRegimeSelector()
+        MarketRegimeSelector()
         
         # Simuler les donnees
         test_values = [0.20, 0.22, 0.19, 0.21, 0.23, 0.18, 0.85]  # 0.85 = outlier

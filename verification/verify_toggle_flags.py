@@ -70,8 +70,8 @@ def verify_toggle_flags():
     
     if "trading_circuit_breaker_enabled" in pm_content and "record_trade" in pm_content:
         # Verifier que le check est AVANT record_trade
-        idx_check = pm_content.find("trading_circuit_breaker_enabled")
-        idx_record = pm_content.find("record_trade")
+        pm_content.find("trading_circuit_breaker_enabled")
+        pm_content.find("record_trade")
         
         # Trouver le bloc qui contient les deux
         if "if TRADING_CONFIG.get('trading_circuit_breaker_enabled'" in pm_content:

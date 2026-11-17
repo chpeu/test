@@ -102,7 +102,7 @@ class TestScannerPhase3DashboardMetrics:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method()
+                        method()
                         return  # Test passé
                     except Exception:
                         return  # OK avec mocks
@@ -273,7 +273,7 @@ class TestScannerPhase3DashboardDataProcessing:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method(comparison_data)
+                        method(comparison_data)
                         return
                     except Exception:
                         return
@@ -332,7 +332,7 @@ class TestScannerPhase3DashboardVisualization:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method()
+                        method()
                         return
                     except Exception:
                         return
@@ -356,7 +356,7 @@ class TestScannerPhase3DashboardVisualization:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method()
+                        method()
                         return
                     except Exception:
                         return
@@ -455,7 +455,7 @@ class TestScannerPhase3DashboardConfiguration:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method()
+                        method()
                         return
                     except Exception:
                         return

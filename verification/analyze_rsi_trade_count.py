@@ -14,7 +14,8 @@ def run_sql(query):
     result = subprocess.run(
         ['psql', '-h', 'localhost', '-U', 'postgres', '-d', 'trade_cursor_ml', 
          '-t', '-A', '-F', '|', '-c', query],
-        capture_output=True, text=True, env=env, encoding='utf-8', errors='replace'
+        capture_output=True, text=True, env=env, encoding='utf-8', errors='replace',
+            check=False,  # code retour lu par le script (returncode/stderr)
     )
     if result.returncode != 0:
         return []

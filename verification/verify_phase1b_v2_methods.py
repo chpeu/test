@@ -40,7 +40,7 @@ def test_calculate_atr_metric():
     
     # Test sans median (defaut)
     result = rs.calculate_atr_metric(test_values)
-    expected_mean = sum(test_values) / len(test_values)  # ~0.297 avec outlier
+    sum(test_values) / len(test_values)  # ~0.297 avec outlier
     
     print(f"  Valeurs: {test_values}")
     print(f"  Outliers filtres: {rs.last_outliers_count}")

@@ -6,7 +6,7 @@ def apply_migration_robust():
     load_dotenv()
     pg_config = {
         'host': os.getenv('POSTGRES_HOST', 'localhost'),
-        'port': int(os.getenv('POSTGRES_PORT', 5432)),
+        'port': int(os.getenv('POSTGRES_PORT') or 5432),
         'database': os.getenv('POSTGRES_DB', 'trade_cursor_ml'),
         'user': os.getenv('POSTGRES_USER', 'postgres'),
         'password': os.getenv('POSTGRES_PASSWORD'),
@@ -108,7 +108,7 @@ def apply_migration_robust():
                     recreated_views.append(view)
                     failed_views.remove(view)
                     print(f"    ✓ Vue '{view}' recréée")
-                except Exception as e:
+                except Exception:
                     # Probablement une dépendance manquante pour l'instant
                     pass
         

@@ -402,7 +402,7 @@ def print_aggregated_comparison(
 
     if pnl_mismatches:
         print("\nMISMATCH P&L (pnl_usdt):")
-        for mexc, db_trade, pnl, db_pnl in pnl_mismatches[:20]:
+        for mexc, _db_trade, pnl, db_pnl in pnl_mismatches[:20]:
             symbol_label = mexc.get("symbol_raw") or mexc.get("symbol_norm") or "?"
             print(
                 f"- {symbol_label} {mexc.get('timestamp')} | MEXC {pnl:+.4f} vs DB {db_pnl:+.4f}"
@@ -414,7 +414,7 @@ def print_aggregated_comparison(
 
     if fee_mismatches:
         print("\nMISMATCH FRAIS (fees_usdt):")
-        for mexc, db_trade, fee, db_fee in fee_mismatches[:20]:
+        for mexc, _db_trade, fee, db_fee in fee_mismatches[:20]:
             symbol_label = mexc.get("symbol_raw") or mexc.get("symbol_norm") or "?"
             print(
                 f"- {symbol_label} {mexc.get('timestamp')} | MEXC {fee:+.4f} vs DB {db_fee:+.4f}"
@@ -514,7 +514,7 @@ def print_comparison(label: str, matched, unmatched_mexc, unmatched_db):
     for mexc, db_trade, delta in matched:
         pnl = mexc.get("pnl_usdt")
         db_pnl = db_trade.get("pnl_usdt")
-        db_net = db_trade.get("net_pnl_usdt")
+        db_trade.get("net_pnl_usdt")
         if pnl is not None and db_pnl is not None:
             if abs(pnl - db_pnl) > 0.0005:
                 pnl_mismatches.append((mexc, db_trade, pnl, db_pnl, delta))
@@ -526,7 +526,7 @@ def print_comparison(label: str, matched, unmatched_mexc, unmatched_db):
 
     if pnl_mismatches:
         print("\n❌ MISMATCH P&L (pnl_usdt):")
-        for mexc, db_trade, pnl, db_pnl, delta in pnl_mismatches[:20]:
+        for mexc, _db_trade, pnl, db_pnl, delta in pnl_mismatches[:20]:
             symbol_label = mexc.get("symbol_raw") or mexc.get("symbol_norm") or "?"
             print(
                 f"- {symbol_label} {mexc.get('timestamp')} | MEXC {pnl:+.4f} vs DB {db_pnl:+.4f} | Δt {delta}"
@@ -538,7 +538,7 @@ def print_comparison(label: str, matched, unmatched_mexc, unmatched_db):
 
     if fee_mismatches:
         print("\n⚠️ MISMATCH FRAIS (fees_usdt):")
-        for mexc, db_trade, fee, db_fee, delta in fee_mismatches[:20]:
+        for mexc, _db_trade, fee, db_fee, delta in fee_mismatches[:20]:
             symbol_label = mexc.get("symbol_raw") or mexc.get("symbol_norm") or "?"
             print(
                 f"- {symbol_label} {mexc.get('timestamp')} | MEXC {fee:+.4f} vs DB {db_fee:+.4f} | Δt {delta}"

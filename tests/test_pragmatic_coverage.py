@@ -21,7 +21,7 @@ def execute_code_lines(module_path, lines_to_execute=50):
         # Exécuter code Python simple ligne par ligne
         lines = content.split('\n')
         
-        for i, line in enumerate(lines[:lines_to_execute]):
+        for _i, line in enumerate(lines[:lines_to_execute]):
             line = line.strip()
             
             # Skip comments and empty lines
@@ -206,12 +206,8 @@ class TestPragmaticCoreExecution:
                 app_state = state_manager.get_app_state()
                 assert isinstance(app_state, dict)
                 
-            # Test data structures
-            test_data = {
-                'symbol': 'BTC/USDT:USDT',
-                'price': 45000.0,
-                'timestamp': 1000000
-            }
+            # (Supprime le dictionnaire `test_data` : construit puis jamais utilise —
+            #  il ne testait rien et comptait dans la couverture.)
             
             if hasattr(state_manager, 'set_last_price'):
                 state_manager.set_last_price('BTC/USDT:USDT', 45000.0)
@@ -281,7 +277,7 @@ class TestMassiveMathematicalOperations:
         # Portfolio calculations
         for portfolio_size in [1000, 5000, 10000, 50000]:
             for num_positions in [1, 3, 5, 10]:
-                position_size = portfolio_size / num_positions
+                assert portfolio_size / num_positions > 0
                 
                 for risk_per_trade in [0.5, 1.0, 1.5, 2.0]:
                     risk_amount = portfolio_size * (risk_per_trade / 100)
@@ -391,7 +387,8 @@ class TestMassiveMathematicalOperations:
                     for multiplier in [0.5, 1.0, 1.5, 2.0, 3.0]:
                         profit_target = spread * multiplier
                         potential_profit = profit_target * position_size
-                        profit_pct = (potential_profit / account_size) * 100
+                        assert potential_profit >= 0
+                        assert (potential_profit / account_size) * 100 >= 0
                         
                         # Risk/Reward ratio
                         rr_ratio = profit_target / spread if spread > 0 else 0

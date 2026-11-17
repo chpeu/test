@@ -125,7 +125,7 @@ class TestTestableScalabilityScorerCalculateScore:
                 with patch.object(
                     scorer, "_check_basic_filters", return_value="Low volatility"
                 ):
-                    result = scorer.calculate_score(market_data)
+                    scorer.calculate_score(market_data)
 
                     assert "Low volatility" in scorer.rejection_reasons
                     assert scorer.last_rejection_reason == "Low volatility"
@@ -159,7 +159,7 @@ class TestTestableScalabilityScorerCalculateScore:
                                 with patch("logging.Logger.debug"):
                                     # Ajouter un petit délai pour que le temps soit mesurable
                                     time.sleep(0.001)  # 1ms
-                                    result = scorer.calculate_score(market_data)
+                                    scorer.calculate_score(market_data)
 
                                     assert (
                                         scorer.total_scoring_time_ms >= 0

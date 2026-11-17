@@ -102,7 +102,7 @@ print("-" * 70)
 
 if rows:
     for row in rows:
-        t = dict(zip(cols, row))
+        t = dict(zip(cols, row, strict=True))
         entry = t['entry_price'] or 1
         max_p = t['max_price_reached']
         min_p = t['min_price_reached']

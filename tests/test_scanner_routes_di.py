@@ -37,6 +37,45 @@ def mock_app_state():
     return {'top_pairs': ['BTC/USDT:USDT'], 'scanner_running': False}
 
 
+class TestVerrouDeVisite:
+    """`VISITE_SANS_SCAN=1` doit boucher la porte du scan a la source."""
+
+    def test_scanner_start_refuse_en_mode_visite(self, client, mock_scanner, mock_app_state, monkeypatch):
+        """POST /api/scanner/start : 403 et aucun scan lance."""
+        from main import app
+
+        monkeypatch.setenv("VISITE_SANS_SCAN", "1")
+        app.dependency_overrides[get_scanner] = lambda: mock_scanner
+        app.dependency_overrides[get_app_state] = lambda: mock_app_state
+        try:
+            response = client.post("/api/scanner/start", json={"top_n": 5})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 403
+        assert response.json()['locked'] is True
+        mock_scanner.scan_top_pairs.assert_not_called()
+
+    def test_scanner_start_passe_sans_le_verrou(self, client, mock_scanner, mock_app_state, monkeypatch):
+        """Sans la variable, la route fonctionne : le verrou ne casse rien."""
+        from main import app
+
+        monkeypatch.delenv("VISITE_SANS_SCAN", raising=False)
+        app.dependency_overrides[get_scanner] = lambda: mock_scanner
+        app.dependency_overrides[get_app_state] = lambda: mock_app_state
+        # `emit` est attendue : il faut une correction asynchrone, pas une Mock simple.
+        ws = Mock()
+        ws.emit = AsyncMock(return_value=True)
+        app.dependency_overrides[get_ws_manager] = lambda: ws
+        try:
+            response = client.post("/api/scanner/start", json={"top_n": 5})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        mock_scanner.scan_top_pairs.assert_called_once()
+
+
 class TestTopPairsRoute:
     """Tests pour GET /api/scanner/top-pairs"""
 

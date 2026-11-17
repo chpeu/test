@@ -121,7 +121,7 @@ class TestRefactoringDashboardMetrics:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method()
+                        method()
                         # Si méthode existe et est appelable, c'est bon
                         break
                     except Exception:
@@ -182,7 +182,7 @@ class TestRefactoringDashboardFeatureFlags:
                 method = getattr(dashboard, method_name)
                 if callable(method):
                     try:
-                        result = method('test_flag', True)
+                        method('test_flag', True)
                         # Si pas d'exception, c'est bon
                         return
                     except Exception:
@@ -333,7 +333,6 @@ class TestRefactoringDashboardData:
     
     def test_data_formatting(self):
         """Test formatage des données pour affichage"""
-        dashboard = self.dashboard
         
         # Test données factices
         test_data = {
@@ -349,7 +348,6 @@ class TestRefactoringDashboardData:
         
     def test_time_series_data(self):
         """Test gestion données temporelles"""
-        dashboard = self.dashboard
         
         # Données temporelles typiques d'un dashboard
         time_data = []
@@ -379,7 +377,7 @@ class TestRefactoringDashboardErrorHandling:
              patch('core.monitoring.refactoring_dashboard.get_position_factory', side_effect=Exception("Mock error")):
             
             try:
-                dashboard = RefactoringDashboard()
+                RefactoringDashboard()
                 # Si pas d'exception, la gestion d'erreur fonctionne
                 assert True
             except Exception:

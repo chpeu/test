@@ -39,7 +39,9 @@ class MEXCTokenMonitor:
             # Exécuter le validator
             result = subprocess.run([
                 'python', 'tools/validate_mexc_tokens.py'
-            ], capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+            ], capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+            check=False,  # code retour lu juste apres (returncode)
+            )
             
             if result.returncode == 0:
                 self.logger.info("✅ Tokens en bonne santé")
@@ -95,7 +97,9 @@ class MEXCTokenMonitor:
             self.logger.info("1️⃣ Extraction nouveau token...")
             result = subprocess.run([
                 'python', 'tools/mexc_token_extractor.py', 'once'
-            ], capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+            ], capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+            check=False,  # code retour lu juste apres (returncode)
+            )
             
             if result.returncode != 0:
                 self.logger.error("❌ Échec extraction token")
@@ -108,7 +112,9 @@ class MEXCTokenMonitor:
             self.logger.info("2️⃣ Synchronisation...")
             result = subprocess.run([
                 'python', 'tools/sync_mexc_token.py'
-            ], capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+            ], capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+            check=False,  # code retour lu juste apres (returncode)
+            )
             
             if result.returncode != 0:
                 self.logger.error("❌ Échec synchronisation")

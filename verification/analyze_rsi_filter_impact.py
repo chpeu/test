@@ -31,7 +31,7 @@ with engine.connect() as conn:
     rows = result.fetchall()
     cols = list(result.keys())
 
-trades = [dict(zip(cols, row)) for row in rows]
+trades = [dict(zip(cols, row, strict=True)) for row in rows]
 
 print("=" * 70)
 print("ANALYSE IMPACT FILTRE RSI - DERNIÈRES 24H")

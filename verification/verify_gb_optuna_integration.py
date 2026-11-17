@@ -175,7 +175,7 @@ def run_quick_optimization_test():
         print(f"   ✅ {n_samples} samples chargés")
         
         print("   ⏳ Optimisation (5 trials)...")
-        best_params = optimizer.optimize(n_trials=5, timeout_minutes=2)
+        optimizer.optimize(n_trials=5, timeout_minutes=2)
         print("   ✅ Meilleurs paramètres trouvés")
         
         print("   ⏳ Validation holdout...")

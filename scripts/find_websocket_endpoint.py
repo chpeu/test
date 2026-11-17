@@ -12,7 +12,7 @@ async def test_websocket_url(url):
     try:
         print(f"🔗 Test: {url}")
         
-        async with websockets.connect(url, timeout=5) as websocket:
+        async with websockets.connect(url, timeout=5):
             print(f"✅ SUCCÈS: {url} - Connexion établie")
             return True
             

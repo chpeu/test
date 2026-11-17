@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 async def main():
     try:
-        from core.postgresql_datalogger import PostgreSQLDataLogger
-        from config import TRADING_CONFIG
+        from core.postgresql_datalogger import PostgreSQLDataLogger  # noqa: F401  (sonde : l'import est le test)
+        from config import TRADING_CONFIG  # noqa: F401  (sonde : l'import est le test)
         import psycopg2
         from psycopg2.extras import DictCursor
         

@@ -130,7 +130,7 @@ def check_imports():
     try:
         from utils.session_detector import get_current_session, get_day_info
         session = get_current_session()
-        day = get_day_info()
+        get_day_info()
         print(f"  [OK] session_detector: {session['name']} (x{session['atr_multiplier']})")
     except Exception as e:
         print(f"  [ERREUR] session_detector: {e}")

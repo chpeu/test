@@ -180,7 +180,7 @@ async def main():
                 print("⏱️ Test collecte prix pendant 10 secondes...")
                 samples_collected = 0
                 
-                for i in range(5):
+                for _i in range(5):
                     await asyncio.sleep(2)
                     tracker = post_exit_mgr.active_trackers.get(test_symbol)
                     if tracker:

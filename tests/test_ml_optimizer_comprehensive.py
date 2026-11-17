@@ -45,7 +45,7 @@ class TestLoadData:
         """Test chargement données vides"""
         try:
             from optimization.ml_optimizer import MLOptimizer
-            optimizer = MLOptimizer()
+            MLOptimizer()
             # Would need mocking for empty data test
             pytest.skip("Requires mocking")
         except Exception:
@@ -101,7 +101,7 @@ class TestEvaluate:
         """Test évaluation modèle"""
         try:
             from optimization.ml_optimizer import MLOptimizer
-            optimizer = MLOptimizer()
+            MLOptimizer()
 
             # Would need full setup
             pytest.skip("Evaluate requires full setup")

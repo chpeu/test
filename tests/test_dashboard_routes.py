@@ -231,6 +231,24 @@ class TestDashboardRoutes:
         assert 'error' in data
 
     @pytest.mark.asyncio
+    async def test_start_scanner_refuse_en_mode_visite(self, client, mock_scheduler, mock_app_state, monkeypatch):
+        """`VISITE_SANS_SCAN=1` : /api/start refuse 403 sans toucher au scheduler.
+
+        Le test mord : si le verrou sautait, `scheduler.start` lverait et le test
+        echouerait au lieu de laisser demarrer le robot.
+        """
+        monkeypatch.setenv("VISITE_SANS_SCAN", "1")
+        dashboard._scheduler = mock_scheduler
+        dashboard._app_state = mock_app_state
+        mock_scheduler.start.side_effect = AssertionError("le scheduler ne doit pas demarrer")
+
+        response = client.post("/api/start", headers={"X-API-Key": "test_key"})
+
+        assert response.status_code == 403
+        assert response.json()['locked'] is True
+        mock_scheduler.start.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_start_scanner_no_scheduler(self, client):
         """Test /api/start when scheduler is not available"""
         dashboard._scheduler = None
@@ -241,6 +259,59 @@ class TestDashboardRoutes:
             assert response.status_code == 200
             data = response.json()
             assert data['success'] is False
+
+    @pytest.mark.asyncio
+    async def test_start_scanner_uses_state_scheduler_fallback(
+        self, client, mock_scheduler, mock_app_state, mock_ws_manager
+    ):
+        """Le scheduler connu de `state_manager` suffit à démarrer le scan.
+
+        Repère le trou corrigé : l'injection du scheduler dans les routes
+        (étape 7 bis de core/bootstrap.py) peut échouer alors que le scheduler
+        existe dans state_manager. Sans le repli `_resolve_scheduler()`, la route
+        répondait « Scheduler not available » et le bot ne démarrait jamais.
+        """
+        from core.state_manager import get_state_manager
+
+        state = get_state_manager()
+        dashboard._scheduler = None
+        dashboard._app_state = mock_app_state
+        dashboard._ws_manager = mock_ws_manager
+        mock_app_state['is_scanning'] = False
+
+        state.set_scheduler(mock_scheduler)
+        try:
+            response = client.post("/api/start")
+        finally:
+            # Le state_manager est un singleton : ne rien laisser derrière soi.
+            state.set_scheduler(None)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+        mock_scheduler.start.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_scanner_uses_state_scheduler_fallback(
+        self, client, mock_scheduler, mock_app_state
+    ):
+        """Même repli pour /api/stop : un scheduler non injecté doit être arrêté."""
+        from core.state_manager import get_state_manager
+
+        state = get_state_manager()
+        dashboard._scheduler = None
+        dashboard._app_state = mock_app_state
+        mock_app_state['is_scanning'] = True
+
+        state.set_scheduler(mock_scheduler)
+        try:
+            response = client.post("/api/stop")
+        finally:
+            state.set_scheduler(None)
+
+        assert response.status_code == 200
+        assert response.json()['success'] is True
+        mock_scheduler.stop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_start_scanner_success(self, client, mock_scheduler, mock_app_state, mock_ws_manager):
@@ -264,7 +335,7 @@ class TestDashboardRoutes:
         dashboard._scheduler = mock_scheduler
         dashboard._app_state = mock_app_state
 
-        response = client.post("/api/start")
+        client.post("/api/start")
         # Scheduler.start should not be called
         mock_scheduler.start.assert_not_called()
 
@@ -315,7 +386,7 @@ class TestDashboardRoutes:
         dashboard._scheduler = mock_scheduler
         dashboard._app_state = mock_app_state
 
-        response = client.post("/api/stop")
+        client.post("/api/stop")
         # Scheduler.stop should not be called
         mock_scheduler.stop.assert_not_called()
 
@@ -359,7 +430,7 @@ class TestDashboardRoutes:
 
         pos_mgr = Mock()
         pos_mgr.config = Mock()
-        setattr(pos_mgr.config, 'recovery_mode_active', True)
+        pos_mgr.config.recovery_mode_active = True
         dashboard._position_manager = pos_mgr
 
         class _State:

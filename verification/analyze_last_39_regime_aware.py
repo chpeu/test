@@ -113,7 +113,7 @@ def main():
     # Global stats
     total_pnl = sum((_safe_float(r.get('net_pnl_pct')) or 0.0) for r in rows)
     wins = [r for r in rows if (_safe_float(r.get('net_pnl_pct')) or 0.0) > 0]
-    losses = [r for r in rows if (_safe_float(r.get('net_pnl_pct')) or 0.0) < 0]
+    [r for r in rows if (_safe_float(r.get('net_pnl_pct')) or 0.0) < 0]
     print("\nGLOBAL")
     print(f"  total_pnl_pct: {total_pnl:+.2f}%")
     print(f"  wins: {len(wins)}/{len(rows)} ({(len(wins)/len(rows)*100 if rows else 0):.1f}%)")
@@ -159,10 +159,13 @@ def main():
         checked += 1
         exp = expected_by_regime[regime]
 
-        # Compare a few key fields
-        def _cmp(field, tol=1e-6):
-            got = _safe_float(r.get(field))
-            expv = exp.get(field)
+        # Compare a few key fields.
+        # La valeur courante est transmise par argument par defaut (`row=r`,
+        # `expected=exp`) : une fermeture ne capture que la variable de boucle, pas
+        # sa valeur, donc un appel plus tardif comparerait la ligne suivante.
+        def _cmp(field, row=r, expected=exp, tol=1e-6):
+            got = _safe_float(row.get(field))
+            expv = expected.get(field)
             if got is None or expv is None:
                 return None
             return abs(got - expv) <= tol

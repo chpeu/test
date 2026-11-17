@@ -158,7 +158,7 @@ def main():
     try:
         from optimization.optuna_gb_tuner import GradientBoostingOptunaOptimizer
         
-        optimizer = GradientBoostingOptunaOptimizer(
+        GradientBoostingOptunaOptimizer(
             n_trials=5,  # Juste pour tester
             timeout_minutes=1,
             cv_folds=3

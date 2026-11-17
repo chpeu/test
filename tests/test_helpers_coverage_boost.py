@@ -135,7 +135,7 @@ class TestMarketHelper:
                 ('BTC/USDT', 'BTC/USDT')
             ]
             
-            for input_symbol, expected in test_cases:
+            for input_symbol, _expected in test_cases:
                 result = format_symbol(input_symbol)
                 if result is not None:
                     assert isinstance(result, str)

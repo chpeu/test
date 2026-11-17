@@ -190,7 +190,7 @@ def test_close_position():
         pm = PositionManager(config)
 
         # Ouvrir position
-        position = pm.open_position(
+        pm.open_position(
             symbol="BTC_USDT",
             direction="LONG",
             entry=50000.0,

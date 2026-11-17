@@ -594,7 +594,7 @@ class TestErrorContext:
         async with ErrorContext(
             operation="Test operation",
             symbol="BTC/USDT"
-        ) as ctx:
+        ):
             # Successful operation
             pass
 

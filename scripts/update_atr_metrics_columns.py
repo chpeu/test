@@ -87,7 +87,6 @@ def update_existing_atr_metrics(limit: int = None, dry_run: bool = False):
     
     for metric in metrics:
         metric_id = metric['id']
-        trade_id = metric['trade_id']
         
         try:
             # Extraire config_snapshot

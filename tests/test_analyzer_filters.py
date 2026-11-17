@@ -90,7 +90,7 @@ class TestCheckVolumeFilter:
     def test_volume_multiplier_effect(self):
         """Test effet du volume_multiplier"""
         # Avec multiplier = 2.0, min_vol_ratio sera plus élevé
-        result = check_volume_filter(
+        check_volume_filter(
             vol_spike=1.0,
             min_vol_ratio=1.0,
             symbol='BTC/USDT:USDT',

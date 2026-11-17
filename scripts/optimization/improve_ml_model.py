@@ -81,8 +81,8 @@ def analyze_features():
     print(f"  Ratio samples/features: {n_samples/max(len(features),1):.1f}")
     
     # Grouper par type
-    indicator_1m = [f for f in features if '_1m' in f and not f.startswith('rsi_') and not f.startswith('macd_')]
-    indicator_5m = [f for f in features if '_5m' in f and not f.startswith('rsi_') and not f.startswith('macd_')]
+    [f for f in features if '_1m' in f and not f.startswith('rsi_') and not f.startswith('macd_')]
+    [f for f in features if '_5m' in f and not f.startswith('rsi_') and not f.startswith('macd_')]
     rsi_features = [f for f in features if 'rsi' in f.lower()]
     macd_features = [f for f in features if 'macd' in f.lower()]
     trend_features = [f for f in features if 'trend' in f.lower()]
@@ -255,13 +255,13 @@ def main():
     print("=" * 60)
     
     # 1. Analyser la distribution des classes
-    imbalance_ratio = analyze_class_distribution()
+    analyze_class_distribution()
     
     # 2. Analyser les features
     analyze_features()
     
     # 3. Suggerer des ameliorations
-    solutions = suggest_improvements()
+    suggest_improvements()
     
     # 4. Creer un optimiseur ameliore
     create_improved_optimizer()
@@ -270,7 +270,7 @@ def main():
     calculate_optimal_threshold()
     
     # 6. Config rapide
-    improved_config = create_quick_improvement_config()
+    create_quick_improvement_config()
     
     print("\n" + "=" * 60)
     print("RESUME")

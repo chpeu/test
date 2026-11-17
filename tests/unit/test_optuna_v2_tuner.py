@@ -184,7 +184,7 @@ class TestStudyAttributes:
             mock_study = Mock()
             mock_create.return_value = mock_study
 
-            tuner = OptunaV2Tuner()
+            OptunaV2Tuner()
 
             # Vérifier que study a été créé avec direction="maximize"
             call_args = mock_create.call_args
@@ -200,7 +200,7 @@ class TestSamplerAndPruner:
             mock_study = Mock()
             mock_create.return_value = mock_study
 
-            tuner = OptunaV2Tuner()
+            OptunaV2Tuner()
 
             # Vérifier les paramètres du sampler
             call_args = mock_create.call_args
@@ -220,7 +220,7 @@ class TestSamplerAndPruner:
             mock_study = Mock()
             mock_create.return_value = mock_study
 
-            tuner = OptunaV2Tuner(pruning=True)
+            OptunaV2Tuner(pruning=True)
 
             call_args = mock_create.call_args
             pruner = call_args[1]["pruner"]
@@ -233,7 +233,7 @@ class TestSamplerAndPruner:
             mock_study = Mock()
             mock_create.return_value = mock_study
 
-            tuner = OptunaV2Tuner(pruning=False)
+            OptunaV2Tuner(pruning=False)
 
             call_args = mock_create.call_args
             pruner = call_args[1]["pruner"]
@@ -265,7 +265,7 @@ class TestLoadIfExists:
             mock_study = Mock()
             mock_create.return_value = mock_study
 
-            tuner = OptunaV2Tuner()
+            OptunaV2Tuner()
 
             call_args = mock_create.call_args
             assert call_args[1]["load_if_exists"] is True

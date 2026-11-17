@@ -26,7 +26,7 @@ try:
     active_positions = state.get('active_positions', {})
     print(f"\n📊 Positions dans state.json: {len(active_positions)}")
     
-    for pos_id, pos in active_positions.items():
+    for _pos_id, pos in active_positions.items():
         symbol = pos.get('symbol', 'N/A')
         direction = pos.get('direction', 'N/A')
         entry_price = pos.get('entry_price', 0)
@@ -108,7 +108,7 @@ total_pnl = float(today['pnl_today'] or 0)
 total_usdt = float(today['pnl_usdt_today'] or 0)
 
 # Ajouter PnL des positions ouvertes (approximation)
-for pos_id, pos in active_positions.items():
+for _pos_id, pos in active_positions.items():
     symbol = pos.get('symbol', 'N/A')
     direction = pos.get('direction', 'N/A')
     entry_price = float(pos.get('entry_price', 0))

@@ -520,7 +520,7 @@ class TestExecutionBreadth:
                 
                 if callable(func_or_attr) and args is not None:
                     try:
-                        result = func_or_attr(*args)
+                        func_or_attr(*args)
                         executed_functions += 1
                     except Exception:
                         # Fonction exécutée même si erreur

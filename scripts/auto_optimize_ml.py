@@ -221,7 +221,8 @@ class MLAutoOptimizer:
                                                 'feature_names': selected_features,
                                                 'feature_importances': dict(zip(
                                                     selected_features,
-                                                    importances[top_idx].tolist()
+                                                    importances[top_idx].tolist(),
+                                                    strict=True,  # memes indices `top_idx` des deux cotes
                                                 )),
                                                 'params': {
                                                     'max_depth': max_depth,

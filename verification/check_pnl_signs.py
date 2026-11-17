@@ -57,7 +57,7 @@ for row in rows:
     base = row[:9]
     extra_values = row[9:]
     tid, sym, direction, entry, exit_p, pnl, net_pnl, size_value, ts = base
-    extra_map = dict(zip(extra_cols, extra_values))
+    extra_map = dict(zip(extra_cols, extra_values, strict=True))
     if size_value is not None and size_value < 0:
         size_negative.append((sym, direction, size_value, ts))
     if entry is None or exit_p is None or pnl is None or size_value is None:

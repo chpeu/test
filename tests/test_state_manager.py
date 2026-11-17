@@ -302,7 +302,6 @@ class TestStateManager:
 
     def test_thread_safety(self):
         """Test thread safety of concurrent access"""
-        results = []
 
         def increment_trades():
             """Incrementer total_trades 100 fois"""

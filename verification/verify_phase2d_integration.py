@@ -220,7 +220,6 @@ def test_websocket_update_phase2d():
             "if 'drift_detection_enabled' in params:",
         ]
         
-        found = [h for h in handlers if h in content]
         missing = [h for h in handlers if h not in content]
         
         if missing:
@@ -248,7 +247,6 @@ def test_feedback_loop_in_position_manager():
             "optimizer.reset_all()",
         ]
         
-        found = [c for c in checks if c in content]
         missing = [c for c in checks if c not in content]
         
         if missing:

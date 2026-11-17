@@ -319,7 +319,9 @@ class TestSendAlert:
             bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
             chat_id="123456789"
         )
-        with patch.object(notifier, 'send_alert', return_value=True) as mock_send:
+        # Deuxieme moitie du patch duplique : l'alias `mock_send` ne servait pas,
+        # le test verifie la valeur de retour, pas l'appel.
+        with patch.object(notifier, 'send_alert', return_value=True):
             result = notifier.send_alert("Test alerte")
         assert result is True
 
@@ -330,6 +332,6 @@ class TestSendErrorSync:
             bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
             chat_id="123456789"
         )
-        with patch.object(notifier, 'send_alert', return_value=True) as mock_send:
+        with patch.object(notifier, 'send_alert', return_value=True):
             result = notifier.send_error_sync("TestError", "Test details")
         assert result is True

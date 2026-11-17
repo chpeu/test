@@ -347,7 +347,7 @@ class TestAPIEndpoints:
                 try:
                     module = __import__(module_name)
                     if hasattr(module, 'health'):
-                        health_func = getattr(module, 'health')
+                        health_func = module.health
                         assert callable(health_func)
                         break
                 except ImportError:
@@ -365,7 +365,7 @@ class TestAPIEndpoints:
                 try:
                     module = __import__(module_name)
                     if hasattr(module, 'status'):
-                        status_func = getattr(module, 'status')
+                        status_func = module.status
                         if callable(status_func):
                             assert status_func is not None
                             break
@@ -384,7 +384,7 @@ class TestAPIEndpoints:
                 try:
                     module = __import__(module_name)
                     if hasattr(module, 'get_config'):
-                        config_func = getattr(module, 'get_config')
+                        config_func = module.get_config
                         if callable(config_func):
                             assert config_func is not None
                             break

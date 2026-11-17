@@ -121,7 +121,7 @@ class TestFetchWithRetry:
 
         result = await fetch_with_retry(mock_func)
 
-        elapsed = time.time() - start
+        time.time() - start
 
         assert result == "success"
         assert mock_func.call_count == 3

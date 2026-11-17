@@ -515,7 +515,7 @@ class TestUtilsSubstantial:
         set_local_trade_adjustments(adjustments)
         
         # Vérifier que les ajustements sont pris en compte
-        for key, expected_value in adjustments.items():
+        for key, _expected_value in adjustments.items():
             adjusted_value = get_effective_value(key)
             if adjusted_value is not None:
                 # Peut être la valeur ajustée ou la valeur par défaut
