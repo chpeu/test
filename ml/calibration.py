@@ -551,11 +551,18 @@ class MLCalibrationManager:
             logger.debug(f"[CALIB DEBUG] No stats for {direction} {bucket}")
             return None
 
-        # Vérifier minimum de trades
-        if stats.weighted_total < config["min_trades"]:
+        # « Ai-je assez de recul ? » se répond avec le **nombre** de trades, pas
+        # avec le total pondéré. Un trade en essai à blanc porte un poids de 0,2
+        # (il vaut moins qu'un trade réel) : comparer ce total pondéré au seuil de
+        # 10 obligeait le robot à prendre ~50 essais avant de commencer à apprendre.
+        # Mesure du 18/11/2026 : 22 trades dans la case SHORT/50+ ne donnaient que
+        # 4,33 pondéré — la phase d'apprentissage ne se terminait jamais.
+        # La pondération garde son rôle ailleurs (le win rate affiché est bien
+        # pondéré, et un trade réel compte plus qu'un essai dans ce win rate).
+        if stats.total_trades < config["min_trades"]:
             logger.debug(
                 f"Pas assez de trades pour calibration: {direction} {bucket} "
-                f"({stats.total_trades} trades, {stats.weighted_total:.1f} < {config['min_trades']} pondéré)"
+                f"({stats.total_trades} trades < {config['min_trades']} requis)"
             )
             return None
 

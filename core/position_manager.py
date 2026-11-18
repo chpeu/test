@@ -4192,6 +4192,61 @@ class PositionManager:
         )
         return None
 
+    def _mettre_a_jour_calibration_ml(self, net_pnl_pct: float, net_pnl_usdt: float) -> None:
+        """Nourrit la calibration ML après chaque trade fermé.
+
+        Appelé par close_position() AVANT l'écriture en base, et donc quel que
+        soit le chemin d'écriture (boucle asynchrone ou thread de repli).
+        Avant le 18/11/2026, l'appel était rangé dans la branche « thread de
+        repli » : en marche réelle, la boucle asynchrone est presque toujours là,
+        donc la calibration ne recevait que 2 trades sur 54 et restait bloquée
+        en phase d'apprentissage malgré le seuil des 30 trades dépassé.
+        """
+        try:
+            from ml.calibration import get_calibration_manager
+
+            calib_manager = get_calibration_manager()
+            position = self.active_position
+
+            ml_conf = getattr(position, "ml_confidence", None)
+            is_live = getattr(position, "live_execution_mode", None) == "LIVE"
+            is_dry = (
+                self.live_order_manager.dry_run if self.live_order_manager else True
+            )
+            trade_ts = (
+                datetime.fromtimestamp(position.start_time, tz=timezone.utc)
+                if position.start_time
+                else datetime.now(timezone.utc)
+            )
+
+            # ml_confidence arrive parfois en décimal (0,51) alors que la
+            # calibration attend un pourcentage (51) : on ramène tout en %.
+            ml_conf_pct = ml_conf * 100 if ml_conf and ml_conf < 1 else ml_conf
+
+            if not ml_conf_pct or ml_conf_pct < 30:
+                logger.debug(
+                    f"📊 Calibration non mise à jour pour {position.symbol}: "
+                    f"confiance ML absente ou sous 30 % ({ml_conf_pct})"
+                )
+                return
+
+            calib_manager.update_calibration(
+                direction=position.direction,
+                ml_confidence=float(ml_conf_pct),
+                win=net_pnl_pct > 0,
+                pnl_pct=net_pnl_pct,
+                pnl_usdt=net_pnl_usdt,
+                is_live=is_live,
+                is_dry_run=is_dry,
+                trade_timestamp=trade_ts,
+            )
+            logger.info(
+                f"📊 Calibration ML mise à jour: {position.symbol} "
+                f"(conf={ml_conf_pct:.1f}%, {'gain' if net_pnl_pct > 0 else 'perte'})"
+            )
+        except Exception as calib_err:
+            logger.debug(f"Calibration update ignoré (non-bloquant): {calib_err}")
+
     def close_position(
         self, exit_price: float, reason: str, skip_order: bool = False
     ) -> Dict[str, Any]:
@@ -5357,6 +5412,10 @@ class PositionManager:
                     scan_log_id = getattr(self.active_position, "_scan_log_id", None)
                     existing_trade_id = getattr(self.active_position, "_trade_id", None)
 
+                    # Calibration ML : appelée ici, avant l'écriture en base, pour
+                    # qu'aucun chemin d'écriture ne puisse l'oublier.
+                    self._mettre_a_jour_calibration_ml(net_pnl_pct, net_pnl_usdt)
+
                     # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
                     _active_pos_ref = self.active_position  # Capturer référence
                     try:
@@ -5409,61 +5468,8 @@ class PositionManager:
                             f"📊 Trade scheduled pour PostgreSQL: {self.active_position.symbol} (ID: {trade_id})"
                         )
 
-                        # 🔥 ML AUTO-CALIBRATION: Mettre à jour les stats après chaque trade
-                        try:
-                            from ml.calibration import get_calibration_manager
-
-                            calib_manager = get_calibration_manager()
-
-                            # Récupérer les infos nécessaires
-                            ml_conf = getattr(
-                                self.active_position, "ml_confidence", None
-                            )
-                            is_live = (
-                                getattr(
-                                    self.active_position, "live_execution_mode", None
-                                )
-                                == "LIVE"
-                            )
-                            is_dry = (
-                                self.live_order_manager.dry_run
-                                if self.live_order_manager
-                                else True
-                            )
-                            trade_ts = (
-                                datetime.fromtimestamp(
-                                    self.active_position.start_time, tz=timezone.utc
-                                )
-                                if self.active_position.start_time
-                                else datetime.now(timezone.utc)
-                            )
-
-                            # 🔥 FIX: ml_confidence est stockée en décimal (0.51) mais calibration attend % (51)
-                            # Convertir en pourcentage si la valeur est < 1 (décimal)
-                            ml_conf_pct = (
-                                ml_conf * 100 if ml_conf and ml_conf < 1 else ml_conf
-                            )
-
-                            if ml_conf_pct and ml_conf_pct >= 30:
-                                calib_manager.update_calibration(
-                                    direction=self.active_position.direction,
-                                    ml_confidence=float(
-                                        ml_conf_pct
-                                    ),  # Passer en pourcentage
-                                    win=net_pnl_pct > 0,
-                                    pnl_pct=net_pnl_pct,
-                                    pnl_usdt=net_pnl_usdt,
-                                    is_live=is_live,
-                                    is_dry_run=is_dry,
-                                    trade_timestamp=trade_ts,
-                                )
-                                logger.debug(
-                                    f"📊 Calibration ML mise à jour: {self.active_position.symbol} (conf={ml_conf_pct:.1f}%)"
-                                )
-                        except Exception as calib_err:
-                            logger.debug(
-                                f"Calibration update ignoré (non-bloquant): {calib_err}"
-                            )
+                        # La calibration ML est mise à jour plus haut, avant
+                        # l'écriture en base (voir _mettre_a_jour_calibration_ml).
 
                         # 🔥 PHASE 2D: Feedback loop pour Threshold Optimizer + Drift Detection
                         try:

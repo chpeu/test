@@ -519,18 +519,19 @@ class TestMLCalibrationManagerGetCalibratedWinrate:
     def test_get_calibrated_winrate_not_enough_trades(
         self, calibration_manager, mock_db_pool
     ):
-        """Test avec pas assez de trades (< min_trades)"""
+        """Pas assez d'exemples (total_trades < min_trades) => on ne tranche pas."""
         calibration_manager._db_pool = mock_db_pool
 
-        # Mock avec peu de trades pondérés (< 10, min_trades par défaut)
+        # 9 trades, et un total pondéré là aussi sous le seuil : la case reste
+        # en phase d'apprentissage.
         from ml.calibration import CalibrationStats
 
         stats = CalibrationStats(
             direction="LONG",
             confidence_bucket="40-45",
-            weighted_wins=5.0,
-            weighted_total=9.0,  # < 10 (min_trades par défaut)
-            total_trades=10,
+            weighted_wins=0.9,
+            weighted_total=1.8,  # poids 0,2 par essai à blanc
+            total_trades=9,  # < 10 (min_trades par défaut)
             actual_winrate=50.0,
             avg_pnl_pct=1.5,
             total_pnl_usdt=150.0,
@@ -540,8 +541,37 @@ class TestMLCalibrationManagerGetCalibratedWinrate:
 
         winrate = calibration_manager.get_calibrated_winrate("LONG", 42.5)
 
-        # Devrait être None (weighted_total < min_trades=10)
         assert winrate is None
+
+    def test_get_calibrated_winrate_essais_peu_ponderes_mais_suffisants(
+        self, calibration_manager, mock_db_pool
+    ):
+        """10 essais à blanc pèsent 2 : c'est assez d'exemples pour apprendre.
+
+        Le total pondéré ne doit plus servir de barrière d'apprentissage : un essai
+        à blanc porte un poids de 0,2, donc la barillère devenait ~50 essais par
+        case et le robot n'en sortait jamais (mesuré le 18/11/2026).
+        """
+        calibration_manager._db_pool = mock_db_pool
+
+        from ml.calibration import CalibrationStats
+
+        stats = CalibrationStats(
+            direction="SHORT",
+            confidence_bucket="50+",
+            weighted_wins=2.76,
+            weighted_total=4.33,  # < 10, mais 22 trades réels
+            total_trades=22,
+            actual_winrate=63.7,
+            avg_pnl_pct=0.45,
+            total_pnl_usdt=1.2,
+        )
+        calibration_manager._cache[("SHORT", "50+")] = stats
+        calibration_manager._cache_timestamp = datetime.now(timezone.utc)
+
+        winrate = calibration_manager.get_calibrated_winrate("SHORT", 55.0)
+
+        assert winrate == pytest.approx(63.7)
 
 
 # ============================================================================
