@@ -26,6 +26,19 @@ logger = logging.getLogger(__name__)
 # Lock pour thread-safety
 _config_lock = Lock()
 
+# Les réglages de stop/TP qui restent figés quand le mode TP/SL est « FIXE ».
+# Les planchers et plafonds d'ATR des FILTRES D'ENTRÉE (optimal_atr_min_1m,
+# optimal_atr_min_5m et leurs plafonds) n'en font pas partie : eux doivent
+# suivre l'ambiance du marché, sinon le barème par régime reste décoratif.
+CLES_STOPS_LIEES_AL_ATR = {
+    'atr_mult_sl',
+    'atr_mult_tp',
+    'break_even_atr_mult',
+    'trailing_trigger_atr_mult',
+    'trailing_distance_mult',
+    'sl_exchange_percent',
+}
+
 # Variables modifiables par le régime/CB/pair scorer
 REGIME_ADJUSTABLE_KEYS = [
     'min_score_required',
@@ -164,18 +177,17 @@ def get_effective_config() -> Dict[str, Any]:
         effective = deepcopy(TRADING_CONFIG)
 
         tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-        atr_only_keys = {
-            'atr_mult_sl',
-            'atr_mult_tp',
-            'break_even_atr_mult',
-            'trailing_trigger_atr_mult',
-            'trailing_distance_mult',
-            'optimal_atr_min_1m',
-            'optimal_atr_max_1m',
-            'optimal_atr_min_5m',
-            'optimal_atr_max_5m',
-            'sl_exchange_percent',
-        }
+        # Deux familles de réglages liés à l'écart-type (ATR), à ne pas mélanger :
+        #   - les réglages de STOP : en mode FIXE les stops ne dépendent pas de
+        #     l'ATR, donc le régime ne doit pas les pousser ;
+        #   - les planchers des FILTRES D'ENTRÉE : eux doivent suivre l'ambiance
+        #     du marché, mode FIXE ou pas.
+        # Mesure du 18/11/2026 : une seule liste bloquait les deux. Le robot
+        # tournait en mode FIXE sur un marché qu'il qualifiait lui-même de CALME,
+        # et le filtre d'entrée exigeait un ATR 5 min de 0,35 % alors que son
+        # propre barème CALME demande 0,10 % — 63 des 79 rejets « ATR sous-
+        # optimal » passaient sous ce barème. C'est la cause principale du
+        # « 0 position ouverte » observé sur 1 117 analyses.
         
         # Appliquer les ajustements du régime (si régime activé)
         if TRADING_CONFIG.get('market_regime_enabled', True):
@@ -183,7 +195,7 @@ def get_effective_config() -> Dict[str, Any]:
                 if value is None:
                     continue
                 # Si mode FIXE, ne pas appliquer les ajustements spécifiques ATR
-                if tp_sl_mode == 'FIXE' and key in atr_only_keys:
+                if tp_sl_mode == 'FIXE' and key in CLES_STOPS_LIEES_AL_ATR:
                     continue
                 effective[key] = value
         
@@ -257,18 +269,9 @@ def get_config_summary() -> Dict[str, Any]:
     regime_enabled = TRADING_CONFIG.get('market_regime_enabled', True)
 
     tp_sl_mode = TRADING_CONFIG.get('tp_sl_mode', 'FIXE')
-    atr_only_keys = {
-        'atr_mult_sl',
-        'atr_mult_tp',
-        'break_even_atr_mult',
-        'trailing_trigger_atr_mult',
-        'trailing_distance_mult',
-        'optimal_atr_min_1m',
-        'optimal_atr_max_1m',
-        'optimal_atr_min_5m',
-        'optimal_atr_max_5m',
-        'sl_exchange_percent',
-    }
+    # Voir le commentaire dans get_effective_config() : en mode FIXE, seuls les
+    # réglages de stop sont masqués à l'affichage, pas les filtres d'entrée.
+    atr_only_keys = CLES_STOPS_LIEES_AL_ATR
     
     # 🔥 14/12/2025: ATR MAX désactivé si régime actif (données prouvent ATR haut = rentable)
     # Ne pas inclure ATR MAX dans les différences si régime actif
