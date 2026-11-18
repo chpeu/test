@@ -56,6 +56,8 @@ class TestCorrelationEngine:
             def getenv_side_effect(key, default=None):
                 env_vars = {
                     'DATABASE_URL': None,
+                    # depuis le 18/11/2026 : sans ce drapeau, aucune connexion n'est tentée
+                    'POSTGRES_ENABLED': 'true',
                     'POSTGRES_HOST': 'localhost',
                     'POSTGRES_PORT': '5432',
                     'POSTGRES_DB': 'test_db',

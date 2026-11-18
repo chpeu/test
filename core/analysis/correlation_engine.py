@@ -71,9 +71,19 @@ class CorrelationEngine:
         if self.db_connection:
             return self.db_connection
         
+        # Le journal des trades vit dans PostgreSQL. Sans base declaree
+        # (POSTGRES_ENABLED=false et pas de DATABASE_URL), on ne tente aucune
+        # connexion : les appelants rendent deja un resultat vide, et l'interface
+        # n'affiche plus une erreur rouge pour rien (corrige le 18/11/2026).
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url and os.getenv('POSTGRES_ENABLED', 'false').lower() != 'true':
+            logger.debug(
+                "correlation_engine: journal PostgreSQL desactive (POSTGRES_ENABLED=false) - analyse vide"
+            )
+            return None
+
         try:
             # Essayer DATABASE_URL d'abord
-            database_url = os.getenv('DATABASE_URL')
             if database_url:
                 return psycopg2.connect(database_url)
             
@@ -92,7 +102,7 @@ class CorrelationEngine:
                 password=password
             )
         except Exception as e:
-            logger.error(f"Erreur connexion DB: {e}")
+            logger.warning(f"Erreur connexion DB (journal des trades): {e}")
         return None
     
     def _release_connection(self, conn):

@@ -3495,7 +3495,9 @@ def get_pg_datalogger():
         if env_path.exists():
             load_dotenv(env_path)
         
-        enabled = os.getenv('POSTGRES_ENABLED', 'true').lower() == 'true'
+        # Par défaut : désactivé. Le mode vrai n'est déclenché que si .env le dit
+        # (même regle que config.py, qui met 'false' par defaut).
+        enabled = os.getenv('POSTGRES_ENABLED', 'false').lower() == 'true'
         
         if not enabled:
             logger.info("ℹ️ PostgreSQL DataLogger désactivé dans .env")
