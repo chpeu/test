@@ -1068,7 +1068,13 @@ async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
         from config import TRADING_CONFIG
 
         use_confluence = TRADING_CONFIG.get('use_confluence', False)
-        volume_multiplier = TRADING_CONFIG.get('volume_multiplier', 1.0)
+        # Le multiplicateur de volume vient du barème du régime de marché
+        # (config/regimes/*.json) : en CALME il vaut 0,9, pas le 1,2 global.
+        # Avant le 18/11/2026, cette ligne lisait TRADING_CONFIG directement : le
+        # barème du régime n'atteignait jamais la porte d'entrée volume, alors
+        # même que la ligne juste en dessous, elle, lisait bien la configuration
+        # efficace (trend_timeframe).
+        volume_multiplier = get_effective_value('volume_multiplier') or TRADING_CONFIG.get('volume_multiplier', 1.0)
         trend_timeframe = get_effective_value('trend_timeframe') or TRADING_CONFIG.get('trend_timeframe', '15m')
         scan_timeout_s = float(TRADING_CONFIG.get('scan_pair_timeout_s', 12))
 
