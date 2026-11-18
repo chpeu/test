@@ -5,6 +5,7 @@
 	import MLCONTENT_GB_Variables from './MLCONTENT_GB_Variables.svelte';
 	import MLConfigPanel from './MLConfigPanel.svelte';
 	import EVAnalysisModal from './EVAnalysisModal.svelte';
+	import IaLocale from '../IaLocale.svelte';
 	
 	// Configuration GB avec valeurs par défaut (identique à VariablesPanel)
 	let config = {
@@ -135,6 +136,8 @@
 		{/if}
 	</div>
 	
+	<IaLocale />
+
 	<div class="ml-tabs">
 		<button 
 			class="tab" 

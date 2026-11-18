@@ -839,6 +839,16 @@ try:
 except (ImportError, ConfigurationError) as e:
     logger.debug(f"Module regime trading non disponible ou erreur config: {e}")
 
+# IA LOCALE: le conseiller lit le journal et rend du texte. Il ne passe jamais
+# un ordre : aucune route ici n'atteint le gestionnaire d'ordres.
+try:
+    from api.routes.ia import router as ia_router
+
+    app.include_router(ia_router)
+    logger.info("✅ IA locale routes incluses: /api/ia/*")
+except Exception as e:
+    logger.warning(f"⚠️ Routes IA locale indisponibles: {type(e).__name__}: {e}", exc_info=True)
+
 # 🔥 WEBSOCKET-FIX: Inclure le router WebSocket principal (/ws endpoint)
 logger.info(f"🔍 [DIAGNOSTIC] websocket_router = {websocket_router}")
 logger.info(f"🔍 [DIAGNOSTIC] type(websocket_router) = {type(websocket_router)}")
