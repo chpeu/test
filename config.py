@@ -676,6 +676,12 @@ POSTGRES_DB = os.getenv('POSTGRES_DB', 'trade_cursor_ml')
 POSTGRES_USER = os.getenv('POSTGRES_USER', 'postgres')
 POSTGRES_PASSWORD = os.getenv('POSTGRES_PASSWORD', '')
 POSTGRES_USE_SSL = os.getenv('POSTGRES_USE_SSL', 'false').lower() == 'true'
+
+# Faut-il vider le journal des trades a chaque demarrage ? Choix du 18/11/2026 :
+# non. Sans passe, impossible de juger le robot sur une semaine, et le bilan de
+# l'IA locale n'a plus rien a lire. Les sessions sont deja separees par
+# session_id, donc garder l'ancien ne gene pas l'affichage en cours.
+RESET_HISTORY_AT_STARTUP = os.getenv('RESET_HISTORY_AT_STARTUP', 'false').lower() == 'true'
 POSTGRES_MIN_CONN = _env_number('POSTGRES_MIN_CONN', 1, int)
 POSTGRES_MAX_CONN = _env_number('POSTGRES_MAX_CONN', 5, int)
 

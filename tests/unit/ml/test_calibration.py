@@ -457,6 +457,9 @@ class TestMLCalibrationManagerUpdateCalibration:
     def test_update_calibration_no_db(self, calibration_manager):
         """Test mise à jour sans DB"""
         calibration_manager._db_pool = None
+        # fixe le cas quoi qu'il y ait une base sur la machine : sans ce blanc,
+        # le test dépendait de l'état du poste (vrai depuis le 18/11/2026).
+        calibration_manager._pg_logger = None
 
         now = datetime.now(timezone.utc)
         result = calibration_manager.update_calibration(
@@ -649,6 +652,7 @@ class TestMLCalibrationManagerResetCalibration:
     def test_reset_calibration_no_db(self, calibration_manager):
         """Test reset sans DB"""
         calibration_manager._db_pool = None
+        calibration_manager._pg_logger = None  # idem : blanc explicite, pas un hasard du poste
 
         result = calibration_manager.reset_calibration(reason="manual_reset")
 

@@ -106,12 +106,15 @@ async def init_instances() -> None:
             except (ImportError, AttributeError):
                 pass
                 
-            # Reset history at startup if needed
-            try:
-                db.clear_all_trades()
-                logger.info(f"✅ Legacy TradeDatabase reset at startup ({time.time()-start:.3f}s)")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not reset legacy trades: {e}")
+            # Vider l'historique au demarrage ? Seulement si on le lui demande.
+            from config import RESET_HISTORY_AT_STARTUP
+
+            if RESET_HISTORY_AT_STARTUP:
+                try:
+                    db.clear_all_trades()
+                    logger.info(f"✅ Legacy TradeDatabase reset at startup ({time.time()-start:.3f}s)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not reset legacy trades: {e}")
                 
             logger.info("✅ TradeDatabase (SQLite legacy) ready")
         except Exception as e:
@@ -131,15 +134,22 @@ async def init_instances() -> None:
             state.set_analytics_db(db)
             logger.info(f"✅ Analytics DB ready: {ANALYTICS_DB_PATH} ({time.time()-start:.3f}s)")
             
-            # Reset stats at startup
-            try:
-                db.clear_all_trades()
-                state.update_stats(total_trades=0, wins=0, losses=0)
-                state.set_trade_history([])
-                state.clear_logs()  # 🔥 Clear logs buffer at startup
-                logger.info("✅ Stats and logs reset at startup")
-            except Exception as e:
-                logger.warning(f"⚠️ Could not reset stats: {e}")
+            # Stats et journaux : on ne les efface plus par defaut (choix du
+            # 18/11/2026). Une session est deja isolee par session_id, donc le
+            # passe ne gene pas l'affichage en cours, et il devient consultable.
+            from config import RESET_HISTORY_AT_STARTUP
+
+            if RESET_HISTORY_AT_STARTUP:
+                try:
+                    db.clear_all_trades()
+                    state.update_stats(total_trades=0, wins=0, losses=0)
+                    state.set_trade_history([])
+                    state.clear_logs()
+                    logger.info("✅ Stats and logs reset at startup")
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not reset stats: {e}")
+            else:
+                logger.info("ℹ️ Historique des trades conserve au demarrage (RESET_HISTORY_AT_STARTUP=false)")
         except Exception as e:
             logger.error(f"❌ Error init Analytics DB: {e}")
             state.set_analytics_db(None)
