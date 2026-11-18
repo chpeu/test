@@ -140,13 +140,15 @@ class MLCalibrationManager:
         if self._db_pool:
             return self._db_pool
         try:
-            # Utiliser le PostgreSQLDataLogger existant
-            from core.postgresql_datalogger import PostgreSQLDataLogger
+            # Utiliser le scribe PostgreSQL deja en place. get_pg_datalogger()
+            # respecte POSTGRES_ENABLED et ne cree qu'une instance : construire
+            # PostgreSQLDataLogger() ici ouvrait un pool (et une erreur rouge) a
+            # chaque demarrage sur une machine sans base.
+            from core.postgresql_datalogger import get_pg_datalogger
 
-            # Créer une instance singleton si nécessaire
             if not hasattr(self, "_pg_logger"):
-                self._pg_logger = PostgreSQLDataLogger()
-            if self._pg_logger.enabled and self._pg_logger.pool:
+                self._pg_logger = get_pg_datalogger()
+            if self._pg_logger and self._pg_logger.enabled and self._pg_logger.pool:
                 return self._pg_logger
             return None
         except Exception as e:
