@@ -40,9 +40,64 @@ NOM_COLONNE = re.compile(r"[a-z_][a-z0-9_]*\Z")
 
 
 def _noms_dans_liste(bloc: str) -> list[str]:
+    # On efface les commentaires SQL d'abord : la ligne
+    #   -- Exit config params (Stagnation Positive, Trailing MFE, MFE Protection)
+    # contenait un « ) » qui faisait s'arreter la lecture, et les huit colonnes
+    # suivantes de trade_atr_metrics restaient invisibles (mesure du 18/11/2026 au
+    # soir : l'outil annoncait « 0 manque » alors qu'il en manquait 24).
+    bloc = re.sub(r"--[^\n]*", "", bloc)
     fin = bloc.find(")")
     noms = [x.strip().strip("\"'") for x in bloc[:fin].split(",")]
     return [x for x in noms if NOM_COLONNE.match(x)]
+
+
+# Fonctions dont la liste de colonnes est construite en Python (paires
+# (« nom », valeur)) et non ecrite en dur dans la requete. Table par table,
+# declarees a la main : c'est le seul moyen trouvé pour ne pas inventer de
+# colonnes en aspirant les dictionnaires voisins.
+FONCTIONS_A_PAIRES: dict[str, str] = {
+    "log_trade": "trades",
+    "log_trade_atr_metrics": "trade_atr_metrics",
+}
+
+
+def _paires_de_listes(fonc: ast.FunctionDef) -> list[str]:
+    """Noms des colonnes preparees en Python : uniquement les listes de couples.
+
+    On regarde deux formes : `champs = [("nom", valeur), ...]` et
+    `champs.extend([...])`. Une liste n'est retenue que si 80 % de ses elements
+    sont des couples (« nom », valeur) : ça écarte les tuples isoles qui servent
+    a autre chose (un `("true", "1", "yes")` de comparaison, un tuple de log).
+    """
+    noms: list[str] = []
+    for n in ast.walk(fonc):
+        liste: ast.List | None = None
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.List) and any(
+            isinstance(t, ast.Name) for t in n.targets
+        ):
+            liste = n.value
+        elif (
+            isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "extend"
+            and n.args
+            and isinstance(n.args[0], ast.List)
+        ):
+            liste = n.args[0]
+        if liste is None or len(liste.elts) < 3:
+            continue
+        couples = [
+            e.elts[0].value
+            for e in liste.elts
+            if isinstance(e, ast.Tuple)
+            and len(e.elts) == 2
+            and isinstance(e.elts[0], ast.Constant)
+            and isinstance(e.elts[0].value, str)
+            and NOM_COLONNE.match(e.elts[0].value)
+        ]
+        if len(couples) >= 0.8 * len(liste.elts):
+            noms.extend(couples)
+    return noms
 
 
 def colonnes_par_table() -> dict[str, set[str]]:
@@ -51,11 +106,24 @@ def colonnes_par_table() -> dict[str, set[str]]:
     for dossier in DOSSIERS_BALAIES:
         for chemin in dossier.rglob("*.py"):
             try:
-                sources.append(ast.parse(chemin.read_text(encoding="utf-8", errors="replace")))
-            except (SyntaxError, UnicodeDecodeError):
+                texte = chemin.read_text(encoding="utf-8", errors="replace")
+            except UnicodeDecodeError:
+                continue
+            if "import sqlite3" in texte:
+                # Ce fichier écrit dans un fichier SQLite (le dépôt en a deux :
+                # core/database.py et core/analytics_database.py). Ses colonnes
+                # n'ont rien à faire comparées aux tables PostgreSQL : mesuré le
+                # 18/11/2026 au soir, ça fabriquait 31 fausses alertes sur `trades`
+                # (entry, exit, fees, instance_port…) alors que l'écriture réelle
+                # du même trade passait sans erreur.
+                continue
+            try:
+                sources.append(ast.parse(texte))
+            except SyntaxError:
                 continue
 
-    resultat: dict[str, set[str]] = {}
+    certain: dict[str, set[str]] = {}
+    propose: dict[str, set[str]] = {}
     for arbre in sources:
         for n in ast.walk(arbre):
             # 1) INSERT ecrit en dur dans une chaine
@@ -64,15 +132,21 @@ def colonnes_par_table() -> dict[str, set[str]]:
                 if m:
                     noms = _noms_dans_liste(n.value[m.end() :])
                     if noms:
-                        resultat.setdefault(m.group(1), set()).update(noms)
-            # 2) liste construite en Python puis inseree dans la requete de lot
+                        certain.setdefault(m.group(1), set()).update(noms)
+            # 2) couples (« nom », valeur) prepares en Python par une fonction
+            #    dont on sait quelle table elle ecrit (voir FONCTIONS_A_PAIRES)
+            if isinstance(n, ast.FunctionDef) and n.name in FONCTIONS_A_PAIRES:
+                couples = _paires_de_listes(n)
+                if len(couples) > 10:
+                    propose.setdefault(FONCTIONS_A_PAIRES[n.name], set()).update(couples)
+            # 3) liste construite en Python puis inseree dans la requete de lot
             if isinstance(n, ast.Assign):
                 cible = next((t.id for t in n.targets if isinstance(t, ast.Name)), "")
                 if cible == "columns" and isinstance(n.value, (ast.List, ast.Tuple)):
                     noms = [e.value for e in n.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
                     if len(noms) > 20:  # la liste de scan_logs fait 147 noms
-                        resultat.setdefault("scan_logs", set()).update(noms)
-    return resultat
+                        certain.setdefault("scan_logs", set()).update(noms)
+    return certain, propose
 
 
 def colonnes_en_base(table: str) -> set[str]:
@@ -104,17 +178,27 @@ def type_pour(nom: str) -> str:
 
 def main() -> int:
     ecrire = "--appliquer" in sys.argv
+    certain, propose = colonnes_par_table()
     total = 0
-    for table, attendues in sorted(colonnes_par_table().items()):
+    tables = sorted(set(certain) | set(propose))
+    for table in tables:
+        attendues = certain.get(table, set())
+        suspects = propose.get(table, set())
         existantes = colonnes_en_base(table)
         if not existantes:
             print(f"{table}: table absente de la base — appliquer le schéma du dépôt ?")
             total += len(attendues)
             continue
         manquantes = sorted(attendues - existantes)
+        a_verifier = sorted((suspects - existantes) - set(manquantes))
         print(f"{table}: {len(attendues)} colonnes écrites, {len(existantes)} en base, {len(manquantes)} manquantes")
         for c in manquantes:
             print(f"    + {c} -> {type_pour(c)}")
+        if a_verifier:
+            # Noms sortis d'une liste Python voisine : la requête réelle peut très
+            # bien ne pas les écrire (mesure du 18/11/2026 : 31 noms signalés à
+            # tort sur `trades`, écriture du même trade pourtant réussie).
+            print(f"    à vérifier à la main (non appliqués) : {len(a_verifier)} — {', '.join(a_verifier[:12])}{'…' if len(a_verifier) > 12 else ''}")
         total += len(manquantes)
         if manquantes and ecrire:
             ddl = ";\n".join(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {c} {type_pour(c)}" for c in manquantes)

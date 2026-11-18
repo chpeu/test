@@ -1,6 +1,6 @@
 {
-  "total_trades": 3100,
-  "trades_since_alert": 404,
+  "total_trades": 3120,
+  "trades_since_alert": 424,
   "pnl_window": [
     0.0,
     0.0,
@@ -125,5 +125,5 @@
       "severity": "medium"
     }
   ],
-  "saved_at": "2026-11-18T10:28:17.287285"
+  "saved_at": "2026-11-18T10:57:39.108883"
 }

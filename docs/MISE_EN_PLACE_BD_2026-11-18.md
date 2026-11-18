@@ -73,6 +73,51 @@ l'IA locale qui répondait « 0 trade fermé » même après des heures de march
 | 0 ligne dans `scan_logs` | 151 après quelques minutes de marche |
 | Historique et Corrélations vides | sessions et analyses qui se remplissent |
 
+## Deuxième soirée (18/11 après-midi) : les trades fermés s'évaporaient
+
+Signe vu à l'écran : le journal de marche affichait « 🔴 POSITION FERMÉE:
+XPL/USDT:USDT | Raison: SL | PnL net: -0.34 % », l'IA locale et la carte
+Historique disaient « 0 trade fermé », et `select count(*) from trades` répondait
+0. Le trade était bien fermé, puis son écriture en base échouait :
+
+```text
+ERROR: column "adaptive_sizing_multiplier" of relation "trades" does not exist
+ERROR: column "trailing_mfe_triggered" of relation "trade_atr_metrics" does not exist
+ERROR: there is no unique or exclusion constraint matching the ON CONFLICT specification
+```
+
+Réparé par `database/migrations/add_journal_silencieux_2026_11_18.sql` (8 colonnes
+pour `trades`, 24 pour `trade_atr_metrics`, plus l'index unique que le code
+Suppose sur `trade_atr_metrics (trade_id)`). Le dépôt prévoyait déjà six fichiers
+qu'il fallait appliquer d'abord : `migration_add_config_columns.sql`,
+`add_rsi_final_filter_columns.sql`, `add_stagnation_positive_exit.sql`,
+`add_antigiveback_trailing_mfe_columns.sql`, `add_invert_signals_column.sql`,
+`add_pair_scorer.sql` — aucun n'était passé.
+
+Deux tables manquaient aussi complètement : `trade_post_exit_analysis` et
+`trade_post_exit_samples` (prévues par `add_post_exit_analysis_tables.sql`). Sans
+elles, toute l'analyse « qu'aurait fait ce trade après sa sortie » reste à zéro.
+
+Preuve, dans le vrai chemin du code (`log_trade`) : un trade factice écrit, relu,
+puis effacé — 0 erreur, et `trades` revient à 0 lignes.
+
+### Deux pièges de la sonde automatique (`database/verifier_ecarts_base.py`)
+
+1. **Un commentaire SQL avec une parenthèse** coupe la lecture de la liste de
+   colonnes : la ligne
+   `-- Exit config params (Stagnation Positive, Trailing MFE, MFE Protection)`
+   faisait s'arrêter l'outil, qui annonçait « 0 manque » sur `trade_atr_metrics`
+   alors qu'il en manquait 24. Les commentaires sont effacés avant la lecture.
+2. **Deux écriteurs écrivent dans un fichier SQLite**, pas dans PostgreSQL :
+   `core/database.py` et `core/analytics_database.py`. Comparer leurs colonnes
+   aux tables PostgreSQL fabrique 31 fausses alertes (`entry`, `exit`, `fees`,
+   `instance_port`, `is_backtest`…) sur une table pourtant écrite sans erreur.
+   La sonde ignore désormais tout fichier qui fait `import sqlite3`.
+
+La sonde sépare maintenant deux listes : ce que les requêtes écrites en dur
+exigent (elle peut l'ajouter avec `--appliquer`), et ce que des listes Python
+voisines suggèrent (affiché « à vérifier à la main », jamais appliqué).
+
 ## Le garde-fou laissé pour la suite
 
 `database/verifier_ecarts_base.py` compare les colonnes que le code écrit avec
