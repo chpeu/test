@@ -85,6 +85,16 @@ Avertissement assumé : il lit le code sans l'exécuter, donc sur les requêtes
 construites à la volée il peut proposer un nom qui n'est pas une colonne. Vérifier
 table par table avant `--appliquer`.
 
+Une dernière colonne manquait côté lecture : `optimal_regime_retrospective`
+(reclamée par la carte « Analyse des Corrélations »). Ajoutée, plus `regime_local`.
+Depuis, plus aucune carte rouge.
+
+Avertissement sur les sondes automatiques : une seconde version qui comparait
+les requêtes lues à la table `trades` a proposé 36 « colonnes » qui étaient en
+fait des alias de calcul (`wins`, `avg_pnl`) ou des mots du programme. Elle a
+été retirée le jour même. La sonde gardée (`verifier_ecarts_base.py`) ne porte
+que sur ce que le robot **écrit**, là où elle est fiable.
+
 ## Choix écrit dans le code ce jour
 
 `RESET_HISTORY_AT_STARTUP` (`.env`, défaut `false`) : au démarrage, le robot ne
