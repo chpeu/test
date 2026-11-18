@@ -33,7 +33,8 @@ from .ml_models import router as models_router
 from .ml_ev_analysis import router as ev_analysis_router
 
 # Import legacy routes (to be migrated)
-from .ml_legacy import router as legacy_router
+from .ml_training import router as training_router
+from .ml_optimization import router as optimization_router
 
 # Re-export common utilities for backward compatibility with tests
 from .ml_common import (  # noqa: F401 — réexports consommés par les tests via api.routes.ml.*
@@ -49,7 +50,7 @@ from .ml_common import (  # noqa: F401 — réexports consommés par les tests v
     update_task_status,
     create_task,
 )
-from .ml_legacy import _train_xgboost_background  # noqa: F401 — re-export patché par tests
+from .ml_training import _train_xgboost_background  # noqa: F401 — réexport consommé par les tests
 
 # Re-export legacy functions for backward compatibility with tests
 
@@ -77,7 +78,8 @@ router.include_router(ev_analysis_router, tags=["ML EV Analysis"])
 
 # Include legacy router (to be progressively removed)
 # Note: This includes all 22 remaining routes that haven't been migrated yet
-router.include_router(legacy_router, tags=["ML Legacy"])
+router.include_router(training_router, tags=["ML Training"])
+router.include_router(optimization_router, tags=["ML Optimization"])
 
 logger.info("✅ ML router initialized (modular + legacy)")
 logger.info("   - Migrated: 22 routes (tasks + dashboard + predictions + models)")
