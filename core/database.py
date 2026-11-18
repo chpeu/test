@@ -41,8 +41,10 @@ class TradeDatabase:
             db_path: Chemin vers fichier DB (si None, utilise instance-specific)
         """
         if db_path is None:
-            # 🔥 FIX: Fichier DB par instance pour éviter conflits multi-instances
-            port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+            # Fichier DB par instance pour éviter les conflits multi-instances.
+            # Attention : lancé par uvicorn, sys.argv[1] vaut 'main:app' — int()
+            # plantait l'initialisation de la base des trades (corrigé 18/11/2026).
+            port = int(sys.argv[1]) if len(sys.argv) > 1 and str(sys.argv[1]).isdigit() else 5000
             db_path = f"trades_instance_{port}.db"
         
         self.db_path = db_path

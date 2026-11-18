@@ -44,7 +44,10 @@ class AnalyticsDatabase:
         if db_path is None:
             # Auto-détection port instance
             if instance_port is None:
-                instance_port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
+                # même piege qu'ailleurs : lancé par uvicorn, argv[1] = 'main:app'
+                instance_port = (
+                    int(sys.argv[1]) if len(sys.argv) > 1 and str(sys.argv[1]).isdigit() else 5000
+                )
             db_path = f"analytics_instance_{instance_port}.db"
         
         self.db_path = db_path

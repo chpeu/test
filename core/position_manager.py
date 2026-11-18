@@ -1750,10 +1750,13 @@ class PositionManager:
                 # 🔥 FIX 15/12: Logger le rejet ML Calibration dans reject_reason_category
                 # 🔥 FIX: Utiliser version async non-bloquante avec fire-and-forget
                 try:
-                    from core.postgresql_datalogger import PostgreSQLDataLogger
+                    # get_pg_datalogger() respecte POSTGRES_ENABLED et met en cache :
+                    # PostgreSQLDataLogger() seul ouvrait un pool de connexions a chaque
+                    # rejet ML (et une erreur rouge par rejet quand la base est absente).
+                    from core.postgresql_datalogger import get_pg_datalogger
 
-                    pg_logger = PostgreSQLDataLogger()
-                    if pg_logger.enabled:
+                    pg_logger = get_pg_datalogger()
+                    if pg_logger and pg_logger.enabled:
                         try:
                             loop = asyncio.get_running_loop()
 
