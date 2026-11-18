@@ -16,7 +16,6 @@ from .indicators_helpers import (
 # 🔥 Sprint 1.5: Helpers
 from .helpers import (
     ConfigHelper,
-    DataLoggerHelper,
     APIHelper,
     MarketHelper,
     StatsHelper,
@@ -41,7 +40,6 @@ __all__ = [
     'INDICATOR_FIELDS_5M_SUFFIXES',
     # Sprint 1.5: Helpers
     'ConfigHelper',
-    'DataLoggerHelper',
     'APIHelper',
     'MarketHelper',
     'StatsHelper',

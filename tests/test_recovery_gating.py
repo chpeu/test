@@ -111,8 +111,7 @@ class TestRecoveryGating(unittest.IsolatedAsyncioTestCase):
 
                 with patch.object(self.analyzer, 'analyze_timeframe', side_effect=mock_analyze_timeframe):
                     with patch.dict(self.analyzer_globals, patches):
-                        with patch('utils.helpers.DataLoggerHelper.is_available', return_value=False):
-                            # Appel avec timeout interne
+                            # appel direct : plus de scribe auxiliaire à neutraliser
                             result = await asyncio.wait_for(
                                 self.analyzer.analyze_pair(
                                     'BTC/USDT',

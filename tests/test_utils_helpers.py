@@ -3,20 +3,18 @@
 
 Tests pour tous les helpers créés:
 - ConfigHelper
-- DataLoggerHelper
 - APIHelper
 - MarketHelper
 - StatsHelper
 - PositionHelper
 """
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock
 import json
 
 # Import helpers
 from utils.helpers import (
     ConfigHelper,
-    DataLoggerHelper,
     APIHelper,
     MarketHelper,
     StatsHelper,
@@ -514,50 +512,6 @@ class TestPositionHelper:
         assert 'x10' in summary
         assert 'TP: 51000.00' in summary
         assert 'SL: 49000.00' in summary
-
-
-class TestDataLoggerHelper:
-    """Tests pour DataLoggerHelper"""
-
-    def test_is_available_when_not_imported(self):
-        """Test availability quand DataLogger pas importé"""
-        # Reset instance
-        DataLoggerHelper.reset_instance()
-
-        # Should return False si backend.ml.data_logger non dispo
-        available = DataLoggerHelper.is_available()
-
-        # Peut être True ou False selon environnement
-        assert isinstance(available, bool)
-
-    @pytest.mark.asyncio
-    async def test_safe_log_scan_returns_none_when_unavailable(self):
-        """Test safe_log_scan retourne None si unavailable"""
-        # Mock _get_data_logger to return None
-        with patch.object(DataLoggerHelper, '_get_data_logger', return_value=None):
-            result = await DataLoggerHelper.safe_log_scan(
-                symbol="BTC/USDT",
-                price=50000.0
-            )
-
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_safe_log_scan_with_mock_logger(self):
-        """Test safe_log_scan avec mock logger"""
-        # Mock DataLogger
-        mock_logger = Mock()
-        mock_logger.is_running = True
-        mock_logger.log_scan = AsyncMock(return_value="scan-uuid-123")
-
-        with patch.object(DataLoggerHelper, '_get_data_logger', return_value=mock_logger):
-            result = await DataLoggerHelper.safe_log_scan(
-                symbol="BTC/USDT",
-                price=50000.0
-            )
-
-            assert result == "scan-uuid-123"
-            mock_logger.log_scan.assert_called_once()
 
 
 if __name__ == "__main__":

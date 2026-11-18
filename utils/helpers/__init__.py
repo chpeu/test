@@ -14,7 +14,6 @@ Patterns adressés:
 """
 
 from .config_helper import ConfigHelper
-from .data_logger_helper import DataLoggerHelper
 from .api_helper import APIHelper
 from .market_helper import MarketHelper
 from .stats_helper import StatsHelper
@@ -22,7 +21,6 @@ from .position_helper import PositionHelper, PositionProxy
 
 __all__ = [
     'ConfigHelper',
-    'DataLoggerHelper',
     'APIHelper',
     'MarketHelper',
     'StatsHelper',

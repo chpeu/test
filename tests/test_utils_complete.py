@@ -128,28 +128,6 @@ class TestConfigHelper:
             pytest.skip("Fonction validate_config non disponible")
 
 
-class TestDataLoggerHelper:
-    """Tests pour utils.helpers.data_logger_helper"""
-    
-    def test_data_logger_helper_import(self):
-        """Test import du module data_logger_helper"""
-        try:
-            import utils.helpers.data_logger_helper  # noqa: F401  (sonde : l'import est le test)
-            assert True
-        except ImportError:
-            pytest.skip("Module data_logger_helper non disponible")
-
-    def test_data_logger_helper_format_trade_data(self):
-        """Test formatage des données de trade"""
-        try:
-            from utils.helpers.data_logger_helper import format_trade_data
-            trade_data = {"symbol": "BTC/USDT", "side": "LONG"}
-            formatted = format_trade_data(trade_data)
-            assert isinstance(formatted, dict)
-        except (ImportError, AttributeError):
-            pytest.skip("Fonction format_trade_data non disponible")
-
-
 class TestMarketHelper:
     """Tests pour utils.helpers.market_helper"""
     

@@ -13,6 +13,7 @@ import json
 import uuid
 from collections import deque
 import threading
+from contextlib import contextmanager
 
 from utils.pricing import get_preferred_price
 
@@ -3535,3 +3536,40 @@ def set_pg_datalogger(instance):
     global _pg_datalogger_instance
     _pg_datalogger_instance = instance
     logger.info("✅ Instance PostgreSQL DataLogger définie manuellement")
+
+
+@contextmanager
+def connexion_journal():
+    """Prete une connexion du pool partage du journal, et la rend.
+
+    Le 18/11/2026, deux modules d'optimisation ouvraient leur propre connexion
+    PostgreSQL (core/simple_pg_logger.py, 273 lignes, plus un deuxieme scribe
+    mort dans backend/). Desormais, un seul chemin : le pool deja partage.
+
+    Usage :
+        with connexion_journal() as conn:
+            if conn is None: ...  # journal desactive ou base absente
+            else: conn.cursor().execute(...)
+
+    Rend None si le journal est desactive : l'appelant decide quoi faire, il
+    n'y a plus d'exception a avaler partout.
+    """
+    scribe = get_pg_datalogger()
+    if not scribe or not scribe.enabled or not scribe.pool:
+        yield None
+        return
+    conn = scribe.pool.getconn()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            logger.debug("connexion_journal: rollback impossible", exc_info=True)
+        raise
+    finally:
+        try:
+            scribe.pool.putconn(conn)
+        except Exception:
+            logger.debug("connexion_journal: rendu de connexion impossible", exc_info=True)

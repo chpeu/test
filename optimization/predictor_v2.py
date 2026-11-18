@@ -98,43 +98,41 @@ class MLPredictorV2:
             True si succès, False sinon
         """
         try:
-            from core.simple_pg_logger import SimplePGLogger
-            
-            pg = SimplePGLogger()
-            if not pg.enabled:
-                logger.warning("PostgreSQL non disponible, utilisation fichiers .pkl")
-                return self.load_model()
-            
+            from core.postgresql_datalogger import connexion_journal
+
             # Requête pour récupérer modèle actif ou spécifique
             if model_id:
                 query = "SELECT * FROM ml_models WHERE id = %s"
                 params = (model_id,)
             else:
                 query = """
-                    SELECT * FROM ml_models 
-                    WHERE model_name LIKE 'xgboost_v2%' 
-                      AND is_active = TRUE 
-                    ORDER BY trained_at DESC 
+                    SELECT * FROM ml_models
+                    WHERE model_name LIKE 'xgboost_v2%'
+                      AND is_active = TRUE
+                    ORDER BY trained_at DESC
                     LIMIT 1
                 """
                 params = None
-            
-            cursor = pg.conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            
-            row = cursor.fetchone()
-            cursor.close()
-            
+
+            # Une seule porte vers la base : le pool partagé du journal.
+            with connexion_journal() as conn:
+                if conn is None:
+                    logger.warning("Journal PostgreSQL indisponible, utilisation fichiers .pkl")
+                    return self.load_model()
+                cursor = conn.cursor()
+                if params:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                row = cursor.fetchone()
+                # description lue avant la fermeture : mêmes colonnes, même curseur
+                cols = [desc[0] for desc in (cursor.description or [])]
+                cursor.close()
+
             if not row:
                 logger.warning("Aucun modèle V2 actif trouvé dans PostgreSQL")
                 return self.load_model()
-            
-            # Extraire infos du modèle
-            cols = [desc[0] for desc in cursor.description]
-            # description et row proviennent du même curseur : même longueur garantie
+
             model_data = dict(zip(cols, row, strict=True))
             
             # Charger depuis les paths

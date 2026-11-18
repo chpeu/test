@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from unittest.mock import Mock, patch
 import json
+from contextlib import nullcontext
 
 from optimization.predictor_v2 import (
     MLPredictorV2,
@@ -549,10 +550,7 @@ class TestMLPredictorV2LoadFromPostgres:
     def test_load_from_postgres_falls_back_when_pg_disabled(self, mock_model, mock_preprocessor):
         predictor = MLPredictorV2()
 
-        class _FakePG:
-            enabled = False
-
-        with patch('core.simple_pg_logger.SimplePGLogger', return_value=_FakePG()):
+        with patch('core.postgresql_datalogger.connexion_journal', new=lambda: nullcontext(None)):
             with patch.object(predictor, 'load_model', return_value=True) as mock_load:
                 assert predictor.load_from_postgres() is True
                 mock_load.assert_called_once()
@@ -576,11 +574,7 @@ class TestMLPredictorV2LoadFromPostgres:
             def cursor(self):
                 return _Cursor()
 
-        class _FakePG:
-            enabled = True
-            conn = _Conn()
-
-        with patch('core.simple_pg_logger.SimplePGLogger', return_value=_FakePG()):
+        with patch('core.postgresql_datalogger.connexion_journal', new=lambda: nullcontext(_Conn())):
             with patch.object(predictor, 'load_model', return_value=True) as mock_load:
                 assert predictor.load_from_postgres() is True
                 mock_load.assert_called_once()
@@ -640,11 +634,7 @@ class TestMLPredictorV2LoadFromPostgres:
             def cursor(self):
                 return _Cursor()
 
-        class _FakePG:
-            enabled = True
-            conn = _Conn()
-
-        with patch('core.simple_pg_logger.SimplePGLogger', return_value=_FakePG()):
+        with patch('core.postgresql_datalogger.connexion_journal', new=lambda: nullcontext(_Conn())):
             with patch('optimization.predictor_v2.os.path.exists', return_value=True):
                 def _load(path):
                     if str(path) == model_path:

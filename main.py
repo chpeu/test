@@ -526,32 +526,7 @@ async def lifespan(app: FastAPI):
             )
         except Exception:
             logger.debug('main.py: exception silencieuse (avant: pass)', exc_info=True)
-    data_logger = None
     try:
-        try:
-            from backend.ml.data_logger import DataLogger
-            data_logger = DataLogger()
-            await data_logger.initialize()
-            app.state.data_logger = data_logger
-            logger.info("✅ DataLogger initialisé")
-
-            # Register cleanup
-            if shutdown_manager and data_logger:
-                shutdown_manager.register(
-                    "DataLogger",
-                    data_logger.shutdown,
-                    async_cleanup=True,
-                    priority=80
-                )
-        except ImportError as e:
-            logger.warning(f"⚠️ Module DataLogger non disponible: {e}")
-            app.state.data_logger = None
-        except (OSError, IOError, ConnectionError) as e:
-            logger.warning(f"⚠️ Erreur I/O lors de l'initialisation DataLogger: {e}")
-            app.state.data_logger = None
-        except Exception as e:
-            logger.error(f"❌ Erreur inattendue initialisation DataLogger: {e}", exc_info=True)
-            app.state.data_logger = None
 
         # Initialiser les instances (Phase 1 critique)
         from core.bootstrap import init_instances, run_initial_top_pairs_scan
@@ -750,12 +725,6 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠️ GracefulShutdown non disponible, utilisation legacy cleanup")
 
             try:
-                if hasattr(app.state, 'data_logger') and app.state.data_logger:
-                    try:
-                        await app.state.data_logger.shutdown()
-                        logger.info("✅ DataLogger arrêté proprement")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur arrêt DataLogger: {e}", exc_info=True)
 
                 # 🔥 POST-EXIT ANALYSIS: Arrêter la boucle de tracking
                 try:

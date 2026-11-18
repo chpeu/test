@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
+from contextlib import nullcontext
 
 from optimization.monitoring_v2 import (
     ModelPerformanceMetrics,
@@ -107,10 +108,10 @@ class TestModelDriftDetectorInit:
 
 
 class TestLoadBaselineFromPostgres:
-    """Tests load_baseline_from_postgres()"""
+    """Tests load_baseline_from_postgres() — la base passe par le journal partagé."""
 
-    @patch('core.simple_pg_logger.SimplePGLogger')
-    def test_load_baseline_success(self, mock_pg, detector):
+    @patch('core.postgresql_datalogger.connexion_journal')
+    def test_load_baseline_success(self, mock_journal, detector):
         """Test chargement baseline réussi"""
         mock_conn = Mock()
         mock_cursor = Mock()
@@ -122,11 +123,7 @@ class TestLoadBaselineFromPostgres:
             datetime.now()  # trained_at
         )
         mock_conn.cursor.return_value = mock_cursor
-
-        mock_pg_instance = Mock()
-        mock_pg_instance.enabled = True
-        mock_pg_instance.conn = mock_conn
-        mock_pg.return_value = mock_pg_instance
+        mock_journal.return_value = nullcontext(mock_conn)
 
         result = detector.load_baseline_from_postgres()
 
@@ -134,29 +131,23 @@ class TestLoadBaselineFromPostgres:
         assert detector.baseline_metrics is not None
         assert detector.baseline_metrics.r2_score == 0.35
 
-    @patch('core.simple_pg_logger.SimplePGLogger')
-    def test_load_baseline_no_postgres(self, mock_pg, detector):
+    @patch('core.postgresql_datalogger.connexion_journal')
+    def test_load_baseline_no_postgres(self, mock_journal, detector):
         """Test pas de PostgreSQL disponible"""
-        mock_pg_instance = Mock()
-        mock_pg_instance.enabled = False
-        mock_pg.return_value = mock_pg_instance
+        mock_journal.return_value = nullcontext(None)
 
         result = detector.load_baseline_from_postgres()
 
         assert result is False
 
-    @patch('core.simple_pg_logger.SimplePGLogger')
-    def test_load_baseline_no_model(self, mock_pg, detector):
+    @patch('core.postgresql_datalogger.connexion_journal')
+    def test_load_baseline_no_model(self, mock_journal, detector):
         """Test aucun modèle trouvé"""
         mock_conn = Mock()
         mock_cursor = Mock()
         mock_cursor.fetchone.return_value = None
         mock_conn.cursor.return_value = mock_cursor
-
-        mock_pg_instance = Mock()
-        mock_pg_instance.enabled = True
-        mock_pg_instance.conn = mock_conn
-        mock_pg.return_value = mock_pg_instance
+        mock_journal.return_value = nullcontext(mock_conn)
 
         result = detector.load_baseline_from_postgres()
 

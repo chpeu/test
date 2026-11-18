@@ -76,31 +76,30 @@ class ModelDriftDetector:
             True si succès, False sinon
         """
         try:
-            from core.simple_pg_logger import SimplePGLogger
-            
-            pg = SimplePGLogger()
-            if not pg.enabled:
-                logger.warning("PostgreSQL non disponible")
-                return False
-            
-            cursor = pg.conn.cursor()
-            cursor.execute("""
-                SELECT 
-                    test_r2,
-                    test_mae,
-                    test_mse,
-                    total_samples,
-                    trained_at
-                FROM ml_models
-                WHERE model_name LIKE 'xgboost_v2%'
-                  AND is_active = TRUE
-                ORDER BY trained_at DESC
-                LIMIT 1
-            """)
-            
-            row = cursor.fetchone()
-            cursor.close()
-            
+            from core.postgresql_datalogger import connexion_journal
+
+            # Une seule porte vers la base : le pool partagé du journal.
+            with connexion_journal() as conn:
+                if conn is None:
+                    logger.warning("Journal PostgreSQL indisponible")
+                    return False
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT
+                        test_r2,
+                        test_mae,
+                        test_mse,
+                        total_samples,
+                        trained_at
+                    FROM ml_models
+                    WHERE model_name LIKE 'xgboost_v2%'
+                      AND is_active = TRUE
+                    ORDER BY trained_at DESC
+                    LIMIT 1
+                """)
+                row = cursor.fetchone()
+                cursor.close()
+
             if not row:
                 logger.warning("Aucun modèle V2 actif trouvé")
                 return False

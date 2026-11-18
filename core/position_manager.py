@@ -2837,7 +2837,7 @@ class PositionManager:
             )
 
         # ========================================
-        # ✅ LOG TRADE ENTRY (backend.ml.data_logger - optionnel)
+        # ✅ LOG TRADE ENTRY (journal PostgreSQL partagé)
         # ========================================
         try:
             from core.callbacks.scanner_loop import get_pg_datalogger
@@ -5621,89 +5621,6 @@ class PositionManager:
                 f"Erreur initialisation PostgreSQL datalogger (non-bloquant): {e}"
             )
 
-        # Logging existant (backend.ml.data_logger)
-        try:
-            from backend.ml.data_logger import DataLogger
-
-            data_logger = DataLogger()
-
-            if data_logger and data_logger.is_running:
-                trade_id = getattr(self.active_position, "_trade_id", None)
-
-                if trade_id:
-                    # Logger la sortie (non-blocking avec create_task)
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            # 🔥 FIX 10/12/2025: Capturer les valeurs AVANT la task async
-                            # car self.active_position sera None quand la task s'exécute
-                            pos_break_even_set = getattr(
-                                self.active_position, "break_even_set", False
-                            )
-                            pos_partial_tp_sold = getattr(
-                                self.active_position, "partial_tp_sold", False
-                            )
-                            pos_partial_profit_usdt = getattr(
-                                self.active_position, "partial_profit_usdt", 0
-                            )
-                            pos_partial_tp_percent = getattr(
-                                self.active_position, "partial_tp_percent", None
-                            )
-                            pos_tp_escalier_profits = (
-                                getattr(self.active_position, "tp_escalier_profits", [])
-                                or []
-                            )
-
-                            # Créer une task non-bloquante
-                            async def log_exit():
-                                await data_logger.log_trade_exit(
-                                    trade_id=trade_id,
-                                    exit_price=exit_price,
-                                    exit_reason=reason,
-                                    duration_seconds=float(duration),
-                                    pnl_pct=result["pnl_pct"],
-                                    pnl_usdt=result["pnl_usdt"],
-                                    gross_pnl_usdt=result["gross_pnl_usdt"],
-                                    slippage_pct=result["slippage_pct"],
-                                    slippage_usdt=result["slippage_usdt"],
-                                    fees_usdt=result["fees"],
-                                    net_pnl_usdt=result["net_pnl_usdt"],
-                                    net_pnl_pct=result["net_pnl_pct"],
-                                    win=net_pnl_pct > 0,
-                                    break_even_set=pos_break_even_set,
-                                    partial_tp_executed=pos_partial_tp_sold,
-                                    partial_tp_profit=pos_partial_profit_usdt
-                                    if pos_partial_tp_sold
-                                    else None,
-                                    partial_tp_percent=pos_partial_tp_percent
-                                    if pos_partial_tp_sold
-                                    else None,
-                                    tp_escalier_levels_executed=len(
-                                        pos_tp_escalier_profits
-                                    ),
-                                    tp_escalier_profits=sum(
-                                        p.get("profit", 0)
-                                        for p in pos_tp_escalier_profits
-                                    ),
-                                    trailing_stop_activated=(reason == "TS"),
-                                    max_favorable_excursion=trade_data.get(
-                                        "max_pnl_reached"
-                                    ),
-                                    max_adverse_excursion=trade_data.get(
-                                        "min_pnl_reached"
-                                    ),
-                                )
-
-                            loop.create_task(log_exit())
-                        else:
-                            # Pas de loop, créer un nouveau (ne devrait pas arriver car close_position est appelé depuis un contexte async)
-                            # On ignore silencieusement car c'est un cas rare
-                            pass
-                    except RuntimeError:
-                        # Pas de loop disponible, ignorer
-                        pass
-        except Exception as e:
-            logger.debug(f"Erreur log_trade_exit (non-bloquant): {e}")
         # ========================================
         # FIN POINT D
         # ========================================

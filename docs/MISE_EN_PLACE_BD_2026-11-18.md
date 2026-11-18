@@ -47,7 +47,9 @@ l'IA locale qui répondait « 0 trade fermé » même après des heures de march
    `migrations/add_live_trading_columns.sql`,
    `migrations/add_ml_threshold_columns.sql`,
    `migrations/003_create_trade_events.sql`,
-   `migrations/add_trade_atr_metrics.sql`.
+   `migrations/add_trade_atr_metrics.sql`, et `create_ml_models_table.sql` (la
+   table des modèles ML n'existait pas : le 18/11 au soir, `optimization/predictor_v2.py`
+   demandait `ml_models` et la base répondait « relation does not exist »).
 
 4. **Colonnes que le code écrit et que le schéma ne connaissait pas** : 28 dans
    `scan_logs`, 6 dans `market_regime_history`, 1 dans `market_context`. Ajoutées
