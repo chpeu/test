@@ -542,6 +542,12 @@ TRADING_CONFIG = {
     "trading_cb_pause_duration_minutes": 30,      # Durée pause automatique (min)
     "trading_cb_score_boost_enabled": True,       # Activer score boost après pertes
     "trading_cb_score_boost_per_loss": 0.5,       # Score boost par perte consécutive
+    # Plafonds de dégâts : posés le 18/11/2026. Ils étaient absents — le pare-feu
+    # mesurait et notait, mais le chemin d'ouverture ne lui demandait jamais son
+    # avis (can_trade() n'était appelé que par de vieux scripts de vérification).
+    "trading_cb_max_trades_per_day": 40,          # Prises ouvertes dans la journée
+    "trading_cb_max_size_per_trade_usdt": 100.0,  # Valeur maximale d'une prise
+    "trading_cb_max_loss_per_trade_usdt": 10.0,   # Perte si le stop tombe (~1 % du capital)
     
     # ============================================================
     # 🔥 SPRINT 2: PAIR SCORER - Score Pair Dynamique

@@ -1250,6 +1250,23 @@ class PositionManager:
             )
             size = MIN_SIZE_USDT
 
+        # 🛑 PLAFONDS DE DÉGÂTS : le pare-feu donne son avis AVANT l'ordre.
+        # Mesure du 18/11/2026 : `can_trade()` existait depuis le début mais
+        # n'était appelé que par de vieux scripts de vérification — jamais par le
+        # chemin d'ouverture. Pause après 5 pertes, arrêt à -5 % de perte sur la
+        # journée : tout était mesuré et noté, rien n'était bloqué.
+        from core.trading_circuit_breaker import get_trading_circuit_breaker
+
+        autorise, motif = get_trading_circuit_breaker().can_open_trade(
+            size_usdt=size,
+            stop_percent=self.config.fixed_sl_pct,
+        )
+        if not autorise:
+            logger.warning(
+                f"🛑 Garde-fou — ouverture refusée {symbol} {direction} | {motif}"
+            )
+            return None
+
         # Validation
         if not entry or entry <= 0:
             raise ValueError(f"Entry invalide: {entry}")

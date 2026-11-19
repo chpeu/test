@@ -10,7 +10,7 @@ Date: 07/12/2025
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -74,7 +74,10 @@ class TradingCircuitBreaker:
         daily_drawdown_stop_pct: float = -5.0,
         pause_duration_minutes: int = 30,
         score_boost_per_loss: float = 0.5,
-        max_score_boost: float = 2.0
+        max_score_boost: float = 2.0,
+        max_trades_per_day: int = 40,
+        max_size_per_trade_usdt: float = 100.0,
+        max_loss_per_trade_usdt: float = 10.0
     ):
         """
         Initialise le circuit breaker trading.
@@ -86,6 +89,11 @@ class TradingCircuitBreaker:
             pause_duration_minutes: Durée de la pause en minutes
             score_boost_per_loss: Augmentation score requis par perte consécutive
             max_score_boost: Boost maximum du score
+            max_trades_per_day: Nombre maximal de trades ouverts dans la journée
+            max_size_per_trade_usdt: Valeur maximale d'une prise, en USDT
+            max_loss_per_trade_usdt: Perte maximale acceptée pour une prise,
+                calculée sur la distance du stop (environ 1 % du capital essai
+                à blanc de ~1 000 USDT)
         """
         # Configuration
         self.max_consecutive_losses = max_consecutive_losses
@@ -94,6 +102,9 @@ class TradingCircuitBreaker:
         self.pause_duration = timedelta(minutes=pause_duration_minutes)
         self.score_boost_per_loss = score_boost_per_loss
         self.max_score_boost = max_score_boost
+        self.max_trades_per_day = max_trades_per_day
+        self.max_size_per_trade_usdt = max_size_per_trade_usdt
+        self.max_loss_per_trade_usdt = max_loss_per_trade_usdt
         
         # État
         self.state = CircuitBreakerState.ACTIVE
@@ -131,7 +142,10 @@ class TradingCircuitBreaker:
         daily_drawdown_pause_pct: Optional[float] = None,
         daily_drawdown_stop_pct: Optional[float] = None,
         pause_duration_minutes: Optional[int] = None,
-        score_boost_per_loss: Optional[float] = None
+        score_boost_per_loss: Optional[float] = None,
+        max_trades_per_day: Optional[int] = None,
+        max_size_per_trade_usdt: Optional[float] = None,
+        max_loss_per_trade_usdt: Optional[float] = None
     ) -> None:
         """
         🔥 FIX: Met à jour la configuration à chaud sans recréer l'instance.
@@ -162,6 +176,18 @@ class TradingCircuitBreaker:
         if score_boost_per_loss is not None:
             self.score_boost_per_loss = score_boost_per_loss
             logger.info(f"🔄 CB: score_boost_per_loss → {score_boost_per_loss}")
+
+        if max_trades_per_day is not None:
+            self.max_trades_per_day = max_trades_per_day
+            logger.info(f"🔄 CB: max_trades_per_day → {max_trades_per_day}")
+
+        if max_size_per_trade_usdt is not None:
+            self.max_size_per_trade_usdt = max_size_per_trade_usdt
+            logger.info(f"🔄 CB: max_size_per_trade_usdt → {max_size_per_trade_usdt}")
+
+        if max_loss_per_trade_usdt is not None:
+            self.max_loss_per_trade_usdt = max_loss_per_trade_usdt
+            logger.info(f"🔄 CB: max_loss_per_trade_usdt → {max_loss_per_trade_usdt}")
     
     def _get_day_start(self) -> datetime:
         """Retourne le début du jour courant (minuit UTC)"""
@@ -357,6 +383,54 @@ class TradingCircuitBreaker:
         
         return True
     
+    def can_open_trade(
+        self,
+        size_usdt: Optional[float] = None,
+        stop_percent: Optional[float] = None,
+    ) -> Tuple[bool, str]:
+        """La question à poser AVANT d'ouvrir : les plafonds de dégâts le permettent-ils ?
+
+        Rassemble en une seule demande ce qui était éparpillé : l'état du pare-feu
+        (pause ou arrêt après une série de pertes), le nombre de trades déjà pris
+        dans la journée, la valeur de la prise, et la perte que ferait le stop si
+        il tombait. Retourne (False, motif) pour que l'appelant puisse l'écrire
+        dans le journal au lieu d'avaler le refus.
+
+        Note du 18/11/2026 : `can_trade()` existait depuis le début mais n'était
+        appelé que par de vieux scripts de vérification — jamais par le chemin
+        d'ouverture. Le pare-feu mesurait,-notait, et ne bloquait rien.
+        """
+        if not self.can_trade():
+            motif = self.pause_reason or f"état {self.state.value}"
+            return False, f"pare-feu: {motif}"
+
+        if self.max_trades_per_day > 0 and self.daily_trades >= self.max_trades_per_day:
+            return False, (
+                f"{self.daily_trades} trades déjà pris aujourd'hui "
+                f"(plafond {self.max_trades_per_day})"
+            )
+
+        if size_usdt is not None and self.max_size_per_trade_usdt > 0:
+            if size_usdt > self.max_size_per_trade_usdt:
+                return False, (
+                    f"prise de {size_usdt:.2f} USDT au-dessus du plafond "
+                    f"{self.max_size_per_trade_usdt:.0f} USDT"
+                )
+
+        if (
+            size_usdt is not None
+            and stop_percent is not None
+            and self.max_loss_per_trade_usdt > 0
+        ):
+            perte_si_stop = size_usdt * abs(stop_percent) / 100.0
+            if perte_si_stop > self.max_loss_per_trade_usdt:
+                return False, (
+                    f"le stop ferait perdre {perte_si_stop:.2f} USDT "
+                    f"(plafond {self.max_loss_per_trade_usdt:.2f} USDT)"
+                )
+
+        return True, ""
+
     def get_score_boost(self) -> float:
         """
         Retourne le boost à appliquer au score minimum requis.
@@ -489,7 +563,10 @@ def get_trading_circuit_breaker() -> TradingCircuitBreaker:
                 daily_drawdown_pause_pct=TRADING_CONFIG.get('trading_cb_daily_drawdown_pause_pct', -2.0),
                 daily_drawdown_stop_pct=TRADING_CONFIG.get('trading_cb_daily_drawdown_stop_pct', -5.0),
                 pause_duration_minutes=TRADING_CONFIG.get('trading_cb_pause_duration_minutes', 30),
-                score_boost_per_loss=TRADING_CONFIG.get('trading_cb_score_boost_per_loss', 0.5)
+                score_boost_per_loss=TRADING_CONFIG.get('trading_cb_score_boost_per_loss', 0.5),
+                max_trades_per_day=TRADING_CONFIG.get('trading_cb_max_trades_per_day', 40),
+                max_size_per_trade_usdt=TRADING_CONFIG.get('trading_cb_max_size_per_trade_usdt', 100.0),
+                max_loss_per_trade_usdt=TRADING_CONFIG.get('trading_cb_max_loss_per_trade_usdt', 10.0)
             )
             logger.info(
                 f"✅ Trading Circuit Breaker initialisé: "

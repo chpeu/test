@@ -834,7 +834,10 @@ async def _scan_top_pairs():
                 )
 
                 if position_result is None:
-                    logger.info(f"⏭️ Trade {symbol} {best_setup.get('direction')} ignoré (rejeté par calibration)")
+                    logger.info(
+                        f"⏭️ Trade {symbol} {best_setup.get('direction')} ignoré "
+                        "(filtre de décision ou plafonds de dégâts)"
+                    )
                 else:
                     logger.info(f"✅ Position ouverte: {symbol} {best_setup.get('direction')}")
 

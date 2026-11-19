@@ -37,8 +37,32 @@ def _load_analyzer_module():
 # PositionManager Tests
 # ============================================================================
 
+def elargir_plafonds_pare_feu():
+    """Élargit les plafonds de dégâts pour ces tests.
+
+    Les plafonds réels sont calés sur le compte d'essai à blanc (prises de ~15
+    USDT, perte max ~10 USDT). Les tests de cette famille engagent 1 000 USDT sur
+    un BTC à 50 000 : chiffres pédagogiques. Sans cet élargissement, l'ouverture
+    est refusée par le garde-fou — et c'est voulu : `test_plafonds_de_degats.py`
+    vérifie justement qu'il bloque.
+    """
+    from core.trading_circuit_breaker import init_trading_circuit_breaker
+
+    init_trading_circuit_breaker(
+        max_consecutive_losses=10_000,
+        daily_drawdown_pause_pct=-100.0,
+        daily_drawdown_stop_pct=-100.0,
+        max_trades_per_day=10_000,
+        max_size_per_trade_usdt=1_000_000.0,
+        max_loss_per_trade_usdt=1_000_000.0,
+    )
+
+
 class TestPositionManager:
     """Tests for PositionManager class"""
+
+    def setup_method(self):
+        elargir_plafonds_pare_feu()
 
     def test_init_position_manager(self):
         """Test PositionManager initialization"""
@@ -665,6 +689,9 @@ class TestTechnicalAnalyzer:
 
 class TestIntegration:
     """Integration tests between components"""
+
+    def setup_method(self):
+        elargir_plafonds_pare_feu()
 
     def test_position_manager_with_analyzer_setup(self):
         """Test PositionManager using setup from analyzer"""
