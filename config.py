@@ -400,9 +400,18 @@ TRADING_CONFIG = {
     "trailing_trigger_pnl": 0.20,  # 🔥 Fallback 0.20% (si ATR désactivé)
     "trailing_atr_multiplier": 0.8,  # 🔥 Distance = ATR × 0.8 (était 0.4, trop serré)
     "trailing_distance_atr_mult": 0.8,  # 🔥 ALIAS clair pour trailing_atr_multiplier
-    "trailing_min_distance": 0.10,  # 🔥 Minimum 0.10% (était 0.08)
-    "trailing_max_distance": 0.30,  # 🔥 Maximum 0.30% (était 0.25)
-    "trailing_pnl_cap": 0.60,  # 🔥 PnL% auquel trailing_max_distance est atteint (mode FIXE linéaire)
+    "trailing_min_distance": 0.12,  # (était 0.10, puis 0.08)
+    # Distance de sortie serrée d'un cran le 19/11/2026, mesure en main : sur 45
+    # trades fermés par le stop suiveur, le prix était monté en moyenne à +0,85 %
+    # et le robot en gardait +0,54 — le rendu (0,31 point) égalait exactement
+    # cette valeur maximale. En la descendant à 0,16 %, la même course rapporte
+    # environ +0,14 point de plus par prise gagnante. Réglage seul variable, en
+    # essai à blanc ; la sonde `scripts/mesure_rendez_gains.py` compare avant/après.
+    "trailing_max_distance": 0.22,  # (était 0.30, puis 0.25)
+    # Palier où la distance maximale est atteinte, descendu de 0,60 à 0,80… et
+    # surtout aligné sur le fichier vivant : l'override poussait ce palier à 1,45 %,
+    # donc la distance ne se resserrait presque jamais.
+    "trailing_pnl_cap": 0.80,  # PnL% où trailing_max_distance est atteint (mode FIXE linéaire)
 
     # 🔥 PHASE 7: TP Escalier (Multi-Level TP) - Format legacy
     "tp_escalier": {

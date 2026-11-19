@@ -400,7 +400,18 @@ class TradingCircuitBreaker:
         appelé que par de vieux scripts de vérification — jamais par le chemin
         d'ouverture. Le pare-feu mesurait,-notait, et ne bloquait rien.
         """
-        if not self.can_trade():
+        # L'interrupteur `trading_circuit_breaker_enabled` commande la pause et
+        # l'arrêt après série de pertes. Les plafonds (prises du jour, valeur de la
+        # prise, perte si le stop tombe) restent, eux, toujours opposables : un
+        # plafond éteint n'est plus un plafond.
+        try:
+            from config import TRADING_CONFIG
+
+            firewall_actif = TRADING_CONFIG.get("trading_circuit_breaker_enabled", True)
+        except ImportError:  # pragma: no cover - config always available at runtime
+            firewall_actif = True
+
+        if firewall_actif and not self.can_trade():
             motif = self.pause_reason or f"état {self.state.value}"
             return False, f"pare-feu: {motif}"
 

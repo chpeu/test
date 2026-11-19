@@ -1124,14 +1124,28 @@ class PositionManager:
 
         position_params = ConfigHelper.get_position_params()
 
+        _trailing_declencheur = get_effective_value("trailing_trigger_pnl") or 0.25
+        _trailing_min = get_effective_value("trailing_min_distance") or 0.08
+        _trailing_max = get_effective_value("trailing_max_distance") or 0.25
+        _trailing_palier = get_effective_value("trailing_pnl_cap") or 0.60
         self.trailing_stop = TrailingStopManager(
             TrailingStopConfig(
                 enabled=position_params.get("enable_trailing_stop", True),
-                trigger_pnl=get_effective_value("trailing_trigger_pnl") or 0.25,
+                trigger_pnl=_trailing_declencheur,
                 atr_multiplier=get_effective_value("trailing_atr_multiplier") or 0.4,
-                min_distance=get_effective_value("trailing_min_distance") or 0.08,
-                max_distance=get_effective_value("trailing_max_distance") or 0.25,
+                min_distance=_trailing_min,
+                max_distance=_trailing_max,
             )
+        )
+        # Écrite une fois au démarrage : ces quatre nombres décident de la
+        # quantité de gain que le robot garde. Ils viennent de trois endroits
+        # (config.py, config/trading_config.json, config_overrides.json) et le
+        # dernier gagne — sans cette ligne, on débat de valeurs que personne
+        # n'utilise.
+        logger.info(
+            f"🎢 Sortie en place: enclenchement à +{_trailing_declencheur}% · "
+            f"distance {_trailing_min}% → {_trailing_max}% "
+            f"(palier +{_trailing_palier}%)"
         )
 
         # PnL Calculator

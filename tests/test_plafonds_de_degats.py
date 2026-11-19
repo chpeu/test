@@ -83,6 +83,34 @@ def test_les_plafonds_se_reglent_a_chaud():
     assert "plafond 2" in motif
 
 
+def test_interrupteur_etint_la_pause_mais_pas_les_plafonds(monkeypatch):
+    """Éteindre le pare-feu coupe la pause-après-pertes, pas les plafonds."""
+    from config import TRADING_CONFIG
+
+    monkeypatch.setitem(TRADING_CONFIG, "trading_circuit_breaker_enabled", False)
+    feu = pare_feu(max_consecutive_losses=2, max_trades_per_day=2)
+    feu.record_trade("A/USDT:USDT", pnl_pct=-0.4, pnl_usdt=-0.06)
+    feu.record_trade("B/USDT:USDT", pnl_pct=-0.5, pnl_usdt=-0.07)
+
+    assert feu.state == CircuitBreakerState.PAUSED
+    autorise, motif = feu.can_open_trade(size_usdt=15.0, stop_percent=0.30)
+    assert autorise is False
+    assert "trades déjà pris" in motif
+
+
+def test_interrupteur_allume_bloque_des_une_pause(monkeypatch):
+    from config import TRADING_CONFIG
+
+    monkeypatch.setitem(TRADING_CONFIG, "trading_circuit_breaker_enabled", True)
+    feu = pare_feu(max_consecutive_losses=2)
+    feu.record_trade("A/USDT:USDT", pnl_pct=-0.4, pnl_usdt=-0.06)
+    feu.record_trade("B/USDT:USDT", pnl_pct=-0.5, pnl_usdt=-0.07)
+
+    autorise, motif = feu.can_open_trade(size_usdt=15.0, stop_percent=0.30)
+    assert autorise is False
+    assert "pare-feu" in motif
+
+
 def test_l_ouverture_d_une_position_interroge_le_pare_feu():
     """Le garde-fou : l'appel ne doit pas disparaître du chemin d'ouverture."""
     from core.position_manager import PositionManager
