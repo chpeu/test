@@ -22,6 +22,7 @@ class Scheduler:
         self.position_check_task: Optional[asyncio.Task] = None
         self.scalability_refresh_task: Optional[asyncio.Task] = None
         self.ghost_eval_task: Optional[asyncio.Task] = None
+        self.pilotage_task: Optional[asyncio.Task] = None
         self.is_running = False
         
         # Callbacks
@@ -29,6 +30,7 @@ class Scheduler:
         self.position_check_callback: Optional[Callable] = None
         self.scalability_refresh_callback: Optional[Callable] = None
         self.ghost_eval_callback: Optional[Callable] = None
+        self.pilotage_callback: Optional[Callable] = None
     
     def set_scanner_callback(self, callback: Callable):
         """Définir callback pour scanner (appelé toutes les 45s)"""
@@ -45,6 +47,10 @@ class Scheduler:
     def set_ghost_eval_callback(self, callback: Callable):
         """Définir callback pour le carnet fantôme (les dossiers refusés)"""
         self.ghost_eval_callback = callback
+
+    def set_pilotage_callback(self, callback: Callable):
+        """Définir callback pour le pilotage IA (bilan horaire + propositions)"""
+        self.pilotage_callback = callback
 
     def _attach_task_monitor(self, name: str, task: asyncio.Task) -> None:
         """Ajouter un callback de monitoring pour tracer les arrêts inattendus."""
@@ -96,6 +102,25 @@ class Scheduler:
             except Exception as e:
                 logger.error(f"Erreur dans carnet fantôme loop: {e}")
                 await asyncio.sleep(120)
+
+    async def _pilotage_loop(self):
+        """Boucle du pilotage IA — bilan écrit, propositions vérifiées, mesures.
+
+        Elle ne décide rien toute seule : le niveau (0 à 3) est vérifié dans
+        `core/pilotage_ia.py`, et aucun réglage hors de la cage ne peut être écrit.
+        """
+        from config import TRADING_CONFIG
+
+        minutes = max(10, int(TRADING_CONFIG.get("pilote_ia_minutes", 60)))
+        logger.info(f"🧠 Boucle pilotage IA démarrée (toutes les {minutes} min)")
+        while self.is_running:
+            try:
+                if self.pilotage_callback:
+                    await self.pilotage_callback()
+                await asyncio.sleep(minutes * 60)
+            except Exception as e:
+                logger.error(f"Erreur dans pilotage IA loop: {e}")
+                await asyncio.sleep(300)
 
     async def _position_check_loop(self):
         """Boucle position check - toutes les 0.1 secondes (optimisé pour scalping ultra-rapide)"""
@@ -161,6 +186,12 @@ class Scheduler:
             self._attach_task_monitor("ghost_eval_loop", self.ghost_eval_task)
             logger.info("✅ Carnet fantôme démarré")
 
+        # Démarrer le pilotage IA (bilan horaire, propositions, mesures)
+        if self.pilotage_callback:
+            self.pilotage_task = asyncio.create_task(self._pilotage_loop())
+            self._attach_task_monitor("pilotage_ia_loop", self.pilotage_task)
+            logger.info("✅ Pilotage IA démarré")
+
         # Démarrer position check loop
         if self.position_check_callback:
             self.position_check_task = asyncio.create_task(self._position_check_loop())
@@ -196,6 +227,10 @@ class Scheduler:
         if self.ghost_eval_task:
             self.ghost_eval_task.cancel()
             self.ghost_eval_task = None
+
+        if self.pilotage_task:
+            self.pilotage_task.cancel()
+            self.pilotage_task = None
         
         logger.info("🛑 Scheduler arrêté")
     

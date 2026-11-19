@@ -554,6 +554,16 @@ TRADING_CONFIG = {
     # Plafonds de dégâts : posés le 18/11/2026. Ils étaient absents — le pare-feu
     # mesurait et notait, mais le chemin d'ouverture ne lui demandait jamais son
     # avis (can_trade() n'était appelé que par de vieux scripts de vérification).
+    # 🧠 Pilotage par l'IA locale. Niveau 2 par défaut : elle écrit un bilan par
+    # heure et propose des réglages, un humain approuve. Niveau 3 seulement quand
+    # les mesures auront montré qu'elle voit juste (voir docs/PILOTAGE_IA).
+    "pilote_ia_actif": True,
+    "pilote_ia_niveau": 2,
+    "pilote_ia_minutes": 60,
+    "pilote_ia_fenetre_minutes": 60,
+    "pilote_ia_fenetre_prises": 20,
+    "pilote_ia_gain_minimum": 0.05,
+
     # 🛡️ Les compteurs du garde-fou (prises du jour, pertes de suite, PnL, pause
     # ou arrêt) sont relus et réécrits dans la base des trades : sans ça, un
     # simple redémarrage effaçait les plafonds de dégâts (mesuré 19/11/2026).

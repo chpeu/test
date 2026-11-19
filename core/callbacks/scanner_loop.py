@@ -599,7 +599,22 @@ async def _scan_top_pairs():
                                 # 🔥 FIX CRITIQUE: Stocker ml_confidence comme décimal (0.0-1.0), pas pourcentage
                                 best_setup['ml_confidence'] = round(confidence, 4)  # Décimal arrondi
                                 best_setup['ml_prediction'] = 'win' if confidence >= 0.5 else 'loss'
-                                
+
+                                # Trace écrite du verdict du filtre (table déjà prévue,
+                                # restée vide : 0 ligne mesurée le 19/11/2026).
+                                try:
+                                    from core.pilotage_ia import ecrire_prediction_filtre
+
+                                    ecrire_prediction_filtre(
+                                        symbole=symbol,
+                                        approuve=bool(should_trade),
+                                        confiance=float(confidence),
+                                        seuil=float(gb_min_confidence),
+                                        signes=features,
+                                    )
+                                except Exception as trace_err:  # une trace ratée ne doit pas bloquer la prise
+                                    logger.debug(f"⚠️ Verdict filtre non tracé: {type(trace_err).__name__}: {trace_err}")
+
                                 try:
                                     pg_logger = get_pg_datalogger()
                                     if pg_logger and pg_logger.enabled:

@@ -294,6 +294,15 @@ async def init_instances() -> None:
         except ImportError as carnet_err:
             logger.warning(f"⚠️ Carnet fantôme indisponible: {carnet_err}")
 
+        # 🧠 Pilotage IA : bilan écrit toutes les heures, puis propositions de
+        # réglages dans une cage bornée. Niveau 2 par défaut : un humain approuve.
+        try:
+            from core.callbacks.pilotage_ia import pilotage_ia_callback
+
+            sched.set_pilotage_callback(pilotage_ia_callback)
+        except ImportError as pilotage_err:
+            logger.warning(f"⚠️ Pilotage IA indisponible: {pilotage_err}")
+
         state.set_scheduler(sched)
         
         ws_mgr = state.get_ws_manager()
