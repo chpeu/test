@@ -71,7 +71,7 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        pytest tests/ --cov=core --cov=api --cov-report=xml --cov-report=term-missing --cov-fail-under=20 -v
+        pytest tests/ --cov=core --cov=api --cov-report=xml --cov-report=term-missing --cov-fail-under=20 -v -m "not optuna_lourd"
 
     - name: Le chemin des ordres réels reste couvert (porte à 75 %)
       run: |
@@ -85,11 +85,11 @@ jobs:
       run: |
         pytest tests/test_scanner_cycle_reel.py tests/test_scanner.py tests/test_callbacks.py -q --cov=core.callbacks.scanner_loop --cov-fail-under=75
 
-    - name: Les routes ML répondent (porte à 28 %)
+    - name: Les routes ML et leurs moteurs tournent pour de vrai (porte a 65 %)
       run: |
-        pytest tests/test_routes_ml_vivant.py tests/test_ml_routes_comprehensive.py tests/test_ml_routes.py -q --cov=api.routes.ml_training --cov=api.routes.ml_optimization --cov-fail-under=28
-
+        pytest tests/test_routes_ml_vivant.py tests/test_optimisation_reelle.py tests/test_entrainement_reel.py tests/test_ml_routes_comprehensive.py tests/test_ml_routes.py -q --cov=api.routes.ml_training --cov=api.routes.ml_optimization --cov-fail-under=65
     - name: Upload coverage to Codecov (optional)
+
       if: success()
       continue-on-error: true
       uses: codecov/codecov-action@v4

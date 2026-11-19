@@ -97,3 +97,22 @@ def test_la_config_vivante_n_heberge_plus_de_dechets_de_tests():
 
     suspects = [cle for cle in reglages if cle.startswith("test") or cle.endswith("_test")]
     assert not suspects, f"des cles de test se sont glissees dans la config vivante: {suspects}"
+
+
+def test_les_tests_n_ecrivent_jamais_dans_le_fichier_de_reglages_du_robot():
+    """Le fichier de reglages du robot n'est pas un terrain d'essai.
+
+    Mesure du 19/11/2026: la suite complete avait remis `gb_min_confidence` a 0,4,
+    effacant la reglage decidee par l'IA pilote la veille. Le chemin etant absolut
+    dans `utils.config_persistence`, se deplacer dans un dossier temporaire ne
+    protegeait rien: la seance de tests doit pointer ailleurs.
+    """
+    import utils.config_persistence as persistance
+
+    cible_des_tests = Path(persistance.CONFIG_OVERRIDES_FILE).resolve()
+    fichier_du_robot = Path(__file__).resolve().parent.parent / "config_overrides.json"
+
+    assert cible_des_tests != fichier_du_robot, (
+        f"les tests ecrivent dans {cible_des_tests}: la session doit rediriger "
+        "CONFIG_OVERRIDES_FILE vers un fichier temporaire"
+    )

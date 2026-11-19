@@ -1,6 +1,15 @@
 """
 Configuration pytest - Fixtures globales
 """
+# Sans ce plafond, xgboost et sklearn ouvrent autant de threads que de coeurs
+# du processeur. Mesure du 19/11/2026: un seul tour d'optimisation sur 260 lignes
+# consommait 43 minutes de CPU pour 6 minutes montre, et la suite complete
+# s'eternisait. Deux threads suffisent pour les petits jeux de tests.
+import os
+
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
 
 import asyncio
 import logging
@@ -141,6 +150,34 @@ def _recherches_optuna_hors_du_depot(tmp_path_factory):
     ml_common.LAST_RUNS_FILE = original
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _reglages_vivants_hors_du_depot(tmp_path_factory):
+    """Aucun test ne doit ecrire dans `config_overrides.json`, le fichier du robot.
+
+    Le chemin est absolut dans `utils.config_persistence` (donc changer de dossier
+    ne protege pas). Mesure du 19/11/2026: la suite complete y avait remis
+    `gb_min_confidence` a 0,4, effacant la decision prise par l'IA pilote la
+    veille. On remplace la cible par un fichier temporaire pour toute la seance.
+    """
+    import utils.config_persistence as persistance
+
+    chemin_temporaire = tmp_path_factory.mktemp("reglages") / "config_overrides.json"
+    originaux = {"persistance": persistance.CONFIG_OVERRIDES_FILE}
+    persistance.CONFIG_OVERRIDES_FILE = chemin_temporaire
+
+    import api.routes.ml_optimization as routes_ml
+
+    if hasattr(routes_ml, "CONFIG_OVERRIDES_FILE"):
+        originaux["routes_ml"] = routes_ml.CONFIG_OVERRIDES_FILE
+        routes_ml.CONFIG_OVERRIDES_FILE = chemin_temporaire
+
+    yield chemin_temporaire
+
+    persistance.CONFIG_OVERRIDES_FILE = originaux["persistance"]
+    if "routes_ml" in originaux:
+        routes_ml.CONFIG_OVERRIDES_FILE = originaux["routes_ml"]
+
+
 @pytest.fixture
 def client():
     """Fixture TestClient FastAPI"""
@@ -183,3 +220,22 @@ def _close_global_singletons():
         # L'app backend utilise encore ce singleton après les tests
     except Exception:
         pass
+
+
+@pytest.fixture
+def jeu_ml():
+    """Petit jeu de donnees ML synthetique (260 prises) pour les tests d'entrainement.
+
+    Le fabricant vit dans `tests/fabrication_ml.py` et est charge par son chemin :
+    le dossier des tests n'est pas un paquet, donc un `import` classique depend du
+    hasard du chemin de pytest (mesure: le meme import passait dans un fichier et
+    echouait dans son voisin).
+    """
+    import importlib.util
+    from pathlib import Path
+
+    chemin = Path(__file__).resolve().parent / "fabrication_ml.py"
+    spec = importlib.util.spec_from_file_location("fabrication_ml", chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.jeu_de_donnees()

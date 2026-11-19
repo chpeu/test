@@ -2,15 +2,19 @@
 Tests pour optimization/models/catboost_trainer.py
 Tests simplifiés pour éviter les dépendances SQLAlchemy
 """
-import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 # Mock toutes les dépendances complexes
+# `catboost` n'est pas installe, et la chaine d'entrainement reelle (chargement
+# des trades, preprocessing) n'a rien a faire dans ces tests-la: elle ouvre des
+# connexions et laisse un etat SQLAlchemy qui casse la creation d'etude Optuna
+# plus bas dans la suite (mesure du 19/11/2026: 9 tests de
+# tests/test_optimisation_reelle.py echouaient a cause de ce seul fichier).
 with patch.dict('sys.modules', {
     'catboost': MagicMock(),
     'optimization.ml_pipeline': MagicMock(),
-    'optimization.data.feature_loader': MagicMock()
+    'optimization.data.feature_loader': MagicMock(),
 }):
     from optimization.models.catboost_trainer import CatBoostTrainer, CATBOOST_AVAILABLE
 
@@ -204,19 +208,18 @@ class TestCatBoostTrainerImports:
             # Acceptable en environnement de test
             pass
             
-    @patch.dict('sys.modules', {'catboost': None})
-    def test_missing_catboost_import(self):
-        """Test comportement quand CatBoost manque"""
-        # Force reimport avec CatBoost manquant
-        import sys
-        if 'optimization.models.catboost_trainer' in sys.modules:
-            del sys.modules['optimization.models.catboost_trainer']
-            
-        # L'import ne devrait pas planter même sans CatBoost
-        try:
-            from optimization.models.catboost_trainer import CatBoostTrainer
-            trainer = CatBoostTrainer()
-            result = trainer.train()
-            assert 'error' in result
-        except ImportError:
-            pytest.fail("L'import ne devrait pas échouer même sans CatBoost")
+    def test_sans_catboost_l_entrainement_refuse_plutot_que_de_planter(self, monkeypatch):
+        """Sans CatBoost installe, l'entrainement doit repondre une erreur lisible.
+
+        Avant: ce test effacait le module de `sys.modules` pour forcer un
+        re-import. Ce manege multipliait les definitions de modeles SQLAlchemy
+        dans la seance (des tables declarees deux fois) et rendait impossibles
+        les tests d'optimisation Optuna plus bas dans la suite.
+        """
+        import optimization.models.catboost_trainer as catboosteur
+
+        monkeypatch.setattr(catboosteur, "CATBOOST_AVAILABLE", False)
+
+        resultat = catboosteur.CatBoostTrainer().train()
+
+        assert "error" in resultat, f"il faut une reponse exploitable, pas un plantage: {resultat}"
