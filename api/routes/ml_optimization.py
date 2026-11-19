@@ -15,6 +15,11 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+# Fichier ou le tour d'optimisation GradientBoosting laisse ses resultats. Nomme
+# ici (et pas repete trois fois en dur) pour qu'un test puisse le pointer ailleurs
+# sans ecrire dans le depot.
+RESULTATS_GB = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json')
+
 from .ml_common import (
     METRIC_OPTIONS,
     chemin_config_autorise,
@@ -626,9 +631,7 @@ async def _optimize_gradientboosting_background(
         results = optimizer.get_results_summary()
         
         # 🔥 SAUVEGARDER dans optuna_gb_results.json pour persistence
-        results_path = os.path.join(
-            os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json'
-        )
+        results_path = RESULTATS_GB
         os.makedirs(os.path.dirname(results_path), exist_ok=True)
         
         save_data = {
@@ -703,9 +706,7 @@ async def apply_gradientboosting_params(
 
         if not params_to_apply:
             # Charger depuis le dernier résultat sauvegardé
-            results_path = os.path.join(
-                os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json'
-            )
+            results_path = RESULTATS_GB
             if os.path.exists(results_path):
                 with open(results_path, 'r') as f:
                     results = json.load(f)
@@ -772,10 +773,8 @@ async def get_gradientboosting_results():
         Meilleurs params, métriques et historique
     """
     try:
-        results_path = os.path.join(
-            os.path.dirname(__file__), '..', '..', 'data', 'optuna_gb_results.json'
-        )
-        
+        results_path = RESULTATS_GB
+
         if not os.path.exists(results_path):
             return {
                 'found': False,
