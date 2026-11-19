@@ -1281,6 +1281,18 @@ class PositionManager:
             )
             return None
 
+        # 💸 La règle « on ne trade que des paires à 0 frais » doit être tenue au
+        # moment d'ouvrir, pas seulement au tri des paires : mesuré le 19/11/2026,
+        # la table de frais de ccxt ne se recharge jamais, et 3 prises sont
+        # parties sur SOL payante (0,04 % par aller-retour) sans qu'aucune
+        # colonne de frais ne le montre en base.
+        from core.frais_paires import verifier_prise
+
+        frais_ok, motif_frais = verifier_prise(symbol)
+        if not frais_ok:
+            logger.warning(f"🛑 Frais — ouverture refusée {symbol} {direction} | {motif_frais}")
+            return None
+
         # Validation
         if not entry or entry <= 0:
             raise ValueError(f"Entry invalide: {entry}")
@@ -2150,6 +2162,19 @@ class PositionManager:
 
         # Invariant FIXE: ne jamais élargir le SL au-delà du SL% initial
         self._enforce_fixe_sl_not_wider(context="OPEN_POSITION")
+
+        # 💸 Noter les frais réels de la paire : `taker_fee_rate`, `maker_fee_rate`
+        # et `entry_fee_usdt` sont restés à 0 sur les 98 trades en base, donc
+        # rien ne permettait de voir une paire payante passer dans les comptes.
+        from core.frais_paires import lire_frais
+
+        taker_entree, maker_entree = lire_frais(symbol)
+        self.active_position.taker_fee_rate = taker_entree
+        self.active_position.maker_fee_rate = maker_entree
+        if taker_entree:
+            self.active_position.entry_fee_usdt = round(
+                getattr(self.active_position, 'size', 0.0) * taker_entree, 6
+            )
 
         # FIX 29/12: Stocker l'ATR réellement utilisé pour diagnostic
         if atr_pct_used is not None:
@@ -5442,6 +5467,22 @@ class PositionManager:
                     )
                     scan_log_id = getattr(self.active_position, "_scan_log_id", None)
                     existing_trade_id = getattr(self.active_position, "_trade_id", None)
+
+                    from core.frais_paires import lire_frais as _lire_frais_sortie
+
+                    # 💸 Frais de sortie réels, pour que le cumul en base soit vrai
+                    # (0,08 % d'aller-retour sur une paire payante = un tiers de la
+                    # perte moyenne de -0,35 %).
+                    taker_sortie, _maker_sortie = _lire_frais_sortie(self.active_position.symbol)
+                    if taker_sortie:
+                        self.active_position.exit_fee_usdt = round(
+                            getattr(self.active_position, 'size', 0.0) * taker_sortie, 6
+                        )
+                        self.active_position.total_fees_usdt = round(
+                            (self.active_position.entry_fee_usdt or 0.0)
+                            + self.active_position.exit_fee_usdt,
+                            6,
+                        )
 
                     # Calibration ML : appelée ici, avant l'écriture en base, pour
                     # qu'aucun chemin d'écriture ne puisse l'oublier.

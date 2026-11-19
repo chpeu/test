@@ -8,6 +8,19 @@ import pytest
 from core.position_manager import PositionManager, PositionConfig, Position
 
 
+@pytest.fixture(autouse=True)
+def porte_de_frais_neutre(monkeypatch):
+    """La porte « paire à 0 frais » a ses propres tests.
+
+    `tests/test_frais_paires.py` la vérifie avec de fausses tables MEXC. Ici on
+    teste le chemin d'ouverture et les notifications, sur des paires inventées
+    qui ne figurent pas dans la table de l'échange.
+    """
+    import core.frais_paires as frais
+
+    monkeypatch.setattr(frais, "verifier_prise", lambda symbole: (True, ""))
+
+
 class TestPositionManager:
     """Tests pour le gestionnaire de positions"""
 

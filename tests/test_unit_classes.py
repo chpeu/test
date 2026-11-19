@@ -57,6 +57,13 @@ def elargir_plafonds_pare_feu():
         max_loss_per_trade_usdt=1_000_000.0,
     )
 
+    # Même logique pour la porte de frais : ces tests engagent des paires qui ne
+    # sont pas dans la table MEXC (BTC à 50 000, chiffres pédagogiques). La porte
+    # elle-même est testée dans `tests/test_frais_paires.py`.
+    import core.frais_paires as frais
+
+    frais.verifier_prise = lambda symbole: (True, "")
+
 
 class TestPositionManager:
     """Tests for PositionManager class"""

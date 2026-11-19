@@ -558,6 +558,15 @@ TRADING_CONFIG = {
     "trading_cb_max_size_per_trade_usdt": 100.0,  # Valeur maximale d'une prise
     "trading_cb_max_loss_per_trade_usdt": 10.0,   # Perte si le stop tombe (~1 % du capital)
 
+    # 💸 Paires à 0 frais (zone « zero fee » de MEXC). Mesuré 19/11/2026 : 148
+    # contrats sur 1 164 sont à taker 0 %, et MEXC y fait entrer/sortir des
+    # paires sans prévenir. La table de ccxt ne se rechargeant jamais, il faut
+    # la relire nous-mêmes et bloquer l'ouverture sur une paire devenue payante.
+    "frais_actualiser_minutes": 5.0,            # relecture : MEXC change les taux sans prévenir
+    "entree_frais_max_pct": 0.0,               # 0.0 = uniquement les paires à 0 frais
+    "entree_autoriser_paires_payantes": False,  # True pour rendre BTC/ETH/SOL
+    "entree_paires_payantes_autorisees": [],    # exceptions nommées, une par une
+
     # ============================================================
     # CARNET FANTÔME — la trace des dossiers refusés, et leur verdict
     # (ajouté le 19/11/2026 : sans lui, impossible de savoir si un filtre qui

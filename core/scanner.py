@@ -740,16 +740,39 @@ class ScalabilityScanner:
             # 🔥 OPT #12: Log de départ
             logger.info(f"📡 {len(markets)} marchés chargés au total")
             
+            # Le frais lu dans `markets` vient du cache ccxt, qui ne se recharge
+            # jamais (mesuré 19/11/2026) : une paire passée payant chez MEXC
+            # restait tradée des jours. On relit les frais de notre côté.
+            from core.frais_paires import MAJEURES, paire_acceptable, table_frais
+
+            table_frais_mexc = await table_frais()
+            if not table_frais_mexc:
+                logger.warning("⚠️ Table des frais vide — repli sur les valeurs ccxt (peut être périmées)")
+
+            reglages_frais = {
+                'max_pct': float(TRADING_CONFIG.get('entree_frais_max_pct', 0.0)),
+                'autoriser_payantes': bool(TRADING_CONFIG.get('entree_autoriser_paires_payantes', False)),
+                'liste_blanche': set(TRADING_CONFIG.get('entree_paires_payantes_autorisees', []) or []),
+            }
+
             for symbol, market in markets.items():
                 if market.get('type') == 'swap' and market.get('quote') == 'USDT' and market.get('active'):
-                    maker_fee = market.get('maker', 0)
-                    taker_fee = market.get('taker', 0)
-                    major_pairs = ['BTC/USDT:USDT', 'ETH/USDT:USDT', 'SOL/USDT:USDT']
-                    is_major = symbol in major_pairs
-                    
-                    # 🔥 SPRINT 3: STRICT 0-FEE FILTER
-                    # On ne sélectionne QUE les paires à 0 frais (taker == 0)
-                    if taker_fee == 0 or is_major:
+                    maker_fee, taker_fee = table_frais_mexc.get(
+                        symbol, (market.get('maker', 0), market.get('taker', 0))
+                    )
+                    is_major = symbol in MAJEURES
+
+                    # Tri STRICT à 0 frais. Les majeures (BTC/ETH/SOL) ne sont
+                    # plus dispensées par défaut : mesuré 3 prises sur SOL payante
+                    # pour 95 sur paires à 0 frais. Retour possible avec
+                    # `entree_autoriser_paires_payantes`.
+                    if paire_acceptable(
+                        symbol,
+                        taker_fee,
+                        max_pct=reglages_frais['max_pct'],
+                        autoriser_payantes=reglages_frais['autoriser_payantes'],
+                        liste_blanche=reglages_frais['liste_blanche'],
+                    ):
                         futures_pairs.append({
                             'symbol': symbol,
                             'maker': maker_fee,
@@ -758,9 +781,9 @@ class ScalabilityScanner:
                         })
                     else:
                         if DEBUG_ENABLED:
-                            logger.debug(f"⏭️ {symbol} ignoré: taker_fee={taker_fee*100:.4f}% > 0%")
+                            logger.debug(f"⏭️ {symbol} ignoré: taker_fee={(taker_fee or 0)*100:.4f}% > {reglages_frais['max_pct']}%")
             
-            logger.info(f"📊 {len(futures_pairs)} paires après filtrage des frais (incluant majeures)")
+            logger.info(f"📊 {len(futures_pairs)} paires après filtrage des frais (0 frais, majeures non dispensées)")
             
             # Exclure paires manuellement blacklistées
             excluded = set(TRADING_CONFIG.get("excluded_symbols", []))
