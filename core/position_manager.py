@@ -4248,6 +4248,79 @@ class PositionManager:
         )
         return None
 
+    @staticmethod
+    def _taille_de_reference_pour_centards(position) -> float:
+        """La taille qui sert de denominateur aux pourcentages ecrits en base.
+
+        Mesure du 19/11/2026 : sur 102 trades, le brut est calcule sur la taille
+        reellement engagee (9,9 USDT pour SHIB) et le net sur une taille
+        differente (16,5 USDT, la taille demandee avant la chaine de taille).
+        Resultat : 4,17 points d'ecart sur un seul trade, et 0,25 % par prise
+        d'ecarts qui ne sont pas des couts. Le tableau de bord, la calibration ML
+        et le classement de paires consomment ces pourcentages.
+
+        Regle : sans take-profit partiel, on prend la taille engagee (celle qui
+        est ecrite dans `size_usdt` en base), pour que
+        `net_pnl_pct = net_pnl_usdt / size_usdt` soit toujours vrai. Avec un TP
+        partiel, `size` a ete reduite : on garde la taille initiale, sinon le
+        pourcentage serait gonfle.
+        """
+        taille_initiale = getattr(position, "size_initial_usdt", None)
+        taille_engagee = getattr(position, "size", None)
+
+        if not getattr(position, "partial_tp_sold", False) and taille_engagee:
+            if taille_initiale and abs(taille_engagee - taille_initiale) / taille_initiale > 0.05:
+                logger.warning(
+                    f" Taille incohérente: annoncée {taille_initiale:.2f} USDT, "
+                    f"engagée {taille_engagee:.2f} USDT — pourcentages recalculés "
+                    "sur la taille engagée"
+                )
+                return float(taille_engagee)
+
+        return float(
+            taille_initiale
+            or getattr(position, "size_executed_usdt", None)
+            or taille_engagee
+            or 0.0
+        )
+
+    @staticmethod
+    def _taux_de_frais_pour_centards(symbole: str) -> float:
+        """Frais reels de la paire (table MEXC relue), en points de pourcentage.
+
+        L'ancien calcul faisait `(fee_per_trade or 0.0004) * 100` : comme
+        `fee_per_trade` vaut 0.00 (les paires sont dans la zone 0 frais de MEXC),
+        le `or` le remplacait par 0.0004. Le robot facturait donc 0,04 % par jambe
+        sur des paires ou il ne paie rien.
+        """
+        from core.frais_paires import lire_frais
+
+        taker, _maker = lire_frais(symbole)
+        if taker is not None:
+            return float(taker) * 100
+
+        from utils.effective_config import get_effective_value
+
+        valeur = get_effective_value("fee_per_trade")
+        return 0.0 if valeur is None else float(valeur) * 100
+
+    @staticmethod
+    def _depassement_stop_usdt(reason: str, taille_usdt: float, a_prix_reel: bool) -> float:
+        """Un stop au marche ne se remplit pas pile au prix prevu : on le paie en papier.
+
+        Mesure du 19/11/2026 sur 51 stops : la bougie depasse le prix de sortie en
+        moyenne de 0,160 % (pire cas 0,83 %). Le papier, lui, remplissait
+        exactement au prix prevu.
+        """
+        if a_prix_reel or not reason:
+            return 0.0
+        from config import TRADING_CONFIG
+
+        if reason not in ("SL", "STOP_LOSS", "SL_EXCHANGE"):
+            return 0.0
+        marge = float(TRADING_CONFIG.get("papier_depassement_stop_pct", 0.0) or 0.0)
+        return (marge / 100) * float(taille_usdt or 0.0)
+
     def _mettre_a_jour_calibration_ml(self, net_pnl_pct: float, net_pnl_usdt: float) -> None:
         """Nourrit la calibration ML après chaque trade fermé.
 
@@ -4552,10 +4625,13 @@ class PositionManager:
         # 🔥 FIX: Calculer PnL réalisé avec les frais configurés
         # (Si fees réels disponibles, ne pas ré-estimer)
         mexc_pnl_usdt = getattr(self.active_position, "mexc_actual_pnl_usdt", None)
-        fees_pct = (
-            get_effective_value("fee_per_trade") or 0.0004
-        ) * 100  # 0.04% par défaut
+        # 💸 Taille de référence unique pour tous les pourcentages de cette
+        # fermeture (voir _taille_de_reference_pour_centards) et frais réels de la
+        # paire, pris dans la table MEXC relue plutôt que dans un défaut à 0,04 %.
+        taille_reference = self._taille_de_reference_pour_centards(self.active_position)
+        fees_pct = self._taux_de_frais_pour_centards(self.active_position.symbol)
         if actual_fees_usdt is not None or mexc_pnl_usdt is not None:
+            # Des données d'échange existent : ce sont elles qui font foi, pas une estimation.
             fees_pct = 0.0
 
         pnl_data = self.pnl_calculator.calculate_realized_pnl(
@@ -4623,17 +4699,17 @@ class PositionManager:
             slippage_usdt = 0.0
 
         # Calculer coûts totaux (fees en USDT + slippage en USDT)
-        total_costs = pnl_data["fees"] + slippage_usdt
+        # 📐 Un stop au marché ne se remplit pas au prix prévu : la bougie dépasse
+        # (0,160 % en moyenne mesuré sur 51 stops). Le papier le paye désormais.
+        total_costs = pnl_data["fees"] + slippage_usdt + self._depassement_stop_usdt(
+            reason, taille_reference, has_exchange_fill
+        )
 
         # PnL net
         # 🔥 FIX CRITIQUE: Toujours utiliser la taille INITIALE (size_initial_usdt) pour calculer le % PnL.
         # Sinon, si on utilise la taille restante (ex: 50%), le PnL % est artificiellement doublé.
         # Le PnL USDT net, lui, est déjà correct car il additionne (Profit_Partiel + Profit_Restant).
-        size_for_pct = (
-            getattr(self.active_position, "size_initial_usdt", None)
-            or getattr(self.active_position, "size_executed_usdt", None)
-            or self.active_position.size
-        )
+        size_for_pct = taille_reference
 
         gross_pnl_pct = pnl_data["pnl_pct"]
 

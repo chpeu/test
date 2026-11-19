@@ -572,6 +572,11 @@ TRADING_CONFIG = {
     # jamais rester ouverte, même quelques secondes.
     "live_exige_stop_echange": True,
 
+    # 📐 En papier, un stop au marché est payé au-delà du prix prévu : valeur
+    # mesurée le 19/11/2026 sur 51 stops réels (dépassement moyen de la bougie).
+    # Mettre 0.0 pour désactiver.
+    "papier_depassement_stop_pct": 0.16,
+
     # ============================================================
     # CARNET FANTÔME — la trace des dossiers refusés, et leur verdict
     # (ajouté le 19/11/2026 : sans lui, impossible de savoir si un filtre qui

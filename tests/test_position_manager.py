@@ -401,11 +401,13 @@ class TestPositionManager:
 
         assert out['slippage_pct'] == pytest.approx(0.5)
         assert out['slippage_usdt'] == pytest.approx(5.0)
-        # fee_per_trade=0.0 est falsy => fallback code à 0.0004 (0.04%)
-        # Fees = size * 0.04% * 2 = 0.8 USDT, gross=10 => net(before slippage)=9.2; - slippage 5 => 4.2
-        assert out['fees'] == pytest.approx(0.8)
-        assert out['net_pnl_usdt'] == pytest.approx(4.2)
-        assert out['net_pnl_pct'] == pytest.approx(0.42)
+        # Le 19/11/2026, ce test actait le bug : `fee_per_trade=0.0` (falsy) était
+        # remplacé par 0.0004, donc le robot facturait 0,04 % par jambe sur une
+        # paire à 0 frais. Depuis, le taux vient de la table MEXC relue et le zéro
+        # est respecté : fees = 0, net = brut - slippage.
+        assert out['fees'] == pytest.approx(0.0)
+        assert out['net_pnl_usdt'] == pytest.approx(5.0)
+        assert out['net_pnl_pct'] == pytest.approx(0.5)
 
     def test_close_position_uses_mexc_actual_pnl_when_divergent(self, monkeypatch):
         manager = PositionManager(config=PositionConfig(use_slippage_calculation=False))
