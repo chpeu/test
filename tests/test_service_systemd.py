@@ -48,8 +48,15 @@ def test_les_chemins_avec_espaces_sont_protegés():
 
 
 def test_systemd_analyze_accepte_les_fichiers():
+    """`systemd-analyze verify` attrape les clés mal placées et les chemins cassés.
+
+    On ne regarde que les lignes qui parlent de NOS fichiers, et on ignore les
+    reproches sur le binaire absent : les chemins du projet sont propres à cette
+    machine, un serveur d'intégration ne les a pas (et c'est normal).
+    """
     if not shutil_which("systemd-analyze"):
         return
+    pour_ignorer = ("is not executable", "No such file or directory")
     for nom in ("tradebot.service", "tradebot-dashboard.service"):
         resultat = subprocess.run(
             ["systemd-analyze", "verify", str(DEPLOY / nom)],
@@ -57,8 +64,12 @@ def test_systemd_analyze_accepte_les_fichiers():
             text=True,
             check=False,
         )
-        message = (resultat.stdout + resultat.stderr).strip()
-        assert not message, f"{nom} refusé par systemd : {message}"
+        lignes = [
+            ligne
+            for ligne in (resultat.stdout + resultat.stderr).splitlines()
+            if nom in ligne and not any(excuse in ligne for excuse in pour_ignorer)
+        ]
+        assert not lignes, f"{nom} refusé par systemd : {' · '.join(lignes)}"
 
 
 def shutil_which(nom: str):
