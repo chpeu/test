@@ -1,0 +1,14 @@
+# Alerte unitaire déclenchée par OnFailure. `%i` reçoit le nom du service mort.
+#
+# Pourquoi : `Restart=always` fait repartir le robot, mais un redémarrage en
+# boucle (port déjà pris, base absente, code cassé) ne se voit pas tout seul.
+# Cette unité écrit une alerte et envoie un message si les réglages Telegram
+# existent.
+
+[Unit]
+Description=Alerte : le service %i est en échec
+
+[Service]
+Type=oneshot
+# Le chemin du projet contient des espaces : sans guillemets, systemd le couperait.
+ExecStart="/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/deploy/alerte-tradebot.sh" %i

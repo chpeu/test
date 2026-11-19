@@ -128,6 +128,11 @@ class TradingCircuitBreaker:
         
         # Callbacks
         self._on_state_change_callbacks: List[Callable] = []
+
+        # Les compteurs sont relus depuis la base au premier appel qui compte
+        # (pas dans le constructeur : la base n'est pas toujours prête à cet
+        # instant-la, et un unit test ne doit jamais toucher le réseau).
+        self._etat_relu = False
         
         logger.info(
             f"✅ TradingCircuitBreaker initialisé | "
@@ -194,6 +199,139 @@ class TradingCircuitBreaker:
         now = datetime.utcnow()
         return now.replace(hour=0, minute=0, second=0, microsecond=0)
     
+    # ── persistance des compteurs : un redémarrage ne doit pas effacer les garde-fous ────
+
+    def _persistance_possible(self) -> bool:
+        """Les compteurs vivent dans la base des trades : sans base, rien à lire."""
+        try:
+            from config import TRADING_CONFIG
+
+            if not TRADING_CONFIG.get("trading_cb_persister", True):
+                return False
+        except ImportError:  # pragma: no cover - config toujours disponible en service
+            return False
+
+        # On regarde le scribe DEJA en place, on n'en crée pas un : un test
+        # unitaire, ou un démarrage avant la base, ne doit pas ouvrir de connexion.
+        try:
+            import core.postgresql_datalogger as scribe
+
+            scribe_en_place = getattr(scribe, "_pg_datalogger_instance", None)
+        except Exception:
+            return False
+
+        return bool(scribe_en_place and getattr(scribe_en_place, "enabled", False))
+
+    def _relire_si_premier_appel(self) -> None:
+        if self._etat_relu or not self._persistance_possible():
+            return
+        self._etat_relu = True
+        self._charger_etat()
+
+    def _charger_etat(self) -> None:
+        """Recharge les compteurs du jour : sans ça, un redémarrage remet tout a zero.
+
+        Mesure du 19/11/2026 : le garde-fou comptait prises, pertes consecutives,
+        PnL du jour et etat (pause/arrêt) en mémoire uniquement. Redémarrer le
+        robot effaçait donc les plafonds de degats — 40 prises interdites
+        redevenaient 40 prises autorisées.
+        """
+        try:
+            from core.postgresql_datalogger import connexion_journal
+
+            with connexion_journal() as connection:
+                curseur = connection.cursor()
+                curseur.execute(
+                    """
+                    SELECT jour, trades_pris, gains, pertes, pertes_consecutives,
+                           pnl_jour_pct, pnl_jour_usdt, etat, pause_jusqua, motif_pause
+                      FROM circuit_breaker_etat
+                     ORDER BY jour DESC
+                     LIMIT 1
+                    """
+                )
+                ligne = curseur.fetchone()
+                curseur.close()
+
+            if not ligne:
+                return
+
+            jour = ligne[0]
+            etat = ligne[7] or "ACTIVE"
+            motif = ligne[9]
+
+            if jour == self._get_day_start().date():
+                self.daily_trades = int(ligne[1] or 0)
+                self.daily_wins = int(ligne[2] or 0)
+                self.daily_losses = int(ligne[3] or 0)
+                self.consecutive_losses = int(ligne[4] or 0)
+                self.daily_pnl_pct = float(ligne[5] or 0.0)
+                self.daily_pnl_usdt = float(ligne[6] or 0.0)
+                self.state = CircuitBreakerState(etat)
+                self.paused_until = ligne[8]
+                self.pause_reason = motif
+                logger.info(
+                    f"🛡️ Compteurs du garde-fou relus: {self.daily_trades} prises, "
+                    f"{self.consecutive_losses} pertes de suite, "
+                    f"PnL {self.daily_pnl_pct:+.2f} %, état {self.state.value}"
+                )
+            elif etat == CircuitBreakerState.STOPPED.value:
+                # Un arrêt se releve a la main, pas en redemarrant le robot.
+                self.state = CircuitBreakerState.STOPPED
+                self.pause_reason = motif
+                logger.warning(
+                    f"🛡️ Garde-fou toujours en arret depuis le {jour} ({motif}) — "
+                    "reprise manuelle nécessaire"
+                )
+        except Exception as e:
+            logger.warning(f"⚠️ Compteurs du garde-fou non relus: {e}")
+
+    def _sauver_etat(self) -> None:
+        if not self._persistance_possible():
+            return
+        try:
+            from core.postgresql_datalogger import connexion_journal
+
+            jour = self._get_day_start().date()
+            with connexion_journal() as connection:
+                curseur = connection.cursor()
+                curseur.execute(
+                    """
+                    INSERT INTO circuit_breaker_etat
+                        (jour, trades_pris, gains, pertes, pertes_consecutives,
+                         pnl_jour_pct, pnl_jour_usdt, etat, pause_jusqua,
+                         motif_pause, maj_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (jour) DO UPDATE SET
+                        trades_pris = EXCLUDED.trades_pris,
+                        gains = EXCLUDED.gains,
+                        pertes = EXCLUDED.pertes,
+                        pertes_consecutives = EXCLUDED.pertes_consecutives,
+                        pnl_jour_pct = EXCLUDED.pnl_jour_pct,
+                        pnl_jour_usdt = EXCLUDED.pnl_jour_usdt,
+                        etat = EXCLUDED.etat,
+                        pause_jusqua = EXCLUDED.pause_jusqua,
+                        motif_pause = EXCLUDED.motif_pause,
+                        maj_at = NOW()
+                    """,
+                    (
+                        jour,
+                        self.daily_trades,
+                        self.daily_wins,
+                        self.daily_losses,
+                        self.consecutive_losses,
+                        round(self.daily_pnl_pct, 4),
+                        round(self.daily_pnl_usdt, 2),
+                        self.state.value,
+                        self.paused_until,
+                        (self.pause_reason or "")[:500] or None,
+                    ),
+                )
+                connection.commit()
+                curseur.close()
+        except Exception as e:
+            logger.warning(f"⚠️ Compteurs du garde-fou non enregistrés: {e}")
+
     def _check_day_reset(self) -> None:
         """Vérifie si on doit réinitialiser les stats journalières"""
         current_day_start = self._get_day_start()
@@ -215,6 +353,7 @@ class TradingCircuitBreaker:
                         "reset",
                         "Nouveau jour - reprise automatique"
                     )
+            self._sauver_etat()
     
     def on_state_change(self, callback: Callable) -> None:
         """Enregistre un callback pour les changements d'état"""
@@ -256,6 +395,9 @@ class TradingCircuitBreaker:
         # 🔥 SPRINT 1: Logger dans circuit_breaker_events
         self._log_event_to_db(event)
         
+        # Le nouvel état doit survivre à un redémarrage immediat.
+        self._sauver_etat()
+
         # Notifier les callbacks
         for callback in self._on_state_change_callbacks:
             try:
@@ -317,7 +459,9 @@ class TradingCircuitBreaker:
         )
         
         # Évaluer les conditions de pause/arrêt
-        return self._evaluate_conditions()
+        autorise = self._evaluate_conditions()
+        self._sauver_etat()
+        return autorise
     
     def _evaluate_conditions(self) -> bool:
         """Évalue les conditions et déclenche pause/arrêt si nécessaire"""
@@ -361,6 +505,7 @@ class TradingCircuitBreaker:
         Vérifie si le trading est autorisé.
         Gère aussi la reprise automatique après pause.
         """
+        self._relire_si_premier_appel()
         self._check_day_reset()
         
         if self.state == CircuitBreakerState.STOPPED:
@@ -400,6 +545,8 @@ class TradingCircuitBreaker:
         appelé que par de vieux scripts de vérification — jamais par le chemin
         d'ouverture. Le pare-feu mesurait,-notait, et ne bloquait rien.
         """
+        self._relire_si_premier_appel()
+
         # L'interrupteur `trading_circuit_breaker_enabled` commande la pause et
         # l'arrêt après série de pertes. Les plafonds (prises du jour, valeur de la
         # prise, perte si le stop tombe) restent, eux, toujours opposables : un
@@ -447,6 +594,10 @@ class TradingCircuitBreaker:
         Retourne le boost à appliquer au score minimum requis.
         Augmente progressivement après des pertes.
         """
+        # Le scanner lit ce boost sans avoir toujours interrogé le pare-feu avant :
+        # sans relecture ici, le premier appel après un redémarrage renverrait 0.
+        self._relire_si_premier_appel()
+
         if self.consecutive_losses == 0:
             return 0.0
         
@@ -469,6 +620,7 @@ class TradingCircuitBreaker:
         self.pause_reason = None
         
         logger.info(f"🔄 Circuit Breaker réinitialisé ({trigger})")
+        self._sauver_etat()
     
     def get_status(self) -> Dict[str, Any]:
         """Retourne le statut complet pour l'API"""

@@ -1,0 +1,57 @@
+# Le robot de trading, servi par systemd.
+#
+# Pourquoi ce fichier existe (19/11/2026) : le robot tournait lancé à la main
+# depuis un terminal. Un plantage, une coupure réseau, un redémarrage de la
+# machine = le robot ne repartait pas, et personne n'était prévenu. Pire : un
+# redémarrage manuel tuait souvent le script lanceur en laissant le serveur
+# enfant vivant, et l'instance suivante échouait à se brancher sur le port 5000
+# sans jamais le dire. Ce fichier rend les deux impossibles.
+#
+# Documentation des commandes : docs/SERVICE_TRADEBOT_2026-11-19.md
+# Installation : deploy/installer_service.sh (une seule fois).
+
+[Unit]
+Description=Robot de trading Trade Cursor (essai à blanc sur MEXC)
+After=network-online.target docker.service
+Wants=network-online.target
+
+# Un plantage ne doit jamais laisser le robot éteint : on réessaie indéfiniment.
+StartLimitIntervalSec=0
+StartLimitBurst=0
+
+# Sonnette d'alerte quand le service meurt et ne redémarre plus.
+OnFailure=alerte-tradebot@%n.service
+
+[Service]
+Type=exec
+User=seb
+Group=seb
+WorkingDirectory=/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag
+Environment=PYTHONUNBUFFERED=1
+
+# Le garde-fou relit ses compteurs depuis PostgreSQL au démarrage : si la base
+# n'est pas prête, on attend jusqu'à 60 s au lieu de démarrer sans mémoire.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 12); do docker exec tradebot-pg pg_isready -U postgres >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
+
+# Le chemin du projet contient des espaces : sans guillemets, systemd couperait
+# la commande au premier espace et le service ne démarrerait jamais.
+ExecStart="/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/.venv/bin/python" -m uvicorn main:app --host 127.0.0.1 --port 5000 --lifespan on
+
+Restart=always
+RestartSec=10
+
+# Une fermeture propre : le robot a des tâches à arrêter (scheduler, base).
+TimeoutStopSec=45
+KillSignal=SIGINT
+
+# Journalisation : tout dans journald (journalctl -u tradebot -f).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradebot
+
+# Cloisonnement léger : pas d'élévation de droits, espace /tmp privé.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

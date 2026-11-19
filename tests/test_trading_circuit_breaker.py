@@ -14,6 +14,15 @@ from core.trading_circuit_breaker import (
     init_trading_circuit_breaker,
 )
 
+from config import TRADING_CONFIG
+
+
+@pytest.fixture(autouse=True)
+def garde_fou_sans_base_vivante(monkeypatch):
+    # Un test unitaire ne doit jamais lire les compteurs du robot en marche :
+    # sans cette coupure, un test dépend de l'activité réelle de la journée.
+    monkeypatch.setitem(TRADING_CONFIG, "trading_cb_persister", False)
+
 
 @pytest.fixture()
 def cb(monkeypatch: pytest.MonkeyPatch) -> TradingCircuitBreaker:

@@ -11,6 +11,16 @@ davantage ni plafond de prises par jour, ni plafond de perte par prise.
 import inspect
 
 from core.trading_circuit_breaker import CircuitBreakerState, TradingCircuitBreaker
+from config import TRADING_CONFIG
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def garde_fou_sans_base_vivante(monkeypatch):
+    # Un test unitaire ne doit jamais lire les compteurs du robot en marche.
+    monkeypatch.setitem(TRADING_CONFIG, "trading_cb_persister", False)
+    monkeypatch.setattr(TradingCircuitBreaker, "_log_event_to_db", lambda self, event: None)
+
 
 
 def pare_feu(**reglages):

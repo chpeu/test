@@ -1,0 +1,44 @@
+# Le tableau de bord, servi par systemd.
+#
+# Sans lui, le robot peut très bien tourner et rester invisible : l'interface
+# était lancée à la main dans un terminal, et elle mourait avec le terminal.
+#
+# L'adresse d'écoute est l'adresse Tailscale de la machine — si elle change,
+# modifier l'adresse dans ExecStart puis :
+#   sudo systemctl daemon-reload && sudo systemctl restart tradebot-dashboard
+# Le port 3000 n'est pas ouvert sur le réseau local.
+#
+# Documentation des commandes : docs/SERVICE_TRADEBOT_2026-11-19.md
+
+[Unit]
+Description=Tableau de bord Trade Cursor (interface de contrôle)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+StartLimitBurst=0
+OnFailure=alerte-tradebot@%n.service
+
+[Service]
+Type=exec
+User=seb
+Group=seb
+WorkingDirectory=/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/frontend
+Environment=NODE_ENV=production
+
+# Le site doit être construit avant (`npm run build`) : `preview` sert le dossier
+# déjà construit, il ne compile pas à la volée.
+ExecStartPre=/bin/sh -c 'test -f "/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/frontend/dist/index.html"'
+
+ExecStart="/home/seb/.nvm/versions/node/v24.15.0/bin/node" "/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/frontend/node_modules/vite/bin/vite.js" preview --host 100.87.154.13 --port 3000
+
+Restart=always
+RestartSec=10
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradebot-dashboard
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

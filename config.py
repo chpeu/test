@@ -554,6 +554,11 @@ TRADING_CONFIG = {
     # Plafonds de dégâts : posés le 18/11/2026. Ils étaient absents — le pare-feu
     # mesurait et notait, mais le chemin d'ouverture ne lui demandait jamais son
     # avis (can_trade() n'était appelé que par de vieux scripts de vérification).
+    # 🛡️ Les compteurs du garde-fou (prises du jour, pertes de suite, PnL, pause
+    # ou arrêt) sont relus et réécrits dans la base des trades : sans ça, un
+    # simple redémarrage effaçait les plafonds de dégâts (mesuré 19/11/2026).
+    "trading_cb_persister": True,
+
     "trading_cb_max_trades_per_day": 40,          # Prises ouvertes dans la journée
     "trading_cb_max_size_per_trade_usdt": 100.0,  # Valeur maximale d'une prise
     "trading_cb_max_loss_per_trade_usdt": 10.0,   # Perte si le stop tombe (~1 % du capital)
