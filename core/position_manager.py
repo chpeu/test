@@ -2675,6 +2675,27 @@ class PositionManager:
                     )
                     # 🔥 FIX: Position non ouverte sur exchange - empêcher TP partiels live
                     self.active_position.is_live_open = False
+
+                    # 🔒 Cas particulier, mesuré 19/11/2026 : l'ordre est bien parti,
+                    # mais le stop côté échange a été refusé et notre propre sécurité
+                    # a refermé la position dans la foulée. Rien ne court chez MEXC.
+                    # La laisser vivre en papier écrirait un trade avec des prix
+                    # d'un contrat fermé. On solde tout de suite, sans renvoyer
+                    # d'ordre (skip_order), et on ne prétend pas avoir pris de place.
+                    if getattr(order_result, "auto_fermee_sans_stop", False):
+                        prix_solde = (
+                            order_result.filled_price or self.active_position.entry
+                        )
+                        logger.error(
+                            f"🔒 {symbol} soldé sans nouvel ordre : la prise a été "
+                            f"refermée par notre sécurité à {prix_solde:.6f}"
+                        )
+                        self.close_position(
+                            exit_price=prix_solde,
+                            reason="STOP_ECHANGE_IMPOSSIBLE",
+                            skip_order=True,
+                        )
+                        return None
             except Exception as e:
                 logger.error(f"❌ Erreur passage ordre LIVE: {e}")
 

@@ -315,6 +315,10 @@ class FuturesOrderResult:
 
     sl_exchange_percent: Optional[float] = None
     exchange_stop_price: Optional[float] = None  # stop réellement posé chez MEXC
+    # 🔒 Ordre ouvert puis refermé séance tenante parce que le stop côté échange
+    # a été refusé. La position n'existe plus chez MEXC : le robot ne doit pas
+    # la croire ouverte (mesuré 19/11/2026, voir test_ordres_reels).
+    auto_fermee_sans_stop: bool = False
 
 
 class LiveOrderManagerFutures:
@@ -1647,7 +1651,15 @@ class LiveOrderManagerFutures:
 
             # 🔒 Le filet de sécurité part chez MEXC ici, pas plus tard : si le
             # robot meurt dans la minute, la position doit avoir un stop réel.
-            tente, prix_stop_pose = self._poser_stop_echange(symbol, direction, sl_price)
+            # Le mode bypass a son propre calcul (arrondis du contrat) ; le mode
+            # CCXT doit le faire ici, sinon `sl_price` n'existe pas (voir
+            # _prix_stop_echange).
+            prix_fichier = self._prix_stop_echange(
+                direction, filled_price or entry_price, bot_sl_price
+            )
+            tente, prix_stop_pose = self._poser_stop_echange(symbol, direction, prix_fichier)
+            auto_fermee = False
+            prix_reel_fermeture = None
             if tente and prix_stop_pose is None:
                 from config import TRADING_CONFIG
 
@@ -1657,17 +1669,25 @@ class LiveOrderManagerFutures:
                         "fermeture immédiate (aucune position nue)"
                     )
                     try:
-                        self.close_position(
+                        fermeture = self.close_position(
                             symbol=symbol,
                             direction=direction,
                             entry_price=entry_price,
                             current_price=filled_price or entry_price,
                             size_amount=filled_amount,
                         )
+                        prix_reel_fermeture = getattr(fermeture, "filled_price", None)
+                        # La position a été ouverte PUIS refermée chez MEXC : elle
+                        # n'existe plus. La renvoyer « succès » ferait croire au
+                        # robot qu'il la tient encore (position fantôme, puis ordre
+                        # de fermeture sur du vide à la sortie).
+                        auto_fermee = bool(getattr(fermeture, "success", False))
                     except Exception as erreur_fermeture:  # noqa: BLE001 - rien d'autre à tenter
                         logger.error(
                             f"❌ Fermeture d'urgence impossible pour {symbol}: {erreur_fermeture}"
                         )
+                        # Fermeture ratée : la position est bien nue et bien ouverte.
+                        auto_fermee = False
                     if self.telegram_notifier:
                         self.telegram_notifier.send_error_sync(
                             "Stop côté échange impossible",
@@ -1675,15 +1695,16 @@ class LiveOrderManagerFutures:
                         )
 
             return FuturesOrderResult(
-                success=True,
+                success=not auto_fermee,
+                auto_fermee_sans_stop=auto_fermee,
                 order_id=order_id,
                 exchange_stop_price=prix_stop_pose,
                 error_message=(
                     None
-                    if not tente or prix_stop_pose
-                    else "stop côté échange impossible — position refermée"
+                    if not auto_fermee
+                    else "ouvert puis refermé séance tenante : stop côté échange refusé"
                 ),
-                filled_price=filled_price,
+                filled_price=prix_reel_fermeture or filled_price,
                 filled_amount=filled_amount,
                 filled_size_usdt=filled_amount * filled_price
                 if filled_price
@@ -2661,6 +2682,10 @@ class LiveOrderManagerFutures:
                                 "tokens": real_tokens,
                                 "contract_size": contract_size,
                                 "entry_price": entry_price,
+                                # le prix courant : sans lui, `check_liquidation_risk`
+                                # mesure la distance au prix de liquidation contre le
+                                # prix d'entrée, donc elle ne bouge jamais (19/11/2026).
+                                "mark_price": float(pos.get("markPrice", 0) or 0) or None,
                                 "unrealized_pnl": float(pos.get("unrealizedPnl", 0)),
                                 "liquidation_price": float(
                                     pos.get("liquidationPrice", 0)
@@ -2715,6 +2740,10 @@ class LiveOrderManagerFutures:
                             "tokens": real_tokens,  # Tokens réels
                             "contract_size": contract_size,
                             "entry_price": entry_price,
+                            # le prix courant : sans lui, la distance au prix de
+                            # liquidation se calcule contre le prix d'entrée, donc
+                            # elle ne bouge jamais (mesuré 19/11/2026).
+                            "mark_price": float(getattr(pos, "mark_price", 0) or 0) or None,
                             "unrealized_pnl": pos.unrealized_pnl,
                             "liquidation_price": pos.liquidate_price,
                             "margin": pos.margin,
@@ -2751,6 +2780,7 @@ class LiveOrderManagerFutures:
                         "tokens": real_tokens,
                         "contract_size": contract_size,
                         "entry_price": entry_price,
+                        "mark_price": float(pos.get("markPrice", 0) or 0) or None,
                         "unrealized_pnl": float(pos.get("unrealizedPnl", 0)),
                         "liquidation_price": float(pos.get("liquidationPrice", 0)),
                         "margin": float(pos.get("initialMargin", 0)),
@@ -2954,6 +2984,37 @@ class LiveOrderManagerFutures:
     # ========================================================================
 
     @retry_with_backoff(max_retries=3)
+    def _prix_stop_echange(
+        self, direction: str, reference: Optional[float], bot_sl: Optional[float]
+    ) -> Optional[float]:
+        """Le prix du filet côté échange, pour le mode CCXT.
+
+        Trouvé en écrivant les tests du 19/11/2026 : `open_position` appelait
+        `_poser_stop_echange(..., sl_price)` alors que `sl_price` n'est calculé que
+        dans la branche bypass. En mode CCXT, l'ordre partait donc chez MEXC, puis
+        la fonction levait une erreur de variable non définie et répondait
+        « échec » : le robot gardait une position réelle qu'il ne croyait pas
+        ouverte, sans filet et sans suivi.
+
+        Le filet reste plus large que le stop du robot (marge 1,2) : il n'est pas
+        là pour optimiser la sortie, seulement pour qu'une position ne reste pas
+        nue si le robot meurt.
+        """
+        marge = 1.2
+        if not reference or reference <= 0 or not bot_sl or bot_sl <= 0:
+            return None
+        distance = abs(reference - bot_sl) / reference * marge
+        if distance <= 0:
+            return None
+        if distance > 0.5:
+            # au-delà de 50 % ce n'est plus un filet : on garde une distance
+            # utilisable plutôt qu'un ordre absurde rejeté par l'échange.
+            logger.warning(
+                f"⚠️ Filet côté échange ramené à 50 % (distance calculée {distance * 100:.1f}%)"
+            )
+            distance = 0.5
+        return reference * (1 - distance) if direction == "LONG" else reference * (1 + distance)
+
     def _poser_stop_echange(
         self, symbol: str, direction: str, prix_stop: Optional[float]
     ) -> Tuple[bool, Optional[float]]:
