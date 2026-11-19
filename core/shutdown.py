@@ -224,6 +224,34 @@ class GracefulShutdown:
         logger.info(f"🏁 Shutdown terminé: {success_count} succès, {failure_count} échecs")
         self._shutdown_event.set()
 
+    async def _nettoyer_puis_rendre_la_main(self, sig: int) -> None:
+        """Fermer proprement, puis rendre le signal à qui doit finir le travail.
+
+        Mesuré le 19/11/2026 : `systemctl restart` ne se terminait jamais. Ce
+        gestionnaire prenait la main sur SIGTERM et SIGINT sans jamais la rendre :
+        le ménage se faisait (watchdog arrêté, bases fermées) mais le processus
+        restait vivant, et systemd attendait 90 s avant de tuer. Le robot ne
+        pouvait donc plus être mis à jour, et la vigie ne pouvait pas le relancer
+        proprement.
+        """
+        await self.shutdown()
+        nom = signal.Signals(sig).name
+        logger.info(f"🏁 Ménage fait — je rends {nom} au serveur pour que le processus se termine")
+
+        try:
+            if self._loop is not None:
+                self._loop.remove_signal_handler(sig)
+        except (NotImplementedError, RuntimeError, ValueError):
+            pass
+        try:
+            signal.signal(sig, signal.SIG_DFL)
+        except (OSError, ValueError):
+            pass
+        try:
+            os.kill(os.getpid(), sig)
+        except OSError as exc:
+            logger.warning(f"⚠️ {nom} non renvoyé ({exc}) — le serveur devra s'arrêter seul")
+
     def install_signal_handlers(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         """
         Installer handlers pour SIGINT et SIGTERM
@@ -264,8 +292,9 @@ class GracefulShutdown:
                 )
 
             if not self.is_shutting_down:
-                # Créer task shutdown dans la loop
-                asyncio.create_task(self.shutdown())
+                # Ménage, puis on rend la main : sans cette deuxième étape, le
+                # processus ne se terminait jamais (voir _nettoyer_puis_rendre_la_main).
+                asyncio.create_task(self._nettoyer_puis_rendre_la_main(sig))
 
         def _install_loop_handler(sig) -> bool:
             try:
