@@ -19,7 +19,8 @@ set -euo pipefail
 
 DEPOT="$(cd "$(dirname "$0")/.." && pwd)"
 CIBLE="/etc/systemd/system"
-UNITES=(tradebot.service tradebot-dashboard.service "alerte-tradebot@.service")
+UNITES=(tradebot.service tradebot-dashboard.service "alerte-tradebot@.service"
+        tradebot-vigie.service tradebot-vigie.timer)
 
 echo "Dépôt : $DEPOT"
 echo "Unités : ${UNITES[*]}"
@@ -54,12 +55,14 @@ chown seb:seb /home/seb/logs 2>/dev/null || true
 echo "4/5 Activation et démarrage…"
 sudo systemctl daemon-reload
 sudo systemctl enable --now tradebot.service tradebot-dashboard.service
+sudo systemctl enable --now tradebot-vigie.timer
 
 echo "5/5 État…"
 systemctl --no-pager --full status tradebot.service tradebot-dashboard.service | sed -n '1,40p'
 
 cat <<'AIDE'
 
+Vigie (toutes les 5 min) :  systemctl list-timers tradebot-vigie.timer
 Pour suivre le robot :      journalctl -u tradebot -f
 Pour suivre les alertes :   tail -f /home/seb/logs/alertes-tradebot.log
 Pour vérifier le port :     ss -ltnp | grep 5000

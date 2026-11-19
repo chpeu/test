@@ -57,7 +57,7 @@ def test_systemd_analyze_accepte_les_fichiers():
     if not shutil_which("systemd-analyze"):
         return
     pour_ignorer = ("is not executable", "No such file or directory")
-    for nom in ("tradebot.service", "tradebot-dashboard.service"):
+    for nom in ("tradebot.service", "tradebot-dashboard.service", "tradebot-vigie.service"):
         resultat = subprocess.run(
             ["systemd-analyze", "verify", str(DEPLOY / nom)],
             capture_output=True,
@@ -92,3 +92,30 @@ def test_le_script_alerte_ne_peut_pas_echouer():
     )
     assert resultat.returncode == 0
     assert "ALERTE" in resultat.stdout
+
+def test_le_robot_attend_que_le_port_5000_soit_libre():
+    """Mesuré le 19/11/2026 : une instance orpheline gardait le port, le service a
+    échoué 14 fois de suite sans jamais le dire. Il doit attendre puis l'écrire."""
+    service = lire("tradebot.service")
+    section_service = section(service, "Service")
+    assert ":5000" in section_service
+    assert "port 5000" in section_service
+
+
+def test_la_vigie_existe_et_ne_peut_pas_echouer():
+    script = DEPLOY / "vigie-tradebot.sh"
+    assert os.access(script, os.X_OK)
+    contenu = script.read_text(encoding="utf-8")
+    assert "NRestarts" in contenu, "la vigie ne compte plus les redémarrages"
+    assert "/api/status" in contenu, "la vigie ne vérifie plus que le robot répond"
+    assert "exit 0" in contenu
+    resultat = subprocess.run(
+        ["bash", str(script)], capture_output=True, text=True, timeout=60, check=False
+    )
+    assert resultat.returncode == 0
+
+
+def test_l_installateur_installe_bien_la_vigie():
+    script = (DEPLOY / "installer_service.sh").read_text(encoding="utf-8")
+    for unite in ("tradebot-vigie.service", "tradebot-vigie.timer"):
+        assert unite in script, f"{unite} oubliée de l'installation"

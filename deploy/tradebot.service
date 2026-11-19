@@ -33,6 +33,15 @@ Environment=PYTHONUNBUFFERED=1
 # n'est pas prête, on attend jusqu'à 60 s au lieu de démarrer sans mémoire.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 12); do docker exec tradebot-pg pg_isready -U postgres >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1'
 
+# Port 5000 libre avant de démarrer. Mesuré le 19/11/2026 : une ancienne instance
+# lancée à la main gardait le port, et le service a échoué 14 fois de suite en
+# silence (« address already in use »). On attend 30 s que le port se libère, puis
+# on le dit clairement au lieu d'échouer sans explication.
+# Attention aux apostrophes dans cette ligne : à l'intérieur des guillemets
+# simples de `sh -c`, elles rendent la ligne illisible pour systemd, qui refuse
+# alors toute l'unité (« Unbalanced quoting ») et le robot ne démarre plus.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 10); do ss -ltn | grep -q ":5000 " || exit 0; echo "le port 5000 est encore pris, j attends" >&2; sleep 3; done; echo "le port 5000 est garde par un autre programme : je ne demarre pas" >&2; exit 1'
+
 # Le chemin du projet contient des espaces : sans guillemets, systemd couperait
 # la commande au premier espace et le service ne démarrerait jamais.
 ExecStart="/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/.venv/bin/python" -m uvicorn main:app --host 127.0.0.1 --port 5000 --lifespan on

@@ -14,11 +14,17 @@
 # panne. On sort toujours en 0.
 
 unite="${1:-inconnue}"
+# Le message par défaut se met à part : écrit dans `${2:-…}`, l'apostrophe de
+# « n'a » cassait tout le script (bash cherchait un guillemet simple fermant).
+message="${2:-}"
+if [ -z "$message" ]; then
+    message="est en échec — systemd n'a pas réussi à le relancer"
+fi
 journal_alerte="/home/seb/logs/alertes-tradebot.log"
 reglages="/home/seb/.config/tradebot-alertes.env"
 
 mkdir -p "$(dirname "$journal_alerte")"
-ligne="$(date '+%Y-%m-%d %H:%M:%S') | ALERTE | $unite est en échec — systemd n'a pas réussi à le relancer"
+ligne="$(date '+%Y-%m-%d %H:%M:%S') | ALERTE | $unite : $message"
 echo "$ligne" >> "$journal_alerte"
 echo "$ligne"
 

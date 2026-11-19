@@ -1,0 +1,14 @@
+# Réveille la vigie toutes les 5 minutes, à l'heure ronde.
+# `Persistent=true` : si la machine était éteinte au moment prévu, la vigie
+# passe quand même au démarrage — c'est justement là qu'on veut savoir.
+
+[Unit]
+Description=Vigie du robot toutes les 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=tradebot-vigie.service
+
+[Install]
+WantedBy=timers.target

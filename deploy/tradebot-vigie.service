@@ -1,0 +1,12 @@
+# La vigie du robot : un passage toutes les 5 minutes.
+#
+# Elle ne remplace pas `Restart=always` : elle répond à ce que le redémarrage
+# automatique ne sait pas dire — « je redémarre sans arrêt et je ne m'en sors
+# pas », et « je ne réponds pas sur le port ».
+
+[Unit]
+Description=Vigie du robot de trading (répond-il ? redémarre-t-il en boucle ?)
+
+[Service]
+Type=oneshot
+ExecStart="/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/deploy/vigie-tradebot.sh"
