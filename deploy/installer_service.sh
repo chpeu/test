@@ -24,7 +24,12 @@ UNITES=(tradebot.service tradebot-dashboard.service "alerte-tradebot@.service")
 echo "Dépôt : $DEPOT"
 echo "Unités : ${UNITES[*]}"
 
-if [ ! -f "$DEPOT/frontend/dist/index.html" ]; then
+# Le site (SvelteKit, adaptateur node) se construit dans `.svelte-kit/output`.
+# `npm` vit dans nvm : sans son chemin dans PATH, un lancement en root ne le
+# trouve pas (mesuré le 19/11/2026).
+export PATH="/home/seb/.nvm/versions/node/v24.15.0/bin:$PATH"
+
+if [ ! -f "$DEPOT/frontend/.svelte-kit/output/server/index.js" ]; then
     echo "⚠️  Le tableau de bord n'est pas construit — construction en cours."
     (cd "$DEPOT/frontend" && npm run build)
 fi

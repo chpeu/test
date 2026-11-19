@@ -26,8 +26,10 @@ WorkingDirectory=/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SE
 Environment=NODE_ENV=production
 
 # Le site doit être construit avant (`npm run build`) : `preview` sert le dossier
-# déjà construit, il ne compile pas à la volée.
-ExecStartPre=/bin/sh -c 'test -f "/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/frontend/dist/index.html"'
+# déjà construit, il ne compile pas à la volée. Ce projet est un SvelteKit avec
+# adaptateur node : le site construit vit dans `frontend/.svelte-kit/output`, pas
+# dans `frontend/dist` (mesuré le 19/11/2026 — je pointais au mauvais endroit).
+ExecStartPre=/bin/sh -c 'test -f "/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/frontend/.svelte-kit/output/server/index.js"'
 
 ExecStart="/home/seb/.nvm/versions/node/v24.15.0/bin/node" "/home/seb/projet pi/test-claude-analyze-maintainability-01Hs9SEWv5USATGMzA2kzaag/frontend/node_modules/vite/bin/vite.js" preview --host 100.87.154.13 --port 3000
 
