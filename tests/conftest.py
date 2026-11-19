@@ -122,6 +122,25 @@ def configure_test_logging():
     configure_test_logging._original_getLogger = original_getLogger
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _recherches_optuna_hors_du_depot(tmp_path_factory):
+    """Un test ne doit pas salir le dépôt (mesuré 19/11/2026).
+
+    `api/routes/ml_common.py` pointe son carnet de dernières recherches sur
+    `data/optuna_last_runs.json` en chemin relatif : la suite de tests
+    réécrivait donc un fichier du projet à chaque passage ( horodatage changé,
+    sans erreur nulle part). On le déplace dans un dossier temporaire le temps
+    de la séance.
+    """
+    import api.routes.ml_common as ml_common
+
+    chemin_temporaire = tmp_path_factory.mktemp("optuna") / "optuna_last_runs.json"
+    original = ml_common.LAST_RUNS_FILE
+    ml_common.LAST_RUNS_FILE = chemin_temporaire
+    yield
+    ml_common.LAST_RUNS_FILE = original
+
+
 @pytest.fixture
 def client():
     """Fixture TestClient FastAPI"""

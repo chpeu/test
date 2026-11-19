@@ -485,7 +485,7 @@ class LiveOrderManagerFutures:
                     f"Vérifiez vos credentials et permissions Futures"
                 )
 
-    async def set_leverage(self, symbol: str, leverage: int) -> bool:
+    async def set_leverage(self, symbol: str, leverage: int, direction: str = "LONG") -> bool:
         """
         Configurer le levier pour un symbole
 
@@ -502,6 +502,20 @@ class LiveOrderManagerFutures:
             if self.dry_run:
                 self._leverage_cache[symbol] = leverage
                 logger.info(f"✅ [DRY_RUN] Levier {symbol} configuré à {leverage}x")
+                return True
+
+            # Le mode bypass n'a pas d'échange CCXT : sans cette branche, le
+            # levier demandé n'était jamais envoyé au compte et MEXC gardait
+            # l'ancien (levier inattendu = marge et taille fausses).
+            if self.exchange is None and self.use_bypass and self.bypass_client:
+                await self.bypass_client.set_leverage(
+                    symbol=self._convert_symbol_to_bypass(symbol),
+                    leverage=leverage,
+                    open_type=OpenType.ISOLATED,
+                    position_type=1 if direction == "LONG" else 2,
+                )
+                self._leverage_cache[symbol] = leverage
+                logger.info(f"✅ Levier {symbol} configuré à {leverage}x (bypass)")
                 return True
 
             # Appeler l'API pour configurer le levier
@@ -674,6 +688,15 @@ class LiveOrderManagerFutures:
         """
         start_time = time.time()
         leverage = leverage or self.default_leverage
+
+        # Le gestionnaire d'erreur du bas affiche ces valeurs. Sans défaut, une
+        # erreur précoce (prix d'entrée invalide, montant nul) faisait planter le
+        # gestionnaire lui-même sur « futures_symbol non défini » et masquait la
+        # vraie raison de l'échec (mesuré 19/11/2026 en écrivant les tests).
+        futures_symbol = symbol
+        side = "buy" if direction == "LONG" else "sell"
+        amount = 0.0
+        latency_ms = 0.0
 
         # 🔥 CIRCUIT BREAKER: Vérifier si trading autorisé
         if self.circuit_breaker:
@@ -3186,9 +3209,11 @@ class LiveOrderManagerFutures:
                 logger.warning("🚨 [DRY_RUN] Emergency close simulé")
                 return [FuturesOrderResult(success=True, order_id="emergency_dry_run")]
 
-            # Récupérer toutes les positions ouvertes
-            positions = self.exchange.fetch_positions()
-            open_positions = [p for p in positions if float(p.get("contracts", 0)) > 0]
+            # Une seule porte de sortie : `close_position` connaît les deux modes
+            # (CCXT et bypass), envoie bien reduceOnly et vérifie après coup que
+            # l'ordre existe. L'ancien code n'appelait que CCXT : en mode bypass il
+            # ne fermait rien.
+            open_positions = self.get_all_positions()
 
             if not open_positions:
                 logger.info("✅ Aucune position à fermer")
@@ -3199,39 +3224,32 @@ class LiveOrderManagerFutures:
             )
 
             for pos in open_positions:
-                symbol = pos.get("symbol")
-                size = float(pos.get("contracts", 0))
-                side = pos.get("side")  # 'long' ou 'short'
-                entry_price = float(pos.get("entryPrice", 0))
-
-                # Fermer avec ordre market
-                close_side = "sell" if side == "long" else "buy"
+                symbol = pos["symbol"]
+                size = float(pos["size"])
+                side = pos["side"]  # 'long' ou 'short'
+                entry_price = float(pos["entry_price"])
+                prix_actuel = float(pos.get("mark_price") or entry_price)
 
                 try:
-                    order = self.exchange.create_order(
+                    resultat = self.close_position(
                         symbol=symbol,
-                        type="market",
-                        side=close_side,
-                        amount=size,
-                        params={
-                            "reduceOnly": True,
-                            # 🔥 FIX: Pas de positionSide en mode one-way
-                        },
+                        direction="LONG" if side == "long" else "SHORT",
+                        entry_price=entry_price,
+                        current_price=prix_actuel,
+                        size_amount=size,
                     )
+                    results.append(resultat)
 
-                    results.append(
-                        FuturesOrderResult(
-                            success=True,
-                            order_id=order.get("id"),
-                            filled_price=order.get("average"),
-                            filled_amount=size,
+                    if resultat.success:
+                        logger.warning(
+                            f"🚨 Position fermée: {symbol} | "
+                            f"Size: {size} | Entry: {entry_price}"
                         )
-                    )
-
-                    logger.warning(
-                        f"🚨 Position fermée: {symbol} | "
-                        f"Size: {size} | Entry: {entry_price}"
-                    )
+                    else:
+                        logger.error(
+                            f"❌ Fermeture d'urgence échouée {symbol}: "
+                            f"{resultat.error_message}"
+                        )
 
                 except Exception as e:
                     logger.error(f"❌ Erreur fermeture {symbol}: {e}")
@@ -3255,6 +3273,37 @@ class LiveOrderManagerFutures:
         try:
             if self.dry_run:
                 return []
+
+            # Le mode bypass est celui que le robot utilise quand un jeton
+            # navigateur est configuré. Sans cette branche, cette lecture renvoyait
+            # une liste vide (`self.exchange` vaut None) et le bouton d'urgence ne
+            # fermait rien du tout — mesuré 19/11/2026.
+            if self.exchange is None and self.use_bypass and self.bypass_client:
+                positions_brutes = run_async_safely(
+                    self.bypass_client.get_open_positions()
+                ) or []
+                ouvertes = []
+                for pos in positions_brutes:
+                    contrats = float(getattr(pos, "hold_vol", 0) or 0)
+                    if contrats <= 0:
+                        continue
+                    ouvertes.append(
+                        {
+                            "symbol": getattr(pos, "symbol", None),
+                            "side": "long"
+                            if getattr(pos, "position_type", 1) == 1
+                            else "short",
+                            "size": contrats,
+                            "entry_price": float(getattr(pos, "hold_avg_price", 0) or 0),
+                            "mark_price": float(getattr(pos, "mark_price", 0) or 0),
+                            "unrealized_pnl": float(getattr(pos, "unrealized_pnl", 0) or 0),
+                            "liquidation_price": float(getattr(pos, "liquidate_price", 0) or 0),
+                            "leverage": int(getattr(pos, "leverage", 1) or 1),
+                            "margin": float(getattr(pos, "margin", 0) or 0),
+                            "margin_ratio": 0.0,
+                        }
+                    )
+                return ouvertes
 
             positions = self.exchange.fetch_positions()
             open_positions = []
@@ -3346,63 +3395,3 @@ class LiveOrderManagerFutures:
         except Exception as e:
             logger.error(f"❌ Erreur vérification liquidation: {e}")
             return (False, 100.0)
-
-
-# ============================================================================
-# EXEMPLE D'UTILISATION
-# ============================================================================
-
-if __name__ == "__main__":
-    """Exemple d'utilisation du LiveOrderManagerFutures"""
-
-    # Configuration
-    API_KEY = "your_mexc_futures_api_key"
-    API_SECRET = "your_mexc_futures_api_secret"
-
-    # Initialiser en mode DRY_RUN
-    order_manager = LiveOrderManagerFutures(
-        api_key=API_KEY, api_secret=API_SECRET, default_leverage=10, dry_run=True
-    )
-
-    # Exemple 1: Ouvrir position SHORT BTC avec levier 10x
-    print("\n=== OUVERTURE SHORT ===")
-    result_open = order_manager.open_position(
-        symbol="BTC/USDT",
-        direction="SHORT",
-        entry_price=50000.0,
-        size_usdt=100.0,  # 100 USDT de marge × 10x = 1000 USDT notionnel
-        leverage=10,
-    )
-
-    if result_open.success:
-        print(f"✅ Position SHORT ouverte | Order ID: {result_open.order_id}")
-        print(f"   Prix rempli: {result_open.filled_price}")
-        print(f"   Levier: {result_open.leverage}x")
-        print(f"   Prix liquidation: {result_open.liquidation_price}")
-    else:
-        print(f"❌ Échec: {result_open.error_message}")
-
-    # Simuler attente
-    _sleep_non_blocking(1)
-
-    # Exemple 2: Fermer position avec profit (prix a baissé)
-    print("\n=== FERMETURE SHORT ===")
-    result_close = order_manager.close_position(
-        symbol="BTC/USDT",
-        direction="SHORT",
-        entry_price=50000.0,
-        current_price=49000.0,  # -2% = profit pour SHORT
-        size_amount=result_open.filled_amount,
-    )
-
-    if result_close.success:
-        print(f"✅ Position fermée | Order ID: {result_close.order_id}")
-        print(f"   PnL réel: {result_close.actual_pnl_usdt:+.2f} USDT")
-    else:
-        print(f"❌ Échec: {result_close.error_message}")
-
-    # Stats
-    print("\n=== STATISTIQUES ===")
-    stats = order_manager.get_stats()
-    print(f"Ordres placés: {stats['orders_placed']}")
-    print(f"PnL total: {stats['total_pnl_usdt']:+.2f} USDT")
