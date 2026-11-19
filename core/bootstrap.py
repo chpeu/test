@@ -273,6 +273,17 @@ async def init_instances() -> None:
         sched.set_scanner_callback(scanner_loop_callback)
         sched.set_position_check_callback(position_check_loop_callback)
         sched.set_scalability_refresh_callback(scalability_refresh_loop_callback)
+
+        # 👻 Carnet fantôme : le robot note ses prises et ses analyses, mais pas
+        # les dossiers refusés alors qu'un signal existait. Sans cette trace, la
+        # question « ce filtre fait-il perdre de l'argent ? » reste sans réponse.
+        try:
+            from core.callbacks.carnet_fantome import carnet_fantome_callback
+
+            sched.set_ghost_eval_callback(carnet_fantome_callback)
+        except ImportError as carnet_err:
+            logger.warning(f"⚠️ Carnet fantôme indisponible: {carnet_err}")
+
         state.set_scheduler(sched)
         
         ws_mgr = state.get_ws_manager()

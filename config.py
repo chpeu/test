@@ -557,6 +557,16 @@ TRADING_CONFIG = {
     "trading_cb_max_trades_per_day": 40,          # Prises ouvertes dans la journée
     "trading_cb_max_size_per_trade_usdt": 100.0,  # Valeur maximale d'une prise
     "trading_cb_max_loss_per_trade_usdt": 10.0,   # Perte si le stop tombe (~1 % du capital)
+
+    # ============================================================
+    # CARNET FANTÔME — la trace des dossiers refusés, et leur verdict
+    # (ajouté le 19/11/2026 : sans lui, impossible de savoir si un filtre qui
+    # refuse fait perdre de l'argent. Lecture : scripts/lire_carnet_fantome.py)
+    # ============================================================
+    "carnet_fantome_enabled": True,          # note les refus et les évalue
+    "carnet_fantome_eval_minutes": 12,       # toutes les X minutes, on juge les refus
+    "carnet_fantome_limite": 30,             # dossiers jugés par passe (ménage la source de prix)
+    "carnet_fantome_fenetre_minutes": 60,    # horizon regardé après le refus
     
     # ============================================================
     # 🔥 SPRINT 2: PAIR SCORER - Score Pair Dynamique

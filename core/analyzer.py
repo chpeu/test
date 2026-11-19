@@ -1553,6 +1553,44 @@ class TechnicalAnalyzer:
                     f"❌ {symbol} 5m: REJETÉ - {analysis_5m.get('reason', 'Raison inconnue')}"
                 )
 
+            # 👻 CARNET FANTÔME : le signal existait en 1 minute, la re-vérification
+            # 5 minutes l'a refusé. Le robot n'a jamais gardé la trace de ces
+            # dossiers, donc impossible de savoir si le filtre qui refuse fait
+            # gagner ou perdre de l'argent. On note le dossier ; le prix répondra
+            # plus tard (voir core/carnet_fantome.py).
+            if (
+                analysis_1m
+                and not (isinstance(analysis_1m, dict) and "reason" in analysis_1m)
+                and isinstance(analysis_5m, dict)
+                and "reason" in analysis_5m
+            ):
+                try:
+                    from core.carnet_fantome import (
+                        enregistrer_refus,
+                        reglages_de_reference,
+                    )
+
+                    sl_reference, tp_reference = reglages_de_reference()
+                    await asyncio.to_thread(
+                        enregistrer_refus,
+                        symbole=symbol,
+                        sens=analysis_1m.get("direction"),
+                        prix=analysis_1m.get("entry") or analysis_1m.get("price"),
+                        motif=str(analysis_5m.get("reason", "Raison inconnue")),
+                        sl_pct=sl_reference,
+                        tp_pct=tp_reference,
+                        score=analysis_1m.get("score_total"),
+                        score_requis=analysis_1m.get("effective_min_score")
+                        or analysis_1m.get("min_score_required"),
+                        atr_pct=analysis_1m.get("atr_pct"),
+                        volume_spike=analysis_1m.get("volumeSpike"),
+                        scan_id=scan_uuid,
+                    )
+                except Exception as carnet_err:
+                    _get_logger().debug(
+                        f"👻 Carnet fantôme (non-bloquant): {carnet_err}"
+                    )
+
             # Déterminer le meilleur setup
             best_setup = None
             if (

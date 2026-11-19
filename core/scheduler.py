@@ -21,12 +21,14 @@ class Scheduler:
         self.scanner_task: Optional[asyncio.Task] = None
         self.position_check_task: Optional[asyncio.Task] = None
         self.scalability_refresh_task: Optional[asyncio.Task] = None
+        self.ghost_eval_task: Optional[asyncio.Task] = None
         self.is_running = False
         
         # Callbacks
         self.scanner_callback: Optional[Callable] = None
         self.position_check_callback: Optional[Callable] = None
         self.scalability_refresh_callback: Optional[Callable] = None
+        self.ghost_eval_callback: Optional[Callable] = None
     
     def set_scanner_callback(self, callback: Callable):
         """Définir callback pour scanner (appelé toutes les 45s)"""
@@ -39,6 +41,10 @@ class Scheduler:
     def set_scalability_refresh_callback(self, callback: Callable):
         """Définir callback pour scalability refresh (appelé toutes les 90s)"""
         self.scalability_refresh_callback = callback
+
+    def set_ghost_eval_callback(self, callback: Callable):
+        """Définir callback pour le carnet fantôme (les dossiers refusés)"""
+        self.ghost_eval_callback = callback
 
     def _attach_task_monitor(self, name: str, task: asyncio.Task) -> None:
         """Ajouter un callback de monitoring pour tracer les arrêts inattendus."""
@@ -76,6 +82,21 @@ class Scheduler:
                 logger.error(f"Erreur dans scanner loop: {e}")
                 await asyncio.sleep(5)  # Attendre un peu avant de réessayer
     
+    async def _ghost_eval_loop(self):
+        """Boucle du carnet fantôme — ce que les refus ont donné après coup."""
+        from config import TRADING_CONFIG
+
+        minutes = int(TRADING_CONFIG.get("carnet_fantome_eval_minutes", 12))
+        logger.info(f"👻 Boucle carnet fantôme démarrée (toutes les {minutes} min)")
+        while self.is_running:
+            try:
+                if self.ghost_eval_callback:
+                    await self.ghost_eval_callback()
+                await asyncio.sleep(max(60, minutes * 60))
+            except Exception as e:
+                logger.error(f"Erreur dans carnet fantôme loop: {e}")
+                await asyncio.sleep(120)
+
     async def _position_check_loop(self):
         """Boucle position check - toutes les 0.1 secondes (optimisé pour scalping ultra-rapide)"""
         logger.info("🛡️ Boucle position check démarrée")
@@ -134,6 +155,12 @@ class Scheduler:
             self._attach_task_monitor("scanner_loop", self.scanner_task)
             logger.info("✅ Scanner loop démarré (45s)")
         
+        # Démarrer l'évaluation du carnet fantôme
+        if self.ghost_eval_callback:
+            self.ghost_eval_task = asyncio.create_task(self._ghost_eval_loop())
+            self._attach_task_monitor("ghost_eval_loop", self.ghost_eval_task)
+            logger.info("✅ Carnet fantôme démarré")
+
         # Démarrer position check loop
         if self.position_check_callback:
             self.position_check_task = asyncio.create_task(self._position_check_loop())
@@ -165,6 +192,10 @@ class Scheduler:
         if self.scalability_refresh_task:
             self.scalability_refresh_task.cancel()
             self.scalability_refresh_task = None
+
+        if self.ghost_eval_task:
+            self.ghost_eval_task.cancel()
+            self.ghost_eval_task = None
         
         logger.info("🛑 Scheduler arrêté")
     
@@ -183,6 +214,8 @@ class Scheduler:
             tasks.append(self.position_check_task)
         if self.scalability_refresh_task:
             tasks.append(self.scalability_refresh_task)
+        if self.ghost_eval_task:
+            tasks.append(self.ghost_eval_task)
         
         for task in tasks:
             task.cancel()

@@ -76,9 +76,19 @@ def test_le_reglage_declare_est_celui_utilise(cle):
 
 
 def test_la_config_vivante_n_heberge_plus_de_dechets_de_tests():
-    """`test_key` et `number` traînaient dans la config vivante depuis des tests."""
+    """`test_key` et `number` traînaient dans la config vivante depuis un test.
+
+    On kontrolle le fichier lui-même, pas la configuration en mémoire : un test
+    qui écrit peut polluer après l'import de `config`.
+    """
+    import json
+
+    chemin = Path(__file__).resolve().parent.parent / "config_overrides.json"
+    if not chemin.exists():
+        return
+    reglages = json.loads(chemin.read_text(encoding="utf-8"))
     for dechet in ("test_key", "number"):
-        assert dechet not in TRADING_CONFIG, (
-            f"{dechet} est revenu dans la configuration : un test écrit dans "
-            "config_overrides.json au lieu d'un jeu de données temporaire"
+        assert dechet not in reglages, (
+            f"{dechet} est revenu dans config_overrides.json : un test écrit dans "
+            "le fichier du robot au lieu d'un fichier temporaire"
         )

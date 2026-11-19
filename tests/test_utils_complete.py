@@ -27,20 +27,24 @@ class TestConfigPersistence:
         result = load_config_overrides()
         assert isinstance(result, dict)
 
-    def test_config_persistence_save_load(self):
-        """Test sauvegarde et chargement de configuration"""
-        from utils.config_persistence import save_config_overrides, load_config_overrides
-        
-        test_config = {"test_key": "test_value", "number": 42}
-        
-        # Test save
-        result = save_config_overrides(test_config)
-        assert result is True  # Should return True on success
-        
-        # Test load
-        loaded_config = load_config_overrides()
-        assert isinstance(loaded_config, dict)
-        # Note: loaded config may contain more than just our test data due to existing overrides
+    def test_config_persistence_save_load(self, tmp_path, monkeypatch):
+        """Aller-retour d'un réglage — dans un fichier temporaire, pas la config vivante.
+
+        Ce test écrivait autrefois dans `config_overrides.json`, le fichier que le
+        robot recharge à chaque démarrage : il y a laissé `test_key` et `number`,
+        et chaque lancement grondait « Override ignoré (clé inconnue) ».
+        """
+        import utils.config_persistence as persistence
+
+        fichier_temporaire = tmp_path / "config_overrides_test.json"
+        monkeypatch.setattr(persistence, "CONFIG_OVERRIDES_FILE", fichier_temporaire)
+
+        assert persistence.save_config_overrides({"test_key": "test_value", "number": 42}) is True
+
+        relu = persistence.load_config_overrides()
+        assert relu["test_key"] == "test_value"
+        assert relu["number"] == 42
+        assert fichier_temporaire.exists()
 
 
 class TestEffectiveConfig:
