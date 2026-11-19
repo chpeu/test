@@ -31,6 +31,41 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
     except (TypeError, ValueError):
         return default
 
+
+def _safe_bool(value: Any, default: bool = False) -> bool:
+    """Transformer ce qu'on trouve en vrai ou/rien, sans exploser sur None."""
+    if value is None:
+        return default
+    return bool(value)
+
+
+# Les six metriques numeriques des filtres d'entree. Les autres sont des oui/non.
+_CLES_NUMERIQUES_FILTRES = {
+    "snr_1m",
+    "snr_5m",
+    "breakout_distance_1m",
+    "breakout_distance_5m",
+    "wick_ratio_1m",
+    "wick_ratio_5m",
+}
+
+
+def _normaliser_metriques(filters: Dict[str, Any]) -> Dict[str, Any]:
+    """Remettre chaque metrique de filtre dans le format que la base attend.
+
+    Ces valeurs partent dans des colonnes numeriques/booleennes de `scan_logs`.
+    Une chaine ou une liste a cette place fait echouer l'ecriture, et l'ecriture
+    ratee ne dit rien : le journal perd la ligne en silence (deja vu le 18/11/2026
+    avec des colonnes absentes). Donc on convertit ici, a la lecture.
+    """
+    normalise = {}
+    for cle, valeur in filters.items():
+        if cle in _CLES_NUMERIQUES_FILTRES:
+            normalise[cle] = _safe_float(valeur, 0.0)
+        else:
+            normalise[cle] = _safe_bool(valeur, False)
+    return normalise
+
 # Variables globales injectées par init_instances()
 _scanner = None
 _analyzer = None
@@ -958,7 +993,7 @@ def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
         for key in filters.keys():
             if key in existing_filters and existing_filters.get(key) is not None:
                 filters[key] = existing_filters.get(key)
-        return filters
+        return _normaliser_metriques(filters)
     
     for key in filters.keys():
         if key in analysis and analysis.get(key) is not None:
@@ -1048,7 +1083,7 @@ def _extract_filter_metrics(analysis: Dict[str, Any]) -> Dict[str, Any]:
                 filters['atr_optimal_passed_5m'] = analysis.get('atr_optimal_passed')
     
     logger.debug(f"📊 Filters finaux retournés (total {len(filters)} clés)")
-    return filters
+    return _normaliser_metriques(filters)
 
 
 async def scan_pair_for_setup(symbol: str) -> Optional[Dict[str, Any]]:
