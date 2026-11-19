@@ -231,10 +231,19 @@ class TestMLOptimizeEndpoints:
         response = ml_client.get("/api/ml/optimize/best?metric=f1_score")
         assert response.status_code in [200, 404, 422, 500]
 
-    def test_post_optimize_apply(self, ml_client):
-        """Test POST /api/ml/optimize/apply"""
+    def test_post_optimize_apply(self, ml_client, tmp_path):
+        """Test POST /api/ml/optimize/apply.
+
+        Le fichier de reglages est passe explicitement dans un dossier
+        temporaire : sans ça, la route ecrivait `ml_metric` dans la config vivante
+        du robot (mesure : la cle trainait dans config_overrides.json).
+        """
         payload = {"metric": "accuracy"}
-        response = ml_client.post("/api/ml/optimize/apply", json=payload)
+        response = ml_client.post(
+            "/api/ml/optimize/apply",
+            params={"config_file": str(tmp_path / "config_overrides.json")},
+            json=payload,
+        )
         assert response.status_code in [200, 400, 404, 422, 500]
 
 
