@@ -132,6 +132,13 @@ def test_get_config_exception_fallback(monkeypatch, manager):
 
 
 def test_get_db_pool_paths(monkeypatch):
+    # le scribe est singleton : un test passe l'a deja cree, et dans ce cas
+    # `get_pg_datalogger()` renvoie l'objet existant sans regarder la classe
+    # patchee ci-dessous. On repart donc d'une feuille blanche.
+    import core.postgresql_datalogger as scribe
+
+    monkeypatch.setattr(scribe, "_pg_datalogger_instance", None)
+
     # 1) db_pool fourni
     dummy = object()
     m = calib.MLCalibrationManager(db_pool=dummy)

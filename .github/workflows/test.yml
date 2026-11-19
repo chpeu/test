@@ -77,6 +77,10 @@ jobs:
       run: |
         pytest tests/test_ordres_reels.py tests/test_ordres_reels_bypass.py tests/test_ordres_reels_protections.py tests/unit/trading tests/test_stop_cote_echange.py -q --cov=trading.live_order_manager_futures --cov-fail-under=75
 
+    - name: La porte d'entrée des trades reste testée (porte à 45 %)
+      run: |
+        pytest tests/test_analyzer_vivant.py tests/test_analyzer_refactored.py tests/test_unit_analyzer_modules.py tests/test_targeted_coverage.py tests/test_rsi_behavior.py -q --cov=core.analyzer_file --cov-fail-under=45
+
     - name: Upload coverage to Codecov (optional)
       if: success()
       continue-on-error: true
