@@ -215,11 +215,13 @@ class Position:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convertir position en dictionnaire JSON"""
-        from datetime import datetime
+        from datetime import datetime, timezone
 
-        # 🔥 FIX: Convertir start_time en opened_at (ISO string) pour le frontend
+        # `tz=` obligatoire : sans lui, fromtimestamp donne l'heure locale et
+        # l'heure d'entrée affichée dans l'interface (et repassée en base) se
+        # retrouve décalée d'une heure par rapport à la sortie, écrite en UTC.
         opened_at = (
-            datetime.fromtimestamp(self.start_time).isoformat()
+            datetime.fromtimestamp(self.start_time, tz=timezone.utc).isoformat()
             if self.start_time
             else None
         )
@@ -246,9 +248,7 @@ class Position:
             "start_time": self.start_time,
             "opened_at": opened_at,  # 🔥 NOUVEAU: Ajouté pour le frontend (compte à rebours)
             "break_even_set": self.break_even_set,
-            "break_even_triggered_at": datetime.fromtimestamp(
-                self.break_even_triggered_at
-            ).isoformat()
+            "break_even_triggered_at": datetime.fromtimestamp(self.break_even_triggered_at, tz=timezone.utc).isoformat()
             if self.break_even_triggered_at
             else None,
             "break_even_price": self.be_price_at_trigger,
@@ -257,17 +257,13 @@ class Position:
             "partial_tp_percent": self.partial_tp_percent,  # 🔥 NEW
             "partial_tp_profit": self.partial_profit_usdt,  # Existe déjà mais mal nommé dans dict ? check below
             "trailing_activated": self.trailing_activated,
-            "trailing_activated_at": datetime.fromtimestamp(
-                self.trailing_activated_at
-            ).isoformat()
+            "trailing_activated_at": datetime.fromtimestamp(self.trailing_activated_at, tz=timezone.utc).isoformat()
             if self.trailing_activated_at
             else None,
             "trailing_final_sl": self.trailing_final_sl,
             "trailing_distance_pct": self.trailing_distance_pct,
             "trailing_mfe_triggered": getattr(self, "trailing_mfe_triggered", False),
-            "trailing_mfe_triggered_at": datetime.fromtimestamp(
-                self.trailing_mfe_triggered_at
-            ).isoformat()
+            "trailing_mfe_triggered_at": datetime.fromtimestamp(self.trailing_mfe_triggered_at, tz=timezone.utc).isoformat()
             if getattr(self, "trailing_mfe_triggered_at", None)
             else None,
             "trailing_mfe_trigger_pnl_pct": getattr(
@@ -280,19 +276,13 @@ class Position:
             "min_price_reached": self.min_price_reached,
             "max_pnl_reached": self.max_pnl_reached,
             "min_pnl_reached": self.min_pnl_reached,
-            "max_pnl_timestamp": datetime.fromtimestamp(
-                self.max_pnl_timestamp
-            ).isoformat()
+            "max_pnl_timestamp": datetime.fromtimestamp(self.max_pnl_timestamp, tz=timezone.utc).isoformat()
             if getattr(self, "max_pnl_timestamp", None)
             else None,
-            "min_pnl_timestamp": datetime.fromtimestamp(
-                self.min_pnl_timestamp
-            ).isoformat()
+            "min_pnl_timestamp": datetime.fromtimestamp(self.min_pnl_timestamp, tz=timezone.utc).isoformat()
             if getattr(self, "min_pnl_timestamp", None)
             else None,
-            "stagnation_detected_at": datetime.fromtimestamp(
-                self.stagnation_detected_at
-            ).isoformat()
+            "stagnation_detected_at": datetime.fromtimestamp(self.stagnation_detected_at, tz=timezone.utc).isoformat()
             if self.stagnation_detected_at
             else None,
             "stagnation_pnl_at_detection": self.stagnation_pnl_at_detection,
@@ -4379,6 +4369,55 @@ class PositionManager:
         return resultat
 
     @staticmethod
+    def _financement_papier_usdt(position, taille_usdt: float, a_prix_reel: bool) -> float:
+        """Le financement d'un perpetuel se paie tous les 8 h : on le compte en papier.
+
+        Le taux est celui que le scanner a vu a l'entree (il sert deja a ecarter les
+        paires dont le financement est trop eleve). Sans taux connu, on ne
+        invente aucun chiffre : la ligne reste a 0 et le rapport de controle le
+        montre. En live, c'est l'echange qui preleve : rien d'estime par-dessus.
+        """
+        if a_prix_reel:
+            return 0.0
+
+        from config import TRADING_CONFIG
+
+        if not TRADING_CONFIG.get("papier_frais_financement_actif", True):
+            return 0.0
+
+        donnees = getattr(position, "scalability_data", None) or {}
+        taux = None
+        pourcentage_depuis_scanner = False
+        for cle in ("funding_rate", "fundingRate", "funding"):
+            if donnees.get(cle) is not None:
+                taux = donnees.get(cle)
+                # Le scanner manipule des pourcentges par 8 h (0.01 = 0,01 %) :
+                # `fetch_funding_rate` multiplie la fraction ccxt par 100.
+                pourcentage_depuis_scanner = True
+                break
+        if taux is None:
+            taux = getattr(position, "funding_rate_at_entry", None)
+            # Cette valeur-la vient de l'ordre live (ccxt) : fraction deja (0.0001).
+        if taux is None:
+            return 0.0
+
+        debut = getattr(position, "start_time", None)
+        if not debut:
+            return 0.0
+
+        try:
+            heures = max(0.0, (time.time() - float(debut)) / 3600.0)
+            taux = float(taux)
+        except (TypeError, ValueError):
+            return 0.0
+
+        if pourcentage_depuis_scanner:
+            taux /= 100.0  # pourcentage par 8 h -> fraction par 8 h
+
+        signe = 1.0 if str(getattr(position, "direction", "LONG")).upper() == "LONG" else -1.0
+        return signe * taux * (heures / 8.0) * float(taille_usdt or 0.0)
+
+    @staticmethod
     def _taille_de_reference_pour_centards(position) -> float:
         """La taille qui sert de denominateur aux pourcentages ecrits en base.
 
@@ -4818,6 +4857,20 @@ class PositionManager:
             if not self.active_position.scalability_data:
                 logger.warning("💹 Slippage non calculé: scalability_data est absent")
 
+        # 📐 Plancher mesuré : quand les données de scalabilité manquaient, le
+        # papier ne facturait AUCUN glissement — mesuré 21 prises sur 102 à zéro.
+        # Le spread moyen mesuré sur les paires du robot est de 0,020 % par traversée.
+        if slippage_pct <= 0.0 and not has_exchange_fill:
+            from config import TRADING_CONFIG
+
+            plancher = float(TRADING_CONFIG.get("papier_glissement_min_pct", 0.02) or 0.0)
+            if plancher > 0:
+                slippage_pct = plancher
+                logger.info(
+                    f"💹 Glissement pris au plancher mesuré: {plancher}% "
+                    "(données de scalabilité absentes)"
+                )
+
         # 🔥 FIX: Convertir slippage_pct en USDT pour les calculs
         slippage_usdt = (
             (slippage_pct / 100) * self.active_position.size
@@ -4831,8 +4884,11 @@ class PositionManager:
         # Calculer coûts totaux (fees en USDT + slippage en USDT)
         # 📐 Un stop au marché ne se remplit pas au prix prévu : la bougie dépasse
         # (0,160 % en moyenne mesuré sur 51 stops). Le papier le paye désormais.
-        total_costs = pnl_data["fees"] + slippage_usdt + self._depassement_stop_usdt(
-            reason, taille_reference, has_exchange_fill
+        total_costs = (
+            pnl_data["fees"]
+            + slippage_usdt
+            + self._depassement_stop_usdt(reason, taille_reference, has_exchange_fill)
+            + self._financement_papier_usdt(self.active_position, taille_reference, has_exchange_fill)
         )
 
         # PnL net
@@ -4920,7 +4976,7 @@ class PositionManager:
         # 🔥 FIX: Ajouter opened_at et closed_at pour l'affichage frontend
         # 🔥 FIX BUG #3: Utiliser timezone.utc pour PostgreSQL TIMESTAMPTZ
         opened_at = (
-            datetime.fromtimestamp(self.active_position.start_time).isoformat()
+            datetime.fromtimestamp(self.active_position.start_time, tz=timezone.utc).isoformat()
             if hasattr(self.active_position, "start_time")
             else self.active_position.timestamp
         )
@@ -5119,8 +5175,14 @@ class PositionManager:
 
                     timestamp_entry = None
                     if hasattr(self.active_position, "start_time"):
+                        # Sans `tz=`, fromtimestamp donne l'heure locale : la base
+                        # est en TIMESTAMPTZ, l'entrée se retrouvait une heure dans
+                        # le futur par rapport à la sortie. Mesuré 19/11/2026 :
+                        # 102 trades sur 102 avec une sortie AVANT l'entrée —
+                        # toutes les durées (sortie temporelle, stagnation,
+                        # financement, statistiques de détention) étaient fausses.
                         timestamp_entry = datetime.fromtimestamp(
-                            self.active_position.start_time
+                            self.active_position.start_time, tz=timezone.utc
                         ).isoformat()
                     elif hasattr(self.active_position, "timestamp"):
                         timestamp_entry = self.active_position.timestamp
@@ -5261,16 +5323,12 @@ class PositionManager:
                         "duration_seconds": duration,
                         "tp_sl_mode": get_effective_value("tp_sl_mode") or "FIXE",
                         "break_even_triggered": self.active_position.break_even_set,
-                        "break_even_triggered_at": datetime.fromtimestamp(
-                            self.active_position.break_even_triggered_at
-                        ).isoformat()
+                        "break_even_triggered_at": datetime.fromtimestamp(self.active_position.break_even_triggered_at, tz=timezone.utc).isoformat()
                         if self.active_position.break_even_triggered_at
                         else None,
                         "trailing_stop_triggered": self.active_position.trailing_activated
                         or (reason == "TS"),
-                        "trailing_stop_triggered_at": datetime.fromtimestamp(
-                            self.active_position.trailing_activated_at
-                        ).isoformat()
+                        "trailing_stop_triggered_at": datetime.fromtimestamp(self.active_position.trailing_activated_at, tz=timezone.utc).isoformat()
                         if self.active_position.trailing_activated_at
                         else None,
                         "partial_tp_triggered": self.active_position.partial_tp_sold,
@@ -5393,9 +5451,7 @@ class PositionManager:
                         ),
                         "stagnation_detected": isinstance(reason, str)
                         and reason.startswith("STAGNATION"),
-                        "stagnation_detected_at": datetime.fromtimestamp(
-                            self.active_position.stagnation_detected_at
-                        ).isoformat()
+                        "stagnation_detected_at": datetime.fromtimestamp(self.active_position.stagnation_detected_at, tz=timezone.utc).isoformat()
                         if self.active_position.stagnation_detected_at
                         else None,
                         # Stagnation duration: temps depuis détection OU depuis le timeout
@@ -5424,9 +5480,7 @@ class PositionManager:
                         ),
                         # 🎯 Trailing MFE data
                         "trailing_mfe_triggered": self.active_position.trailing_mfe_triggered,
-                        "trailing_mfe_triggered_at": datetime.fromtimestamp(
-                            self.active_position.trailing_mfe_triggered_at
-                        ).isoformat()
+                        "trailing_mfe_triggered_at": datetime.fromtimestamp(self.active_position.trailing_mfe_triggered_at, tz=timezone.utc).isoformat()
                         if self.active_position.trailing_mfe_triggered_at
                         else None,
                         "trailing_mfe_trigger_pnl_pct": self.active_position.trailing_mfe_trigger_pnl_pct,

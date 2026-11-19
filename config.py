@@ -581,6 +581,14 @@ TRADING_CONFIG = {
     # sur l'échange (sinon elle reste sans gestion) et pose son stop de sécurité.
     # S'il y en a deux de ouvertes ou si l'échange ne répond pas, les ouvertures
     # sont bloquées jusqu'à ce que l'état soit clair.
+    # 📐 Glissement plancher en papier : le spread moyen mesuré sur les paires du
+    # robot est de 0,020 % par traversée. Sans ça, une prise sans données de
+    # scalabilité ne payait rien (21 prises sur 102 mesurées le 19/11/2026).
+    "papier_glissement_min_pct": 0.02,
+    # 💸 Financement des perpetuels compte en papier (taux vu à l'entrée, toutes
+    # les 8 h). Sans taux connu, rien n'est inventé.
+    "papier_frais_financement_actif": True,
+
     "adopte_positions_au_demarrage": True,
     "adoptee_stop_echange": True,
 
