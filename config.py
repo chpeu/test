@@ -567,6 +567,11 @@ TRADING_CONFIG = {
     "entree_autoriser_paires_payantes": False,  # True pour rendre BTC/ETH/SOL
     "entree_paires_payantes_autorisees": [],    # exceptions nommées, une par une
 
+    # 🛡️ En compte réel : si MEXC refuse le stop de sécurité, la position
+    # venant d'être ouverte est fermée aussitôt. Une position sans stop réel ne doit
+    # jamais rester ouverte, même quelques secondes.
+    "live_exige_stop_echange": True,
+
     # ============================================================
     # CARNET FANTÔME — la trace des dossiers refusés, et leur verdict
     # (ajouté le 19/11/2026 : sans lui, impossible de savoir si un filtre qui

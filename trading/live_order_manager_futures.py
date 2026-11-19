@@ -314,6 +314,7 @@ class FuturesOrderResult:
     forced_full_close: bool = False
 
     sl_exchange_percent: Optional[float] = None
+    exchange_stop_price: Optional[float] = None  # stop réellement posé chez MEXC
 
 
 class LiveOrderManagerFutures:
@@ -1644,9 +1645,44 @@ class LiveOrderManagerFutures:
                 f"Latence: {latency_ms:.0f}ms"
             )
 
+            # 🔒 Le filet de sécurité part chez MEXC ici, pas plus tard : si le
+            # robot meurt dans la minute, la position doit avoir un stop réel.
+            tente, prix_stop_pose = self._poser_stop_echange(symbol, direction, sl_price)
+            if tente and prix_stop_pose is None:
+                from config import TRADING_CONFIG
+
+                if TRADING_CONFIG.get("live_exige_stop_echange", True):
+                    logger.error(
+                        f"🚨 {symbol} {direction} ouvert SANS stop côté échange — "
+                        "fermeture immédiate (aucune position nue)"
+                    )
+                    try:
+                        self.close_position(
+                            symbol=symbol,
+                            direction=direction,
+                            entry_price=entry_price,
+                            current_price=filled_price or entry_price,
+                            size_amount=filled_amount,
+                        )
+                    except Exception as erreur_fermeture:  # noqa: BLE001 - rien d'autre à tenter
+                        logger.error(
+                            f"❌ Fermeture d'urgence impossible pour {symbol}: {erreur_fermeture}"
+                        )
+                    if self.telegram_notifier:
+                        self.telegram_notifier.send_error_sync(
+                            "Stop côté échange impossible",
+                            f"{symbol} {direction} — position fermée sans attendre",
+                        )
+
             return FuturesOrderResult(
                 success=True,
                 order_id=order_id,
+                exchange_stop_price=prix_stop_pose,
+                error_message=(
+                    None
+                    if not tente or prix_stop_pose
+                    else "stop côté échange impossible — position refermée"
+                ),
                 filled_price=filled_price,
                 filled_amount=filled_amount,
                 filled_size_usdt=filled_amount * filled_price
@@ -2918,6 +2954,41 @@ class LiveOrderManagerFutures:
     # ========================================================================
 
     @retry_with_backoff(max_retries=3)
+    def _poser_stop_echange(
+        self, symbol: str, direction: str, prix_stop: Optional[float]
+    ) -> Tuple[bool, Optional[float]]:
+        """Pose le stop de sécurité chez MEXC. Retour (une tentative, prix pose).
+
+        Mesure du 19/11/2026 : dans `open_position`, le prix du stop MEXC etait
+        calcule (marge ×1.2 sur le stop du robot), arrondi a la precision du
+        contrat, affiche dans les logs sous « 📐 SL MEXC MARGE »… puis **jamais
+        envoye a l'echange**. La fonction qui sait le poser
+        (`set_stop_loss_take_profit`) n'etait appelee par personne : sans ordre
+        cote echange, le stop n'existe que dans la memoire du programme, donc une
+        coupure reseau ou un redemarrage laisse la position **sans filet**.
+
+        Le stop cote echange est plus large que celui du robot (marge ×1.2) : il
+        n'est pas la pour optimiser la sortie, seulement pour qu'une position ne
+        reste pas nue si le robot meurt.
+        """
+        if self.dry_run or not prix_stop or prix_stop <= 0:
+            return False, None
+
+        for tentative in (1, 2):
+            if self.set_stop_loss_take_profit(
+                symbol, direction, stop_loss_price=prix_stop
+            ):
+                logger.info(
+                    f"🔒 Stop cote echange pose: {symbol} {direction} @ {prix_stop}"
+                )
+                return True, prix_stop
+            logger.warning(
+                f"⚠️ Stop cote echange refuse pour {symbol} (essai {tentative}/2)"
+            )
+            time.sleep(1.0)
+
+        return True, None
+
     def set_stop_loss_take_profit(
         self,
         symbol: str,
