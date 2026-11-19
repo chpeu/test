@@ -1293,6 +1293,16 @@ class PositionManager:
             logger.warning(f"🛑 Frais — ouverture refusée {symbol} {direction} | {motif_frais}")
             return None
 
+        # 🤝 Tant que l'état des positions sur l'échange n'est pas clair (position
+        # déjà ouverte non reprise, ou échange injoignable au démarrage), on
+        # n'ajoute pas une deuxième position par-dessus.
+        blocage_adoption = getattr(self, "_blocage_adoption", None)
+        if blocage_adoption:
+            logger.warning(
+                f"🛑 Adoption — ouverture refusée {symbol} {direction} | {blocage_adoption}"
+            )
+            return None
+
         # Validation
         if not entry or entry <= 0:
             raise ValueError(f"Entry invalide: {entry}")
@@ -4247,6 +4257,126 @@ class PositionManager:
             f"➡️ {self.active_position.symbol}: Position continue (aucun niveau touché)"
         )
         return None
+
+    def adopter_positions_au_demarrage(self) -> Dict[str, Any]:
+        """Reprend la position qui court deja sur l'echange apres un redemarrage.
+
+        Mesure du 19/11/2026 : **rien ne faisait ce travail.** Le robot consultait
+        les positions de l'echange pour les afficher dans l'interface, mais ne les
+        reprenait jamais a sa charge. Apres un plantage, une coupure reseau ou un
+        redemarrage manuel, la position reelle restait donc sans surveillance --
+        plus de stop suiveur, plus de take-profit partiel, plus de sortie
+        temporelle -- et le robot pouvait ouvrir une deuxieme position a cote.
+
+        Politique : une position connue est reprise ; deux positions ou une
+        reponse d'echange impossible **bloquent les ouvertures** jusqu'a ce que
+        l'etat soit clair. On preferera toujours rater une prise a l'idee de
+        gerer deux positions sans le savoir.
+        """
+        resultat = {"adoptees": 0, "bloque": None}
+        gestionnaire = self.live_order_manager
+
+        if gestionnaire is None or getattr(gestionnaire, "dry_run", True):
+            return resultat  # essai a blanc : aucune position reelle a reprendre
+
+        from config import TRADING_CONFIG
+
+        if not TRADING_CONFIG.get("adopte_positions_au_demarrage", True):
+            return resultat
+
+        try:
+            positions = gestionnaire.exchange.fetch_positions()
+        except Exception as erreur:  # noqa: BLE001 - decidable : on ne sait pas
+            self._blocage_adoption = f"positions de l'echange illisibles ({erreur})"
+            resultat["bloque"] = self._blocage_adoption
+            logger.error(
+                f"🚨 Adoption au démarrage impossible — {self._blocage_adoption} : "
+                "ouvertures bloquées tant que l'état n'est pas clair"
+            )
+            return resultat
+
+        ouvertes = []
+        for position_echangee in positions or []:
+            try:
+                contrats_bruts = float(position_echangee.get("contracts") or 0.0)
+            except (TypeError, ValueError):
+                # Une réponse d'échange qu'on ne sait pas lire n'est pas une
+                # absence de position : on bloque plutot que de deviner.
+                self._blocage_adoption = (
+                    f"position illisible sur l'échange ({position_echangee})"
+                )
+                resultat["bloque"] = self._blocage_adoption
+                logger.error(f"🚨 {self._blocage_adoption} — ouvertures bloquées")
+                return resultat
+            if abs(contrats_bruts) > 0:
+                ouvertes.append(position_echangee)
+
+        if not ouvertes:
+            logger.info("🤝 Aucune position ouverte sur l'échange au démarrage")
+            return resultat
+
+        if len(ouvertes) > 1:
+            symboles = ", ".join(str(p.get("symbol")) for p in ouvertes)
+            self._blocage_adoption = f"{len(ouvertes)} positions sur l'échange ({symboles})"
+            resultat["bloque"] = self._blocage_adoption
+            logger.error(
+                f"🚨 {self._blocage_adoption} : le robot n'en gère qu'une — "
+                "ouvertures bloquées, à trancher à la main"
+            )
+            return resultat
+
+        position_echange = ouvertes[0]
+        symbole = position_echange.get("symbol")
+        sens = "SHORT" if str(position_echange.get("side", "")).lower() == "short" else "LONG"
+        entree = float(position_echange.get("entryPrice") or position_echange.get("markPrice") or 0.0)
+        contrats = abs(float(position_echange.get("contracts") or 0.0))
+
+        if not symbole or entree <= 0 or contrats <= 0:
+            self._blocage_adoption = f"position illisible sur l'échange ({position_echange})"
+            resultat["bloque"] = self._blocage_adoption
+            logger.error(f"🚨 {self._blocage_adoption} — ouvertures bloquées")
+            return resultat
+
+        taille = contrats * entree
+        sl_pct = float(self.config.fixed_sl_pct or 0.3)
+        tp_pct = float(self.config.fixed_tp_pct or 0.6)
+        if sens == "LONG":
+            stop = entree * (1 - sl_pct / 100)
+            objectif = entree * (1 + tp_pct / 100)
+        else:
+            stop = entree * (1 + sl_pct / 100)
+            objectif = entree * (1 - tp_pct / 100)
+
+        self.active_position = Position(
+            symbol=symbole,
+            direction=sens,
+            entry=entree,
+            size=taille,
+            sl=stop,
+            tp=objectif,
+            sl_percent_at_entry=sl_pct,
+            initial_sl=stop,
+        )
+        self.active_position.size_initial_usdt = taille
+        self.active_position.size_executed_usdt = taille
+        self.active_position.size_remaining = taille
+        self.active_position.position_size_contracts = contrats
+        self.active_position.size_initial_contracts = contrats
+        self.active_position.size_remaining_contracts = contrats
+        self.active_position.adoptee_au_demarrage = True
+        self.active_position.start_time = time.time()
+        self.active_position.timestamp_open = datetime.now(timezone.utc).isoformat()
+
+        resultat["adoptees"] = 1
+        logger.warning(
+            f"🤝 Position reprise sur l'échange: {symbole} {sens} | {contrats} contrats "
+            f"à {entree} ({taille:.2f} USDT) | stop {stop:.6f} · objectif {objectif:.6f}"
+        )
+
+        if TRADING_CONFIG.get("adoptee_stop_echange", True):
+            gestionnaire._poser_stop_echange(symbole, sens, stop)
+
+        return resultat
 
     @staticmethod
     def _taille_de_reference_pour_centards(position) -> float:

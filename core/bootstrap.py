@@ -231,6 +231,16 @@ async def init_instances() -> None:
                 logger.debug('bootstrap.py: exception silencieuse (avant: pass)', exc_info=True)
             state.set_position_manager(pos_mgr)
             logger.info(f"✅ PositionManager initialized ({time.time()-start:.3f}s)")
+
+            # 🤝 Reprendre une position qui court déjà sur l'échange. Sans cette
+            # étape, un redémarrage laisse la position réelle sans surveillance
+            # (ni stop suiveur, ni take-profit partiel, ni sortie temporelle).
+            try:
+                adoption = pos_mgr.adopter_positions_au_demarrage()
+                if adoption.get("adoptees") or adoption.get("bloque"):
+                    logger.warning(f"🤝 Adoption au démarrage: {adoption}")
+            except Exception as erreur_adoption:  # noqa: BLE001 - vu au démarrage
+                logger.error(f"❌ Adoption au démarrage impossible: {erreur_adoption}")
             
     except Exception as e:
         logger.error(f"❌ Error initializing core trading components: {e}", exc_info=True)

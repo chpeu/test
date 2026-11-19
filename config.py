@@ -577,6 +577,13 @@ TRADING_CONFIG = {
     # Mettre 0.0 pour désactiver.
     "papier_depassement_stop_pct": 0.16,
 
+    # 🤝 Au démarrage en compte réel, le robot reprend la position qui court déjà
+    # sur l'échange (sinon elle reste sans gestion) et pose son stop de sécurité.
+    # S'il y en a deux de ouvertes ou si l'échange ne répond pas, les ouvertures
+    # sont bloquées jusqu'à ce que l'état soit clair.
+    "adopte_positions_au_demarrage": True,
+    "adoptee_stop_echange": True,
+
     # ============================================================
     # CARNET FANTÔME — la trace des dossiers refusés, et leur verdict
     # (ajouté le 19/11/2026 : sans lui, impossible de savoir si un filtre qui
