@@ -24,6 +24,7 @@
 	import BotControls from '$lib/components/BotControls.svelte';
 	import VariablesPanel from '$lib/components/VariablesPanel.svelte';
 	import MLPanel from '$lib/components/ml/MLPanel.svelte';
+	import IaPilotage from '$lib/components/IaPilotage.svelte';
 	import LiveTradingPanel from '$lib/components/LiveTradingPanel.svelte';
 	import MarketRegimeWidget from '$lib/components/MarketRegimeWidget.svelte';
 	import TradingCircuitBreaker from '$lib/components/TradingCircuitBreaker.svelte';
@@ -217,6 +218,7 @@
 		{ id: 'dashboard', label: 'Dashboard', icon: '📊' },
 		{ id: 'variables', label: 'Variables', icon: '⚙️' },
 		{ id: 'ml', label: 'ML', icon: '🤖' },
+		{ id: 'ia', label: 'IA pilote', icon: '🧠' },
 		{ id: 'live', label: 'Live Trading', icon: '🔴' },
 		{ id: 'logs', label: 'Logs', icon: '📝' },
 		{ id: 'charts', label: 'Graphiques', icon: '📉' },
@@ -827,6 +829,10 @@
 			{:else if activeTab === 'ml'}
 				<div class="tab-content">
 					<MLPanel />
+				</div>
+			{:else if activeTab === 'ia'}
+				<div class="tab-content">
+					<IaPilotage />
 				</div>
 			{:else if activeTab === 'live'}
 				<div class="tab-content">
