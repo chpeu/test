@@ -332,7 +332,23 @@ def test_la_migration_ajoute_sans_rien_casser():
         assert defense not in sql.upper()
 
 
-def test_les_reglages_de_pilotage_sont_regles():
-    assert TRADING_CONFIG["pilote_ia_actif"] is True
-    assert TRADING_CONFIG["pilote_ia_niveau"] == 2  # propositions, humain approuve
-    assert TRADING_CONFIG["pilote_ia_minutes"] == 60
+def test_le_niveau_par_defaut_est_ecrit_dans_le_code():
+    """Le niveau de départ est 2 (elle propose, un humain approuve).
+
+    On lit le code, pas le fichier de réglages vivant : sinon un clic dans
+    l'interface ferait tomber les tests, et ce clic-là est voulu et possible.
+    """
+    from pathlib import Path
+
+    code = (Path(__file__).resolve().parent.parent / "config.py").read_text(encoding="utf-8")
+    assert '"pilote_ia_actif": True' in code
+    assert '"pilote_ia_niveau": 2' in code
+    assert '"pilote_ia_minutes": 60' in code
+
+
+def test_le_niveau_vivant_ne_peut_etre_que_0_a_3():
+    """Le fichier de réglages peut monter le niveau, jamais l'inventer."""
+    from utils.config_persistence import load_config_overrides
+
+    niveau = load_config_overrides().get("pilote_ia_niveau", 2)
+    assert int(niveau) in (0, 1, 2, 3)
