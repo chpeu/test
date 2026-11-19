@@ -19,9 +19,15 @@ Avant : le robot et le tableau de bord étaient lancés à la main dans un termi
 | `tradebot` | le robot (`uvicorn main:app`, 127.0.0.1:5000) | toujours, toutes les 10 s | oui |
 | `tradebot-dashboard` | le tableau de bord (`vite preview`, Tailscale:3000) | toujours, toutes les 10 s | oui |
 | `alerte-tradebot@` | écrit l'alerte et prévient si Telegram est réglé | à chaque échec | — |
+| `tradebot-vigie` (timer, 5 min) | vérifie que le robot répond sur 5000 et ne redémarre pas en boucle | — | oui |
 
 Le robot attend que la base PostgreSQL soit prête (jusqu'à 60 s) avant de
-démarrer : sinon il démarrerait sans mémoire et son garde-fou repartirait de
+démarrer, puis attend que le port 5000 soit libre (jusqu'à 30 s) : une ancienne
+instance lancée à la main qui garde le port faisait échouer le service 14 fois de
+suite, sans un seul message d'alerte.
+
+Le site du tableau de bord se construit dans `frontend/.svelte-kit/output`
+(SvelteKit + adaptateur node), pas dans `frontend/dist` : sinon il démarrerait sans mémoire et son garde-fou repartirait de
 zéro.
 
 ## Installation (une seule fois, par Seb)
