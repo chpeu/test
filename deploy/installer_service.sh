@@ -44,6 +44,7 @@ chmod +x "$DEPOT/deploy/alerte-tradebot.sh"
 
 echo "3/5 Dossier de journal d'alertes…"
 mkdir -p /home/seb/logs
+chown seb:seb /home/seb/logs 2>/dev/null || true
 
 echo "4/5 Activation et démarrage…"
 sudo systemctl daemon-reload
