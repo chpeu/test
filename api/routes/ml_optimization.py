@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 
 from .ml_common import (
     METRIC_OPTIONS,
+    chemin_config_autorise,
     get_metric_runs_snapshot,
     ml_tasks,
     record_metric_run,
@@ -396,6 +397,9 @@ async def apply_best_hyperparameters(
         Confirmation et params appliqués
     """
     try:
+        # premier controle: ou est-ce qu'on va ecrire ?
+        chemin_config = chemin_config_autorise(config_file)
+
         # Si params fournis directement, les utiliser
         if params_to_apply:
             params_dict = params_to_apply
@@ -418,8 +422,8 @@ async def apply_best_hyperparameters(
             logger.info(f"📝 Application du meilleur global Optuna: {params_dict}")
         
         # Sauvegarder dans config_overrides.json
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
+        if os.path.exists(chemin_config):
+            with open(chemin_config, 'r') as f:
                 config = json.load(f)
         else:
             config = {}
@@ -432,10 +436,10 @@ async def apply_best_hyperparameters(
             config_key = f"ml_{param}"
             config[config_key] = value
         
-        with open(config_file, 'w') as f:
+        with open(chemin_config, 'w') as f:
             json.dump(config, f, indent=2)
         
-        logger.info(f"[SAVE] Paramètres sauvegardés dans {config_file}")
+        logger.info(f"[SAVE] Paramètres sauvegardés dans {chemin_config}")
         
         # Recharger immédiatement les overrides pour mettre à jour TRADING_CONFIG
         try:
@@ -694,6 +698,9 @@ async def apply_gradientboosting_params(
         Confirmation et params appliqués
     """
     try:
+        # premier controle: ou est-ce qu'on va ecrire ?
+        chemin_config = chemin_config_autorise(config_file)
+
         if not params_to_apply:
             # Charger depuis le dernier résultat sauvegardé
             results_path = os.path.join(
@@ -707,8 +714,8 @@ async def apply_gradientboosting_params(
                 raise HTTPException(400, "Aucun paramètre fourni et aucune optimisation GB trouvée")
         
         # Sauvegarder dans config_overrides.json
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
+        if os.path.exists(chemin_config):
+            with open(chemin_config, 'r') as f:
                 config = json.load(f)
         else:
             config = {}
@@ -729,7 +736,7 @@ async def apply_gradientboosting_params(
                 config[config_key] = value
                 applied_params[config_key] = value
         
-        with open(config_file, 'w') as f:
+        with open(chemin_config, 'w') as f:
             json.dump(config, f, indent=2)
         
         # Recharger config

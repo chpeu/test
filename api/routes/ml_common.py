@@ -10,6 +10,8 @@ import threading
 from pathlib import Path
 from typing import Dict, Any
 
+from fastapi import HTTPException
+
 logger = logging.getLogger(__name__)
 
 # ========== GLOBAL STATE ==========
@@ -19,6 +21,31 @@ ml_tasks: Dict[str, Dict[str, Any]] = {}
 
 # Metric optimization tracking
 METRIC_OPTIONS = ["trading_composite", "f1_score", "accuracy", "roc_auc"]
+
+# Les seuls fichiers de reglages qu'une route a le droit d'ecrire.
+FICHIERS_CONFIG_AUTORISES = {"config_overrides.json"}
+
+
+def chemin_config_autorise(config_file: str) -> Path:
+    """Verifier le fichier de reglages demande par le client, avant d'y ecrire.
+
+    Sans ce controle, `config_file` etait une simple chaine passee a
+    `open(..., 'w')` : un appelant pouvait choisir n'importe quel nom de fichier,
+    n'importe ou sur le disque, avec les droits du robot
+    (`?config_file=../../.bashrc` par exemple). On n'accepte que le nom connu des
+    reglages, et aucun `..` dans le chemin.
+    """
+    chemin = Path(config_file)
+    if chemin.name not in FICHIERS_CONFIG_AUTORISES or ".." in chemin.parts:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Fichier de reglages refuse : seul "
+                + ", ".join(sorted(FICHIERS_CONFIG_AUTORISES))
+                + " peut etre ecrit par cette route"
+            ),
+        )
+    return chemin
 LAST_RUNS_FILE = Path("data/optuna_last_runs.json")
 _metric_cache_lock = threading.Lock()
 metric_runs_cache: Dict[str, Any] = {"metrics": {}}
