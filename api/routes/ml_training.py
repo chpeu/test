@@ -261,7 +261,6 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, accuracy_score, f1_score
         from sklearn.feature_selection import mutual_info_regression
         import pandas as pd
-        import json
         
         # Update status
         ml_tasks[task_id]['status'] = 'running'
@@ -474,7 +473,6 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         
         import joblib
         from pathlib import Path
-        from datetime import datetime
         
         # Créer dossier si nécessaire
         models_dir = Path("optimization/saved_models")
@@ -505,97 +503,110 @@ async def _train_xgboost_v2_background(task_id: str, force: bool):
         ml_tasks[task_id]['stage'] = 'saving_database'
         
         try:
-            from database.db_manager import DatabaseManager
-            db = DatabaseManager()
-            
-            # Désactiver anciens modèles V2
-            await db.execute("""
-                UPDATE ml_models 
-                SET is_active = FALSE 
-                WHERE model_name LIKE 'xgboost_v2%'
-            """)
-            
-            # Préparer hyperparamètres
-            model_params = {
-                'n_estimators': n_estimators,
-                'max_depth': max_depth,
-                'learning_rate': learning_rate,
-                'min_child_weight': min_child_weight,
-                'reg_alpha': reg_alpha,
-                'reg_lambda': reg_lambda,
-                'subsample': subsample,
-                'colsample_bytree': colsample_bytree,
-                'gamma': gamma,
-                'objective': 'reg:squarederror',
-                'eval_metric': 'mae'
-            }
-            
-            # Feature importance (top 20)
-            # strict=False assumé : les deux listes sont tronquées à 20 séparément, un
-            # modèle formé sur moins de 20 features légitimerait un écart.
-            feature_importance = dict(zip(
-                selected_features[:20],
-                model.feature_importances_[:20].tolist(),
-                strict=False
-            ))
-            
-            # Scores de sélection (top 20)
-            feature_selection_scores = mi_df.head(20).set_index('feature')['mi_score'].to_dict()
-            
-            # Insérer nouveau modèle
-            await db.execute("""
-                INSERT INTO ml_models (
-                    model_name, model_type, version, model_path, preprocessor_path,
-                    train_r2, val_r2, test_r2,
-                    train_mae, val_mae, test_mae,
-                    train_mse, val_mse, test_mse,
-                    test_f1, test_accuracy,
-                    timeframe_days, min_trades,
-                    total_samples, train_samples, val_samples, test_samples,
-                    filter_marginal_trades, marginal_threshold,
-                    split_type, max_features,
-                    model_params, feature_importance,
-                    selected_features, feature_selection_scores,
-                    is_active, trained_at
-                ) VALUES (
-                    $1, $2, $3, $4, $5,
-                    $6, $7, $8,
-                    $9, $10, $11,
-                    $12, $13, $14,
-                    $15, $16,
-                    $17, $18,
-                    $19, $20, $21, $22,
-                    $23, $24,
-                    $25, $26,
-                    $27, $28,
-                    $29, $30,
-                    $31, $32
-                )
-            """,
-                model_name,                           # $1
-                'XGBRegressor',                       # $2
-                '2.0',                                # $3
-                str(model_path),                      # $4
-                str(preprocessor_path),               # $5
-                train_r2, val_r2, test_r2,           # $6-$8
-                train_mae, val_mae, test_mae,        # $9-$11
-                mean_squared_error(y_train, y_train_pred),  # $12
-                mean_squared_error(y_val, y_val_pred),      # $13
-                mean_squared_error(y_test, y_test_pred),    # $14
-                test_f1, test_accuracy,              # $15-$16
-                timeframe_days, 50,                  # $17-$18
-                len(df), len(X_train), len(X_val), len(X_test),  # $19-$22
-                filter_marginal, marginal_threshold, # $23-$24
-                'temporal', max_features,            # $25-$26
-                json.dumps(model_params),            # $27
-                json.dumps(feature_importance),      # $28
-                json.dumps(selected_features),       # $29
-                json.dumps(feature_selection_scores),# $30
-                True,                                # $31 (is_active)
-                datetime.now()                       # $32
-            )
-            
-            logger.info(f"[OK] Modèle V2 sauvegardé dans PostgreSQL: {model_name}")
+            # Le 19/11/2026: ce bloc appelait `database.db_manager`, un module qui
+            # n'existe nulle part dans le depot. L'exception etait avalee ici meme, si
+            # bien qu'aucun modele V2 n'a jamais ete enregistre dans ml_models (verifie:
+            # la table est restee a 0 ligne). On passe par le scribe partage du journal.
+            from core.postgresql_datalogger import connexion_journal
+
+            with connexion_journal() as connexion:
+                if connexion is None:
+                    logger.warning(
+                        "[WARN] Journal desactive: le modele V2 reste dans ses fichiers, "
+                        "il n'est pas enregistre dans ml_models"
+                    )
+                else:
+                    curseur = connexion.cursor()
+
+                    # Desactiver les anciens modeles V2
+                    curseur.execute(
+                        "UPDATE ml_models SET is_active = FALSE WHERE model_name LIKE 'xgboost_v2%'"
+                    )
+
+                    # PreparER les hyperparametres (conserver le contenu)
+                    model_params = {
+                        'n_estimators': n_estimators,
+                        'max_depth': max_depth,
+                        'learning_rate': learning_rate,
+                        'min_child_weight': min_child_weight,
+                        'reg_alpha': reg_alpha,
+                        'reg_lambda': reg_lambda,
+                        'subsample': subsample,
+                        'colsample_bytree': colsample_bytree,
+                        'gamma': gamma,
+                        'objective': 'reg:squarederror',
+                        'eval_metric': 'mae'
+                    }
+
+                    # Feature importance (top 20)
+                    # strict=False assumé : les deux listes sont tronquées à 20 séparément, un
+                    # modèle formé sur moins de 20 features légitimerait un écart.
+                    feature_importance = dict(zip(
+                        selected_features[:20],
+                        model.feature_importances_[:20].tolist(),
+                        strict=False
+                    ))
+
+                    # Scores de sélection (top 20)
+                    feature_selection_scores = mi_df.head(20).set_index('feature')['mi_score'].to_dict()
+
+                    curseur.execute(
+                        """
+                        INSERT INTO ml_models (
+                            model_name, model_type, version, model_path, preprocessor_path,
+                            train_r2, val_r2, test_r2,
+                            train_mae, val_mae, test_mae,
+                            train_mse, val_mse, test_mse,
+                            test_f1, test_accuracy,
+                            timeframe_days, min_trades,
+                            total_samples, train_samples, val_samples, test_samples,
+                            filter_marginal_trades, marginal_threshold,
+                            split_type, max_features,
+                            model_params, feature_importance,
+                            selected_features, feature_selection_scores,
+                            is_active, trained_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s,
+                            %s, %s, %s,
+                            %s, %s, %s,
+                            %s, %s, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s, %s, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s,
+                            %s, %s
+                        )
+                        """,
+                        (
+                            model_name,
+                            'XGBRegressor',
+                            '2.0',
+                            str(model_path),
+                            str(preprocessor_path),
+                            train_r2, val_r2, test_r2,
+                            train_mae, val_mae, test_mae,
+                            mean_squared_error(y_train, y_train_pred),
+                            mean_squared_error(y_val, y_val_pred),
+                            mean_squared_error(y_test, y_test_pred),
+                            test_f1, test_accuracy,
+                            timeframe_days, 50,
+                            len(df), len(X_train), len(X_val), len(X_test),
+                            filter_marginal, marginal_threshold,
+                            'temporal', max_features,
+                            json.dumps(model_params),
+                            json.dumps(feature_importance),
+                            json.dumps(selected_features),
+                            json.dumps(feature_selection_scores),
+                            True,
+                            datetime.now(),
+                        )
+                    )
+                    curseur.close()
+
+                    logger.info(f"[OK] Modèle V2 sauvegardé dans PostgreSQL: {model_name}")
             
         except Exception as db_error:
             logger.error(f"[FAIL] Erreur sauvegarde PostgreSQL: {db_error}", exc_info=True)
@@ -718,7 +729,6 @@ async def verify_gradientboosting_model():
     Teste sur les données récentes et retourne les métriques.
     """
     try:
-        import json
         from pathlib import Path
         import joblib
         
@@ -801,7 +811,6 @@ async def _train_gradientboosting_background(task_id: str):
         import numpy as np
         import pandas as pd
         import joblib
-        import json
         from pathlib import Path
         
         # Get params from task
