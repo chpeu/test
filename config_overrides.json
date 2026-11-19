@@ -198,7 +198,6 @@
   "use_micro_confirmation": true,
   "micro_confirmation_delay_ms": 400,
   "sl_max_pct": 0.5,
-  "ml_metric": "accuracy",
   "atr_mult_tp": 1.5,
   "atr_mult_sl": 0.5,
   "max_spread_pct": 0.05,

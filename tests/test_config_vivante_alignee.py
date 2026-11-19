@@ -87,8 +87,13 @@ def test_la_config_vivante_n_heberge_plus_de_dechets_de_tests():
     if not chemin.exists():
         return
     reglages = json.loads(chemin.read_text(encoding="utf-8"))
-    for dechet in ("test_key", "number"):
+    # `ml_metric` vient d'un vieux test de route qui postait {"metric": "accuracy"}
+    # sur /api/ml/optimize/apply sans dire dans quel fichier ecrire.
+    for dechet in ("test_key", "number", "ml_metric"):
         assert dechet not in reglages, (
             f"{dechet} est revenu dans config_overrides.json : un test écrit dans "
             "le fichier du robot au lieu d'un fichier temporaire"
         )
+
+    suspects = [cle for cle in reglages if cle.startswith("test") or cle.endswith("_test")]
+    assert not suspects, f"des cles de test se sont glissees dans la config vivante: {suspects}"
